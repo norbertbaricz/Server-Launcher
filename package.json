@@ -1,0 +1,21 @@
+{
+  "name": "server-launcher",
+  "version": "1.0.0",
+  "description": "A Minecraft server launcher built with Electron and Node.js",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "Minecraft",
+    "Server",
+    "Launcher",
+    "Electron"
+  ],
+  "author": "MaxUltimat3",
+  "license": "ISC",
+  "dependencies": {
+    "electron": "^36.2.1"
+  }
+}

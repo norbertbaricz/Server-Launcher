@@ -1,0 +1,149 @@
+body {
+    font-family: 'Inter', sans-serif;
+    margin: 0;
+    height: 100vh;
+    overflow: hidden;
+    background-color: #1a202c; /* gray-900 */
+    display: flex;
+    flex-direction: column;
+}
+
+#title-bar {
+  -webkit-app-region: drag;
+  -webkit-user-select: none;
+  height: 32px; 
+  background-color: #2d3748; 
+  color: #cbd5e1; 
+  display: flex; 
+  justify-content: center; 
+  align-items: center; 
+  font-size: 0.875rem; 
+  flex-shrink: 0; 
+}
+
+#title-bar button {
+    -webkit-app-region: no-drag;
+}
+
+#main-content-area {
+    flex-grow: 1;
+    overflow-y: auto; 
+}
+
+.console-output {
+  /* overflow-y: auto; este deja aplicat de Tailwind */
+}
+
+/* Ascunde scrollbar-ul pentru browsere WebKit (Chrome, Safari, Electron) */
+.console-output::-webkit-scrollbar {
+    display: none;
+}
+
+/* Pentru Firefox (opțional) */
+.console-output {
+  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none;  /* IE 10+ */
+}
+
+.btn-disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    background-color: #4a5568 !important;
+    border-color: #4a5568 !important;
+}
+.btn-disabled:hover {
+     opacity: 0.4;
+}
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+.animate-fadeIn {
+    animation: fadeIn 0.5s ease-out forwards;
+}
+
+@keyframes statusBarPulseYellow {
+    0%, 100% { box-shadow: 0 0 8px rgba(250, 204, 21, 0.3), inset 0 0 5px rgba(250, 204, 21, 0.2); border-color: rgba(250, 204, 21, 0.5); }
+    50% { box-shadow: 0 0 16px rgba(250, 204, 21, 0.7), inset 0 0 10px rgba(250, 204, 21, 0.5); border-color: #facc15; }
+}
+#status-bar.status-bar-pulse { /* Aplică pe containerul status-bar */
+    animation: statusBarPulseYellow 2s infinite ease-in-out;
+    border: 1px solid transparent; 
+}
+
+@keyframes greenAttentionPulse {
+    0% { box-shadow: 0 0 5px rgba(74, 222, 128, 0.2); border-color: rgba(74, 222, 128, 0.3); }
+    50% { box-shadow: 0 0 20px rgba(74, 222, 128, 0.8), inset 0 0 10px rgba(74, 222, 128, 0.4); border-color: #4ade80; }
+    100% { box-shadow: 0 0 5px rgba(74, 222, 128, 0.2); border-color: rgba(74, 222, 128, 0.3); }
+}
+#ip-info-bar.animate-green-attention { /* Aplică pe containerul IP-urilor */
+    animation: greenAttentionPulse 0.7s ease-in-out 3; 
+    border: 1px solid transparent; 
+}
+
+.btn-primary {
+    background-color: #facc15;
+    color: #1a202c;
+    transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+}
+.btn-primary:hover {
+    background-color: #eab308;
+    transform: translateY(-1px);
+}
+.btn-primary:active {
+    transform: translateY(0px);
+}
+.btn-primary .fas {
+    color: #1a202c;
+}
+
+.btn-secondary { 
+    background-color: #4a5568; 
+    color: #e2e8f0; 
+    border: 1px solid #718096; 
+    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+}
+.btn-secondary:hover {
+    background-color: #718096; 
+    border-color: #a0aec0; 
+    transform: translateY(-1px);
+}
+.btn-secondary:active {
+    transform: translateY(0px);
+}
+.btn-secondary .fas {
+    color: #e2e8f0;
+}
+
+.btn-danger {
+    background-color: #dc2626;
+    color: #e2e8f0;
+    transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+}
+.btn-danger:hover {
+    background-color: #b91c1c;
+    transform: translateY(-1px);
+}
+.btn-danger:active {
+    transform: translateY(0px);
+}
+.btn-danger .fas {
+    color: #e2e8f0;
+}
+.fas {
+     font-family: "Font Awesome 6 Free" !important;
+}
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.4);
+    border-color: #facc15 !important;
+}
+.console-message {
+    opacity: 0;
+    transform: translateX(-10px);
+    animation: slideInMessage 0.3s ease-out forwards;
+}
+@keyframes slideInMessage {
+    from { opacity: 0; transform: translateX(-10px); }
+    to { opacity: 1; transform: translateX(0); }
+}

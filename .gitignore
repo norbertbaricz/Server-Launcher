@@ -1,0 +1,4 @@
+# Here I can stop git to upload what I dont need to!
+
+/node_modules
+/.env

@@ -1,0 +1,2 @@
+#By agreeing to this EULA, you agree to the Mojang EULA (account.mojang.com/documents/minecraft_eula)
+eula=true

@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minecraft Server Launcher</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-900 text-gray-200 flex flex-col h-screen">
+
+    <div id="title-bar">
+        <span>Minecraft Server Launcher</span>
+    </div>
+
+    <div id="main-content-area" class="flex-grow flex flex-col space-y-3 p-4 overflow-y-auto">
+        <div class="bg-gray-800 p-4 rounded-lg shadow-xl animate-fadeIn" style="animation-delay: 0.1s;">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                <div>
+                    <label for="mc-version" class="block text-sm font-medium text-gray-300 mb-1">Minecraft Version:</label>
+                    <select id="mc-version" name="mc-version" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5">
+                        <option value="1.21">1.21 (Latest Paper)</option>
+                        <option value="1.20.6">1.20.6</option>
+                        <option value="1.20.4" selected>1.20.4</option>
+                        <option value="1.19.4">1.19.4</option>
+                        <option value="1.18.2">1.18.2</option>
+                        <option value="1.16.5">1.16.5</option>
+                        <option value="1.12.2">1.12.2 (Legacy)</option>
+                    </select>
+                </div>
+                <div class="flex flex-col">
+                     <label for="ram-allocation" class="block text-sm font-medium text-gray-300 mb-1">RAM Allocation:</label>
+                     <select id="ram-allocation" name="ram-allocation" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5">
+                        <option value="auto" selected>Auto (Detect System)</option>
+                        <option value="512M">512MB (Very Small/Test)</option>
+                        <option value="1024M">1GB (Minimum)</option>
+                        <option value="1536M">1.5GB</option>
+                        <option value="2048M">2GB (Recommended Small)</option>
+                        <option value="3072M">3GB</option>
+                        <option value="4096M">4GB (Recommended Medium)</option>
+                        <option value="6144M">6GB</option>
+                        <option value="8192M">8GB (Recommended Large)</option>
+                        <option value="12288M">12GB</option>
+                        <option value="16384M">16GB (Very Large)</option>
+                     </select>
+                </div>
+                <div class="flex items-end">
+                    <button id="download-button" class="w-full btn-primary font-semibold py-2.5 px-4 rounded-md shadow-md flex items-center justify-center">
+                        <i class="fas fa-download mr-2"></i>Download
+                    </button>
+                </div>
+                <div class="flex items-end">
+                    <button id="open-folder-button" class="w-full btn-secondary font-semibold py-2.5 px-4 rounded-md shadow-md flex items-center justify-center">
+                        <i class="fas fa-folder-open mr-2"></i>Open Folder
+                    </button>
+                </div>
+            </div>
+            
+            <div id="status-bar" class="mt-4 bg-gray-700 p-3 rounded-md flex items-center">
+                <span class="text-sm font-medium text-gray-400">Status:</span>
+                <span id="status-message" class="text-sm text-yellow-400 ml-2 truncate max-w-md">Ready. Select version and RAM, then download.</span>
+            </div>
+        </div>
+
+        <div class="flex-grow bg-gray-800 p-4 rounded-lg shadow-xl flex flex-col min-h-[25vh] animate-fadeIn" style="animation-delay: 0.2s;">
+            <h2 class="text-lg font-semibold mb-2 text-gray-100">Server Console</h2>
+            <div id="console-output" class="console-output flex-grow bg-black text-sm p-3 rounded-md overflow-y-auto font-mono leading-normal whitespace-pre-wrap">
+            </div>
+        </div>
+
+        <div id="ip-info-bar" class="bg-gray-800 p-3 rounded-lg shadow-xl flex flex-wrap justify-start items-center gap-x-6 gap-y-2 animate-fadeIn" style="animation-delay: 0.25s;">
+            <div class="flex items-center">
+                <span class="text-sm font-medium text-gray-400">Local IP:</span>
+                <span id="local-ip-address" class="text-sm text-gray-200 ml-2">Fetching...</span>
+            </div>
+            <div class="flex items-center">
+                <span class="text-sm font-medium text-gray-400">Public IP:</span>
+                <span id="public-ip-address" class="text-sm text-gray-200 ml-2">Fetching...</span>
+            </div>
+        </div>
+        
+        <div id="bottom-action-bar" class="bg-gray-800 p-3 rounded-lg shadow-xl animate-fadeIn" style="animation-delay: 0.3s;">
+            <div class="flex flex-col space-y-3 sm:space-y-0 sm:flex-row sm:space-x-2 items-stretch">
+                <input type="text" id="command-input" placeholder="Enter server command..." class="flex-grow bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5">
+                <button id="send-command-button" class="btn-primary font-semibold py-2.5 px-4 rounded-md shadow-md flex items-center justify-center w-full sm:w-auto">
+                    <i class="fas fa-paper-plane mr-2"></i>Send
+                </button>
+                <button id="start-button" class="btn-primary font-semibold py-2.5 px-5 rounded-md shadow-md flex items-center justify-center w-full sm:w-auto" style="background-color: #16a34a; color:white;">
+                     <i class="fas fa-play mr-2" style="color:white;"></i>Start Server
+                </button>
+                <button id="stop-button" class="btn-danger font-semibold py-2.5 px-5 rounded-md shadow-md flex items-center justify-center btn-disabled w-full sm:w-auto">
+                    <i class="fas fa-stop mr-2"></i>Stop Server
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
