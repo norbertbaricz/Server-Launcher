@@ -16,51 +16,18 @@
     </div>
 
     <div id="main-content-area" class="flex-grow flex flex-col space-y-3 p-4 overflow-y-auto">
+
         <div class="bg-gray-800 p-4 rounded-lg shadow-xl animate-fadeIn" style="animation-delay: 0.1s;">
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                <div>
-                    <label for="mc-version" class="block text-sm font-medium text-gray-300 mb-1">Minecraft Version:</label>
-                    <select id="mc-version" name="mc-version" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5">
-                        <option value="1.21">1.21 (Latest Paper)</option>
-                        <option value="1.20.6">1.20.6</option>
-                        <option value="1.20.4" selected>1.20.4</option>
-                        <option value="1.19.4">1.19.4</option>
-                        <option value="1.18.2">1.18.2</option>
-                        <option value="1.16.5">1.16.5</option>
-                        <option value="1.12.2">1.12.2 (Legacy)</option>
-                    </select>
+            <div id="status-and-open-folder-area" class="hidden flex items-stretch justify-between"> <div id="status-bar-content" class="bg-gray-700 p-3 rounded-l-md flex-grow min-w-0 flex items-center">
+                    <span class="text-sm font-medium text-gray-400">Status:</span>
+                    <span id="status-message" class="text-sm text-yellow-400 ml-2 truncate">Initializing...</span>
                 </div>
-                <div class="flex flex-col">
-                     <label for="ram-allocation" class="block text-sm font-medium text-gray-300 mb-1">RAM Allocation:</label>
-                     <select id="ram-allocation" name="ram-allocation" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5">
-                        <option value="auto" selected>Auto (Detect System)</option>
-                        <option value="512M">512MB (Very Small/Test)</option>
-                        <option value="1024M">1GB (Minimum)</option>
-                        <option value="1536M">1.5GB</option>
-                        <option value="2048M">2GB (Recommended Small)</option>
-                        <option value="3072M">3GB</option>
-                        <option value="4096M">4GB (Recommended Medium)</option>
-                        <option value="6144M">6GB</option>
-                        <option value="8192M">8GB (Recommended Large)</option>
-                        <option value="12288M">12GB</option>
-                        <option value="16384M">16GB (Very Large)</option>
-                     </select>
-                </div>
-                <div class="flex items-end">
-                    <button id="download-button" class="w-full btn-primary font-semibold py-2.5 px-4 rounded-md shadow-md flex items-center justify-center">
-                        <i class="fas fa-download mr-2"></i>Download
-                    </button>
-                </div>
-                <div class="flex items-end">
-                    <button id="open-folder-button" class="w-full btn-secondary font-semibold py-2.5 px-4 rounded-md shadow-md flex items-center justify-center">
-                        <i class="fas fa-folder-open mr-2"></i>Open Folder
-                    </button>
-                </div>
+                <button id="open-folder-button-main" class="btn-primary font-semibold px-4 rounded-r-md shadow-md flex items-center justify-center" style="border-left: 1px solid #374151;"> <i class="fas fa-folder-open mr-2"></i>Open Folder
+                </button>
             </div>
-            
-            <div id="status-bar" class="mt-4 bg-gray-700 p-3 rounded-md flex items-center">
-                <span class="text-sm font-medium text-gray-400">Status:</span>
-                <span id="status-message" class="text-sm text-yellow-400 ml-2 truncate max-w-md">Ready. Select version and RAM, then download.</span>
+
+            <div id="setup-active-placeholder-top" class="hidden text-center text-gray-400 py-8">
+                Please complete server configuration in the popup.
             </div>
         </div>
 
@@ -80,7 +47,7 @@
                 <span id="public-ip-address" class="text-sm text-gray-200 ml-2">Fetching...</span>
             </div>
         </div>
-        
+
         <div id="bottom-action-bar" class="bg-gray-800 p-3 rounded-lg shadow-xl animate-fadeIn" style="animation-delay: 0.3s;">
             <div class="flex flex-col space-y-3 sm:space-y-0 sm:flex-row sm:space-x-2 items-stretch">
                 <input type="text" id="command-input" placeholder="Enter server command..." class="flex-grow bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5">
@@ -88,7 +55,7 @@
                     <i class="fas fa-paper-plane mr-2"></i>Send
                 </button>
                 <button id="start-button" class="btn-primary font-semibold py-2.5 px-5 rounded-md shadow-md flex items-center justify-center w-full sm:w-auto" style="background-color: #16a34a; color:white;">
-                     <i class="fas fa-play mr-2" style="color:white;"></i>Start Server
+                    <i class="fas fa-play mr-2" style="color:white;"></i>Start Server
                 </button>
                 <button id="stop-button" class="btn-danger font-semibold py-2.5 px-5 rounded-md shadow-md flex items-center justify-center btn-disabled w-full sm:w-auto">
                     <i class="fas fa-stop mr-2"></i>Stop Server
@@ -97,6 +64,44 @@
         </div>
     </div>
 
+    <div id="setup-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
+        <div id="setup-modal-content" class="bg-gray-800 p-6 md:p-8 rounded-lg shadow-2xl w-11/12 md:w-3/4 lg:w-1/2 xl:w-1/3">
+            <h2 class="text-xl md:text-2xl font-semibold text-yellow-400 mb-5 text-center">Server Setup Required</h2>
+            <p class="text-gray-300 mb-6 text-center text-sm">
+                Server files (paper.jar) or configuration (config.json) are missing.
+                Please select options and click "Download / Configure".
+            </p>
+            <div id="modal-setup-form-controls" class="space-y-5">
+                <div>
+                    <label for="mc-version-modal" class="block text-sm font-medium text-gray-300 mb-1">Minecraft Version:</label>
+                    <select id="mc-version-modal" name="mc-version-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-yellow-500 focus:border-yellow-500">
+                        <option value="" disabled selected>Loading versions...</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="ram-allocation-modal" class="block text-sm font-medium text-gray-300 mb-1">RAM Allocation:</label>
+                    <select id="ram-allocation-modal" name="ram-allocation-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-yellow-500 focus:border-yellow-500">
+                        <option value="auto" selected>Auto (Detect System)</option>
+                        <option value="512M">512MB (Very Small/Test)</option>
+                        <option value="1024M">1GB (Minimum)</option>
+                        <option value="1536M">1.5GB</option>
+                        <option value="2048M">2GB (Recommended Small)</option>
+                        <option value="3072M">3GB</option>
+                        <option value="4096M">4GB (Recommended Medium)</option>
+                        <option value="6144M">6GB</option>
+                        <option value="8192M">8GB (Recommended Large)</option>
+                        <option value="12288M">12GB</option>
+                        <option value="16384M">16GB (Very Large)</option>
+                    </select>
+                </div>
+                <div class="pt-2">
+                    <button id="download-button-modal" class="w-full btn-primary font-semibold py-3 px-4 rounded-md shadow-md flex items-center justify-center text-base">
+                        <i class="fas fa-download mr-2"></i>Download / Configure Server
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
     <script src="script.js"></script>
 </body>
 </html>

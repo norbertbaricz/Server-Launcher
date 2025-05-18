@@ -1,13 +1,16 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const https = require('node:https');
 const { spawn } = require('node:child_process');
 const os = require('node:os');
 
-const serverFilesDir = path.join(__dirname, 'MinecraftServer');
+let serverFilesDir;
 const paperJarName = 'paper.jar';
 let serverProcess = null;
+let configFilePath;
+const configFileName = 'config.json';
+let localIsServerRunningGlobal = false;
 
 function getMainWindow() {
     const windows = BrowserWindow.getAllWindows();
@@ -16,17 +19,53 @@ function getMainWindow() {
 
 function sendStatus(message, pulse = false) {
     const mainWindow = getMainWindow();
-    if (mainWindow) mainWindow.webContents.send('update-status', message, pulse);
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update-status', message, pulse);
 }
 
 function sendConsole(message, type = 'INFO') {
     const mainWindow = getMainWindow();
-    if (mainWindow) mainWindow.webContents.send('update-console', message, type);
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update-console', message, type);
 }
 
 function sendServerStateChange(isRunning) {
+    localIsServerRunningGlobal = isRunning;
     const mainWindow = getMainWindow();
-    if (mainWindow) mainWindow.webContents.send('server-state-change', isRunning);
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('server-state-change', isRunning);
+}
+
+function readServerConfig() {
+    if (!configFilePath) {
+        console.error('ERROR: configFilePath not initialized before reading.');
+        sendConsole(`Internal Error: Config path not set before read.`, 'ERROR');
+        return {};
+    }
+    try {
+        if (fs.existsSync(configFilePath)) {
+            const configData = fs.readFileSync(configFilePath, 'utf8');
+            if (configData.trim() === "") {
+                sendConsole(`${configFileName} is empty. Using defaults.`, 'WARN');
+                return {};
+            }
+            return JSON.parse(configData);
+        }
+    } catch (error) {
+        sendConsole(`Error reading or parsing ${configFileName}: ${error.message}`, 'ERROR');
+    }
+    return {};
+}
+
+function writeServerConfig(configObject) {
+    if (!configFilePath) {
+        console.error('ERROR: configFilePath not initialized before writing.');
+        sendConsole(`Internal Error: Config path not set before write.`, 'ERROR');
+        return;
+    }
+    try {
+        fs.writeFileSync(configFilePath, JSON.stringify(configObject, null, 2));
+        sendConsole(`${configFileName} saved successfully.`, 'SUCCESS');
+    } catch (error) {
+        sendConsole(`Error writing ${configFileName}: ${error.message}`, 'ERROR');
+    }
 }
 
 function getLocalIPv4() {
@@ -47,7 +86,7 @@ async function getPublicIP() {
     return new Promise((resolve, reject) => {
         const request = https.get('https://api.ipify.org?format=json', { headers: {'User-Agent': 'MyMinecraftLauncher/1.0'} }, (res) => {
             if (res.statusCode !== 200) {
-                res.resume(); 
+                res.resume();
                 return reject(new Error(`Failed to get public IP (Status: ${res.statusCode})`));
             }
             let data = '';
@@ -79,20 +118,31 @@ function createWindow () {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      devTools: true 
+      devTools: !app.isPackaged
     }
   });
   mainWindow.loadFile('index.html');
-  // mainWindow.webContents.openDevTools(); 
+  mainWindow.webContents.on('did-finish-load', () => {
+    sendServerStateChange(localIsServerRunningGlobal);
+  });
 }
 
 app.whenReady().then(() => {
+  serverFilesDir = path.join(app.getPath('userData'), 'MinecraftServer');
+  configFilePath = path.join(serverFilesDir, configFileName);
+  console.log(`User data path for server files: ${serverFilesDir}`);
+  console.log(`Config file path: ${configFilePath}`);
+
   if (!fs.existsSync(serverFilesDir)) {
     try {
       fs.mkdirSync(serverFilesDir, { recursive: true });
-      console.log(`Folder created: ${serverFilesDir}`);
+      console.log(`Folder created for server at: ${serverFilesDir}`);
     } catch (error) {
-      console.error(`Failed to create directory ${serverFilesDir}:`, error);
+      console.error(`FATAL: Failed to create directory ${serverFilesDir}:`, error);
+      dialog.showErrorBox(
+        'Directory Creation Failed',
+        `Failed to create server directory at ${serverFilesDir}:\n${error.message}\n\nThe application might not function correctly.`
+      );
     }
   }
   createWindow();
@@ -100,27 +150,89 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (serverProcess && typeof serverProcess.kill === 'function') {
-    sendConsole('Application closing, ensuring server is stopped...', 'WARN');
+  if (serverProcess && typeof serverProcess.kill === 'function' && !serverProcess.killed) {
+    serverProcess.killedInternally = true;
     serverProcess.kill('SIGKILL');
     serverProcess = null;
+    sendServerStateChange(false);
   }
   if (process.platform !== 'darwin') app.quit();
 });
 
 ipcMain.handle('get-app-path', async () => app.getAppPath());
 
-ipcMain.on('open-server-folder', () => {
-  if (!fs.existsSync(serverFilesDir)) {
-    sendConsole(`Server directory does not exist yet: ${serverFilesDir}`, 'ERROR');
-    try {
-        fs.mkdirSync(serverFilesDir, { recursive: true });
-        sendConsole(`Created server directory: ${serverFilesDir}`, 'INFO');
-    } catch (error) {
-        sendConsole(`Failed to create server directory: ${error.message}`, 'ERROR');
-        return;
+ipcMain.handle('check-initial-setup', async () => {
+    if (!serverFilesDir || !configFilePath) {
+        const errorMsg = "Launcher error: Server/config directory paths not properly initialized.";
+        console.error(errorMsg);
+        return { needsSetup: true, config: {}, error: errorMsg };
     }
-  }
+    const jarPath = path.join(serverFilesDir, paperJarName);
+    const jarExists = fs.existsSync(jarPath);
+    const configExists = fs.existsSync(configFilePath);
+    let config = {};
+    if (configExists) {
+        config = readServerConfig();
+    }
+
+    const needsSetupCondition = !jarExists || !configExists;
+    if (needsSetupCondition) {
+        if (!jarExists) sendConsole(`${paperJarName} not found. Full setup required.`, 'INFO');
+        else if (!configExists) sendConsole(`${configFileName} not found. Configuration required.`, 'INFO');
+    } else {
+        sendConsole(`Setup check: ${paperJarName} and ${configFileName} exist.`, 'INFO');
+    }
+    return { needsSetup: needsSetupCondition, config: config };
+});
+
+ipcMain.handle('get-latest-papermc-version', async () => {
+    try {
+        const projectApiUrl = `https://api.papermc.io/v2/projects/paper`;
+        const projectResponseData = await new Promise((resolve, reject) => {
+            const req = https.get(projectApiUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
+                if (res.statusCode !== 200) { res.resume(); return reject(new Error(`Failed to get project info (Status ${res.statusCode})`)); }
+                let data = ''; res.on('data', (chunk) => { data += chunk; });
+                res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse project JSON.' + e.message)); }});
+            });
+            req.on('error', (err) => reject(new Error(`API request error for project versions: ${err.message}`))); req.end();
+        });
+        if (projectResponseData.versions && projectResponseData.versions.length > 0) {
+            return projectResponseData.versions[projectResponseData.versions.length - 1];
+        }
+        throw new Error('No versions found for PaperMC project.');
+    } catch (error) {
+        sendConsole(`Could not fetch latest PaperMC version: ${error.message}`, 'ERROR');
+        return null;
+    }
+});
+
+ipcMain.handle('get-available-papermc-versions', async () => {
+    try {
+        const projectApiUrl = `https://api.papermc.io/v2/projects/paper`;
+        const projectResponseData = await new Promise((resolve, reject) => {
+            const req = https.get(projectApiUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
+                if (res.statusCode !== 200) { res.resume(); return reject(new Error(`Failed to get project info (Status ${res.statusCode})`)); }
+                let data = ''; res.on('data', (chunk) => { data += chunk; });
+                res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse project JSON.' + e.message)); }});
+            });
+            req.on('error', (err) => reject(new Error(`API request error for project versions: ${err.message}`))); req.end();
+        });
+
+        if (projectResponseData.versions && projectResponseData.versions.length > 0) {
+            const versions = projectResponseData.versions.reverse();
+            return versions;
+        }
+        throw new Error('No versions found for PaperMC project.');
+    } catch (error) {
+        sendConsole(`Could not fetch available PaperMC versions: ${error.message}`, 'ERROR');
+        return [];
+    }
+});
+
+
+ipcMain.on('open-server-folder', () => {
+  if (!serverFilesDir) { sendConsole('Server directory path not initialized yet.', 'ERROR'); return; }
+  if (!fs.existsSync(serverFilesDir)) { sendConsole(`Error: Server directory ${serverFilesDir} does not exist.`, 'WARN'); }
   shell.openPath(serverFilesDir)
     .then(result => {
       if (result !== "") { sendConsole(`Error opening folder ${serverFilesDir}: ${result}`, 'ERROR'); }
@@ -129,129 +241,162 @@ ipcMain.on('open-server-folder', () => {
     .catch(err => { sendConsole(`Failed to open folder ${serverFilesDir}: ${err.message}`, 'ERROR'); console.error("Shell openPath error:", err);});
 });
 
-ipcMain.on('download-papermc', async (event, mcVersion) => {
-  sendStatus(`Workspaceing info for PaperMC ${mcVersion}...`, true);
-  sendConsole(`Workspaceing latest build for PaperMC ${mcVersion}...`, 'INFO');
+ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation }) => {
+  if (!serverFilesDir || !configFilePath) { sendStatus('Action failed. Launcher paths not ready.', false); sendConsole('ERROR: Server/config directory path not initialized for action.', 'ERROR'); return; }
+  sendConsole(`Action 'Download/Configure': Version ${mcVersion}, RAM ${ramAllocation}`, 'INFO');
+  const currentConfig = readServerConfig();
+  currentConfig.version = mcVersion;
+  if (ramAllocation && ramAllocation.toLowerCase() !== 'auto') { currentConfig.ram = ramAllocation; }
+  else { delete currentConfig.ram; }
+  writeServerConfig(currentConfig);
+
+  const jarPath = path.join(serverFilesDir, paperJarName);
+  if (fs.existsSync(jarPath)) {
+      sendConsole(`${paperJarName} already exists. Configuration updated.`, 'INFO');
+      sendStatus('Configuration saved!', false);
+      sendServerStateChange(localIsServerRunningGlobal);
+      return;
+  }
+
+  sendStatus(`Downloading PaperMC ${mcVersion}...`, true);
+  sendConsole(`Workspaceing build info for PaperMC ${mcVersion}... (Jar not found)`, 'INFO');
   try {
     const buildsApiUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds`;
     const buildsResponseData = await new Promise((resolve, reject) => {
-      const req = https.get(buildsApiUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
-        if (res.statusCode !== 200) { res.resume(); return reject(new Error(`Failed to get builds list (Status ${res.statusCode}) from ${buildsApiUrl}`)); }
-        let data = ''; res.on('data', (chunk) => { data += chunk; });
-        res.on('end', () => { try { resolve(JSON.parse(data)); } catch (parseError) { reject(new Error(`Failed to parse builds JSON: ${parseError.message}. Response: ${data.substring(0, 200)}...`)); }});
-      });
-      req.on('error', (err) => reject(new Error(`API request error for builds: ${err.message}`))); req.end();
+        const req = https.get(buildsApiUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
+            if (res.statusCode !== 200) { res.resume(); return reject(new Error(`Failed to get builds list (Status ${res.statusCode}) from ${buildsApiUrl}`)); }
+            let data = ''; res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => { try { resolve(JSON.parse(data)); } catch (parseError) { reject(new Error(`Failed to parse builds JSON: ${parseError.message}. Response: ${data.substring(0, 200)}...`)); }});
+        });
+        req.on('error', (err) => reject(new Error(`API request error for builds: ${err.message}`))); req.end();
     });
-    if (!buildsResponseData.builds || buildsResponseData.builds.length === 0) throw new Error(`No builds for PaperMC ${mcVersion}.`);
-    const latestBuild = buildsResponseData.builds[buildsResponseData.builds.length - 1].build;
-    sendConsole(`Latest build for ${mcVersion} is #${latestBuild}.`, 'INFO');
-    const downloadJarName = `paper-${mcVersion}-${latestBuild}.jar`;
-    const downloadUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds/${latestBuild}/downloads/${downloadJarName}`;
+    if (!buildsResponseData.builds || buildsResponseData.builds.length === 0) throw new Error(`No builds found for PaperMC ${mcVersion}.`);
+    const latestBuildInfo = buildsResponseData.builds[buildsResponseData.builds.length - 1];
+    const latestBuild = latestBuildInfo.build;
+    const downloadJarNameFromApi = latestBuildInfo.downloads.application.name;
+    sendConsole(`Latest build for ${mcVersion} is #${latestBuild}. JAR: ${downloadJarNameFromApi}`, 'INFO');
+    const downloadUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds/${latestBuild}/downloads/${downloadJarNameFromApi}`;
     const destinationPath = path.join(serverFilesDir, paperJarName);
-    sendStatus(`Downloading ${downloadJarName}...`, true);
+    sendStatus(`Downloading ${downloadJarNameFromApi} as ${paperJarName}...`, true);
     sendConsole(`Downloading from: ${downloadUrl}`, 'INFO'); sendConsole(`Saving to: ${destinationPath}`, 'INFO');
     if (fs.existsSync(destinationPath)) {
-        try { fs.unlinkSync(destinationPath); sendConsole(`Removed old ${paperJarName}.`, 'INFO'); }
-        catch (unlinkError) { sendConsole(`Could not remove old ${paperJarName}: ${unlinkError.message}`, 'ERROR');}
+        try { fs.unlinkSync(destinationPath); sendConsole(`Removed existing ${paperJarName} before new download.`, 'WARN'); }
+        catch (unlinkError) { sendConsole(`Could not remove existing ${paperJarName}: ${unlinkError.message}`, 'ERROR');}
     }
     const fileStream = fs.createWriteStream(destinationPath);
     await new Promise((resolve, reject) => {
-      const req = https.get(downloadUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (response) => {
-        if (response.statusCode !== 200) {
-          response.resume(); if (fs.existsSync(destinationPath)) fs.unlink(destinationPath, () => {});
-          return reject(new Error(`Download failed (Status ${response.statusCode}) for ${downloadJarName}`));
-        }
-        response.pipe(fileStream);
-        fileStream.on('finish', () => { fileStream.close(resolve); });
-        fileStream.on('error', (err) => { if (fs.existsSync(destinationPath)) fs.unlink(destinationPath, () => {}); reject(new Error(`File stream error: ${err.message}`)); });
-      });
-      req.on('error', (err) => { if (fs.existsSync(destinationPath)) fs.unlink(destinationPath, () => {}); reject(new Error(`Download request error: ${err.message}`)); });
-      req.end();
+        const req = https.get(downloadUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (response) => {
+            if (response.statusCode !== 200) {
+              response.resume();
+              if (fs.existsSync(destinationPath)) { try { fs.unlinkSync(destinationPath); } catch(e) {/* ignore */} }
+              return reject(new Error(`Download failed (Status ${response.statusCode}) for ${downloadJarNameFromApi}`));
+            }
+            response.pipe(fileStream);
+            fileStream.on('finish', () => { fileStream.close(resolve); });
+            fileStream.on('error', (err) => {
+              if (fs.existsSync(destinationPath)) { try { fs.unlinkSync(destinationPath); } catch(e) {/* ignore */} }
+              reject(new Error(`File stream error: ${err.message}`));
+            });
+        });
+        req.on('error', (err) => {
+            if (fs.existsSync(destinationPath)) { try { fs.unlinkSync(destinationPath); } catch(e) {/* ignore */} }
+            reject(new Error(`Download request error: ${err.message}`));
+        });
+        req.end();
     });
-    sendStatus('PaperMC downloaded successfully!', false);
-    sendConsole(`${paperJarName} downloaded to ${serverFilesDir}`, 'SUCCESS');
-    sendServerStateChange(false);
+    sendStatus('PaperMC downloaded successfully! Configuration also saved.', false);
+    sendConsole(`${paperJarName} downloaded to ${serverFilesDir}. Config also saved.`, 'SUCCESS');
+    sendServerStateChange(localIsServerRunningGlobal);
   } catch (error) {
     console.error('Download error:', error); sendStatus('Download failed. Check console.', false);
-    sendConsole(`ERROR: ${error.message}`, 'ERROR'); sendServerStateChange(false);
+    sendConsole(`ERROR during download: ${error.message}`, 'ERROR');
+    sendServerStateChange(localIsServerRunningGlobal);
   }
 });
 
-ipcMain.on('start-server', async (event, { version, ram }) => {
+ipcMain.on('start-server', async () => {
+  if (!serverFilesDir || !configFilePath) { sendStatus('Cannot start. Launcher paths not ready.', false); sendConsole('ERROR: Server/config directory path not initialized for starting server.', 'ERROR'); return; }
   if (serverProcess) { sendConsole('Server is already running or attempting to start.', 'WARN'); return; }
   const serverJarPath = path.join(serverFilesDir, paperJarName);
-  if (!fs.existsSync(serverJarPath)) { sendConsole(`${paperJarName} not found in ${serverFilesDir}. Please download it.`, 'ERROR'); sendStatus(`${paperJarName} not found.`, false); return; }
+  if (!fs.existsSync(serverJarPath)) { sendConsole(`${paperJarName} not found. Setup required.`, 'ERROR'); sendStatus(`${paperJarName} not found. Setup required.`, false); sendServerStateChange(false); return; }
+  const serverConfig = readServerConfig();
+  const effectiveVersion = serverConfig.version;
+  if (!effectiveVersion) { sendConsole('Server version not found in config.json. Cannot start.', 'ERROR'); sendStatus('Server version configuration missing.', false); sendServerStateChange(false); return; }
+  sendConsole(`Starting server for Minecraft version (from config): ${effectiveVersion}`, 'INFO');
   const eulaPath = path.join(serverFilesDir, 'eula.txt');
   try {
     if (!fs.existsSync(eulaPath) || !fs.readFileSync(eulaPath, 'utf8').includes('eula=true')) {
-      sendConsole('EULA not accepted. Accepting automatically...', 'INFO');
+      sendConsole('EULA not accepted. Accepting EULA automatically...', 'INFO');
       fs.writeFileSync(eulaPath, '#By agreeing to this EULA, you agree to the Mojang EULA (account.mojang.com/documents/minecraft_eula)\neula=true\n');
-      sendConsole('EULA accepted.', 'INFO');
+      sendConsole('EULA accepted and eula.txt created/updated.', 'INFO');
     }
-  } catch (error) { sendConsole(`Error handling eula.txt: ${error.message}`, 'ERROR'); sendStatus('EULA error.', false); return; }
+  } catch (error) { sendConsole(`Error handling eula.txt: ${error.message}`, 'ERROR'); sendStatus('EULA file error.', false); return; }
   let ramToUseForJava = "";
-  if (ram === 'auto') {
+  if (serverConfig.ram && serverConfig.ram.toLowerCase() !== 'auto') {
+    ramToUseForJava = serverConfig.ram;
+    sendConsole(`Using RAM allocation from config.json: ${ramToUseForJava}.`, 'INFO');
+  } else {
     const totalSystemRamBytes = os.totalmem(); const totalSystemRamMB = Math.floor(totalSystemRamBytes / (1024 * 1024));
     let autoRamMB = Math.floor(totalSystemRamMB / 3);
     if (autoRamMB < 1024) autoRamMB = 1024;
     if (autoRamMB > 16384 && totalSystemRamMB > 20000) autoRamMB = 16384;
     else if (autoRamMB > Math.floor(totalSystemRamMB * 0.75)) autoRamMB = Math.floor(totalSystemRamMB * 0.75);
     ramToUseForJava = `${autoRamMB}M`;
-    sendConsole(`Auto RAM: Total System: ${totalSystemRamMB}MB. Allocating ${ramToUseForJava}.`, 'INFO');
-  } else { ramToUseForJava = ram; }
-  sendConsole(`Attempting to start server with ${ramToUseForJava} RAM using ${paperJarName}...`, 'INFO'); sendStatus('Starting server...', true);
+    sendConsole(`Auto RAM Allocation (config not set or 'auto'): Total System: ${totalSystemRamMB}MB. Allocating ${ramToUseForJava}.`, 'INFO');
+  }
+  sendConsole(`Attempting to start server with ${ramToUseForJava} RAM using ${paperJarName}...`, 'INFO');
+  sendStatus('Starting server...', true);
   try {
     serverProcess = spawn('java', [`-Xmx${ramToUseForJava}`, `-Xms${ramToUseForJava}`, '-jar', paperJarName, 'nogui'], { cwd: serverFilesDir, stdio: ['pipe', 'pipe', 'pipe'] });
+    serverProcess.killedInternally = false;
     sendServerStateChange(true);
     serverProcess.stdout.on('data', (data) => { sendConsole(data.toString().trimEnd(), 'SERVER_LOG'); });
     serverProcess.stderr.on('data', (data) => { sendConsole(data.toString().trimEnd(), 'SERVER_ERROR'); });
     serverProcess.on('close', (code) => {
-      sendConsole(`Server process exited with code ${code}.`, code === 0 || code === null ? 'INFO' : 'ERROR');
-      if (serverProcess && !serverProcess.killed) serverProcess = null; sendServerStateChange(false); sendStatus('Server stopped.', false);
+      sendConsole(`Server process exited with code ${code}.`, code === 0 || code === null || serverProcess?.killedInternally ? 'INFO' : 'ERROR');
+      const wasKilledInternally = serverProcess?.killedInternally;
+      serverProcess = null;
+      sendServerStateChange(false);
+      if (wasKilledInternally) sendStatus('Server stopped.', false);
+      else {
+          sendStatus('Server stopped unexpectedly.', false);
+          const mainWindow = getMainWindow();
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('request-status-check-for-fail');
+      }
     });
     serverProcess.on('error', (err) => {
-      sendConsole(`Failed to start server: ${err.message}`, 'ERROR');
-      if (serverProcess && !serverProcess.killed) serverProcess = null; sendServerStateChange(false); sendStatus('Server start failed.', false);
+      sendConsole(`Failed to start server process: ${err.message}`, 'ERROR');
+      if (err.message.toLowerCase().includes('enoent')) { sendConsole('IMPORTANT: "java" command not found...', 'ERROR'); sendStatus('Java not found!', false); }
+      else { sendStatus('Server start failed.', false); }
+      serverProcess = null; sendServerStateChange(false);
     });
   } catch (error) {
     sendConsole(`Error spawning server: ${error.message}`, 'ERROR');
-    if (serverProcess && !serverProcess.killed) serverProcess = null; sendServerStateChange(false); sendStatus('Error starting server.', false);
+    serverProcess = null; sendServerStateChange(false);
+    sendStatus('Error starting server.', false);
   }
 });
 
 ipcMain.on('stop-server', async () => {
-  if (!serverProcess || !serverProcess.pid || serverProcess.killed) {
-    sendConsole('Server not running or already stopping.', 'WARN');
-    if(!serverProcess || (serverProcess && serverProcess.killed)) sendServerStateChange(false); return;
-  }
-  sendConsole('Attempting to stop server via "stop" command...', 'INFO'); sendStatus('Stopping server...', true);
-  serverProcess.stdin.write("stop\n");
-  const stopTimeout = setTimeout(() => {
-    if (serverProcess && serverProcess.pid && !serverProcess.killed) {
-      sendConsole('Server did not stop gracefully. Forcing shutdown...', 'WARN'); serverProcess.kill('SIGKILL');
-    }
-  }, 10000);
-  const cleanUp = () => { clearTimeout(stopTimeout); if (serverProcess) { serverProcess.removeListener('close', cleanUp); serverProcess.removeListener('exit', cleanUp);}};
-  if (serverProcess) { serverProcess.once('close', cleanUp); serverProcess.once('exit', cleanUp); }
+  if (!serverProcess || !serverProcess.pid || serverProcess.killed) { if(!serverProcess || (serverProcess && serverProcess.killed)) sendServerStateChange(false); sendConsole('Server not running or already stopping.', 'WARN'); return; }
+  sendConsole('Attempting to stop server via "stop" command...', 'INFO');
+  sendStatus('Stopping server...', true);
+  serverProcess.killedInternally = true;
+  try { serverProcess.stdin.write("stop\n"); }
+  catch (e) { sendConsole(`Error writing 'stop' command: ${e.message}. Forcing kill.`, "ERROR"); serverProcess.kill('SIGKILL'); return; }
+  const stopTimeout = setTimeout(() => { if (serverProcess && serverProcess.pid && !serverProcess.killed) { sendConsole('Server did not stop gracefully. Forcing shutdown...', 'WARN'); serverProcess.kill('SIGKILL'); } }, 10000);
+  const tempCloseHandler = () => { clearTimeout(stopTimeout); if(serverProcess) serverProcess.removeListener('close', tempCloseHandler); };
+  if(serverProcess) serverProcess.once('close', tempCloseHandler);
 });
 
 ipcMain.on('send-command', async (event, command) => {
   if (serverProcess && serverProcess.stdin && !serverProcess.killed) {
     try { serverProcess.stdin.write(command + '\n'); }
-    catch (error) { sendConsole(`Error writing to server stdin: ${error.message}`, 'ERROR');}
-  } else { sendConsole('Cannot send command: Server not running or stdin not available.', 'ERROR');}
+    catch (error) { sendConsole(`Error writing to server stdin: ${error.message}`, 'ERROR'); }
+  } else { sendConsole('Cannot send command: Server not running or stdin not available.', 'ERROR'); }
 });
-
-ipcMain.handle('get-local-ip', async () => {
-    return getLocalIPv4();
-});
-
+ipcMain.handle('get-local-ip', async () => getLocalIPv4());
 ipcMain.handle('get-public-ip', async () => {
-    try {
-        return await getPublicIP();
-    } catch (error) {
-        console.error("Error getting public IP in main process:", error.message);
-        sendConsole(`Could not fetch Public IP: ${error.message}`, 'ERROR');
-        return 'N/A (Error)';
-    }
+    try { return await getPublicIP(); }
+    catch (error) { console.error("Error getting public IP in main process:", error.message); sendConsole(`Could not fetch Public IP: ${error.message}`, 'ERROR'); return 'N/A (Error)'; }
 });
