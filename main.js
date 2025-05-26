@@ -347,7 +347,27 @@ ipcMain.on('start-server', async () => {
   sendConsole(`Attempting to start server with ${ramToUseForJava} RAM using ${paperJarName}...`, 'INFO');
   sendStatus('Starting server...', true);
   try {
-    serverProcess = spawn('java', [`-Xmx${ramToUseForJava}`, `-Xms${ramToUseForJava}`, '-jar', paperJarName, 'nogui'], { cwd: serverFilesDir, stdio: ['pipe', 'pipe', 'pipe'] });
+    serverProcess = spawn('java', [
+      `-Xms${ramToUseForJava}`, // Setează memoria inițială la fel ca cea maximă pentru a evita realocările
+      `-Xmx${ramToUseForJava}`, // Setează memoria maximă disponibilă pentru JVM
+      '-XX:+UseG1GC',           // Utilizează Garbage Collector-ul G1, optimizat pentru pauze scurte
+      '-XX:MaxGCPauseMillis=200', // Obiectiv de pauză maximă pentru GC (în milisecunde)
+      '-XX:+UnlockExperimentalVMOptions', // Permite utilizarea opțiunilor JVM experimentale
+      '-XX:+ParallelRefProcEnabled', // Activează procesarea paralelă a referințelor
+      '-XX:+AlwaysPreTouch',      // Forțează JVM să atingă toate paginile heap la pornire
+      '-XX:G1HeapRegionSize=4M',   // Dimensiunea regiunii heap pentru G1GC (poate fi ajustată)
+      '-XX:G1NewSizePercent=20',
+      '-XX:G1MaxNewSizePercent=60',
+      '-XX:G1ReservePercent=20',
+      '-XX:InitiatingHeapOccupancyPercent=35',
+      '-XX:+DisableExplicitGC',    // Dezactivează apelurile explicite către System.gc()
+      '-Dsun.rmi.dgc.server.gcInterval=2147483646', // Crește intervalul de GC pentru RMI
+      '-Dsun.rmi.dgc.client.gcInterval=2147483646', // Crește intervalul de GC pentru RMI client
+      '-XX:MaxInlineLevel=15',     // Crește nivelul maxim de inlining
+      '-jar',
+      paperJarName,
+      'nogui'
+    ], { cwd: serverFilesDir, stdio: ['pipe', 'pipe', 'pipe'] });
     serverProcess.killedInternally = false;
     sendServerStateChange(true);
     serverProcess.stdout.on('data', (data) => { sendConsole(data.toString().trimEnd(), 'SERVER_LOG'); });
