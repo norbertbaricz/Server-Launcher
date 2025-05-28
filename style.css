@@ -12,18 +12,60 @@ body {
   -webkit-app-region: drag;
   -webkit-user-select: none;
   height: 32px;
-  background-color: #2d3748;
-  color: #cbd5e1;
+  background-color: #2d3748; /* gray-800 */
+  color: #cbd5e1; /* gray-300 */
   display: flex;
-  justify-content: center;
+  justify-content: space-between; /* Changed from center to space-between */
   align-items: center;
-  font-size: 0.875rem;
+  font-size: 0.875rem; /* 14px */
   flex-shrink: 0;
+  padding-left: 12px; /* Added padding for title */
+  padding-right: 0; /* No padding on the right, buttons will handle it */
 }
 
-#title-bar button {
-    -webkit-app-region: no-drag;
+#title-bar span {
+    flex-grow: 1; /* Allow title to take available space */
+    text-align: center; /* Center the title text */
+    margin-right: auto; /* Push buttons to the right */
+    padding-left: 60px; /* Offset for buttons width if needed, or adjust dynamically */
 }
+
+
+#title-bar-buttons {
+    -webkit-app-region: no-drag; /* Ensure buttons are clickable */
+    display: flex;
+    height: 100%;
+}
+
+.title-bar-btn {
+    -webkit-app-region: no-drag; /* Explicitly set for each button */
+    background-color: transparent;
+    border: none;
+    color: #a0aec0; /* gray-400 */
+    padding: 0 15px; /* Adjust padding as needed */
+    cursor: pointer;
+    font-size: 0.8rem; /* Slightly smaller icons */
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.2s ease-in-out, color 0.2s ease-in-out;
+}
+
+.title-bar-btn:hover {
+    background-color: #4a5568; /* gray-600 */
+    color: #e2e8f0; /* gray-200 */
+}
+
+#close-btn:hover {
+    background-color: #e53e3e; /* red-600 */
+    color: white;
+}
+
+.title-bar-btn .fas, .title-bar-btn .far {
+    line-height: 1; /* Ensure icons are centered vertically */
+}
+
 
 #main-content-area {
     flex-grow: 1;

@@ -22,6 +22,13 @@ const mcVersionModalSelect = document.getElementById('mc-version-modal');
 const ramAllocationModalSelect = document.getElementById('ram-allocation-modal');
 const downloadModalButton = document.getElementById('download-button-modal');
 
+// Selectoare pentru butoanele din Title Bar
+const minimizeBtn = document.getElementById('minimize-btn');
+const maximizeBtn = document.getElementById('maximize-btn');
+const closeBtn = document.getElementById('close-btn');
+const maximizeBtnIcon = maximizeBtn.querySelector('i');
+
+
 let localIsServerRunning = false;
 let currentServerConfig = {};
 let isModalAnimating = false;
@@ -271,6 +278,33 @@ sendCommandButton.addEventListener('click', () => {
 commandInput.addEventListener('keypress', function(event) {
     if (event.key === 'Enter') { event.preventDefault(); sendCommandButton.click(); }
 });
+
+// Event Listeners pentru butoanele din Title Bar
+minimizeBtn.addEventListener('click', () => {
+    window.electronAPI.minimizeWindow();
+});
+
+maximizeBtn.addEventListener('click', () => {
+    window.electronAPI.maximizeWindow();
+});
+
+closeBtn.addEventListener('click', () => {
+    window.electronAPI.closeWindow();
+});
+
+// Actualizează iconița butonului de maximalizare/restaurare
+window.electronAPI.onWindowMaximized((isMaximized) => {
+    if (isMaximized) {
+        maximizeBtnIcon.classList.remove('fa-square');
+        maximizeBtnIcon.classList.add('fa-window-restore'); // Iconiță pentru restaurare
+        maximizeBtn.setAttribute('aria-label', 'Restore');
+    } else {
+        maximizeBtnIcon.classList.remove('fa-window-restore');
+        maximizeBtnIcon.classList.add('fa-square'); // Iconiță pentru maximalizare
+        maximizeBtn.setAttribute('aria-label', 'Maximize');
+    }
+});
+
 
 window.electronAPI.onUpdateConsole((message, type) => { addToConsole(message, type); });
 

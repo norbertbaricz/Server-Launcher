@@ -111,8 +111,8 @@ function createWindow () {
   const mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
-    resizable: false,
-    fullscreenable: false,
+    resizable: true, // Changed to true to allow maximize/unmaximize to have visible effect
+    fullscreenable: true, // Changed to true
     frame: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -124,6 +124,16 @@ function createWindow () {
   mainWindow.loadFile('index.html');
   mainWindow.webContents.on('did-finish-load', () => {
     sendServerStateChange(localIsServerRunningGlobal);
+    mainWindow.webContents.send('window-maximized', mainWindow.isMaximized());
+  });
+
+  // Trimite starea de maximalizare la renderer când se schimbă
+  mainWindow.on('maximize', () => {
+    mainWindow.webContents.send('window-maximized', true);
+  });
+
+  mainWindow.on('unmaximize', () => {
+    mainWindow.webContents.send('window-maximized', false);
   });
 }
 
@@ -158,6 +168,29 @@ app.on('window-all-closed', () => {
   }
   if (process.platform !== 'darwin') app.quit();
 });
+
+// IPC Handlers for window actions
+ipcMain.on('minimize-window', () => {
+    const mainWindow = getMainWindow();
+    if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.on('maximize-window', () => {
+    const mainWindow = getMainWindow();
+    if (mainWindow) {
+        if (mainWindow.isMaximized()) {
+            mainWindow.unmaximize();
+        } else {
+            mainWindow.maximize();
+        }
+    }
+});
+
+ipcMain.on('close-window', () => {
+    const mainWindow = getMainWindow();
+    if (mainWindow) mainWindow.close();
+});
+
 
 ipcMain.handle('get-app-path', async () => app.getAppPath());
 
@@ -348,22 +381,22 @@ ipcMain.on('start-server', async () => {
   sendStatus('Starting server...', true);
   try {
     serverProcess = spawn('java', [
-      `-Xms${ramToUseForJava}`, // Setează memoria inițială la fel ca cea maximă pentru a evita realocările
-      `-Xmx${ramToUseForJava}`, // Setează memoria maximă disponibilă pentru JVM
-      '-XX:+UseG1GC',           // Utilizează Garbage Collector-ul G1, optimizat pentru pauze scurte
-      '-XX:MaxGCPauseMillis=200', // Obiectiv de pauză maximă pentru GC (în milisecunde)
-      '-XX:+UnlockExperimentalVMOptions', // Permite utilizarea opțiunilor JVM experimentale
-      '-XX:+ParallelRefProcEnabled', // Activează procesarea paralelă a referințelor
-      '-XX:+AlwaysPreTouch',      // Forțează JVM să atingă toate paginile heap la pornire
-      '-XX:G1HeapRegionSize=4M',   // Dimensiunea regiunii heap pentru G1GC (poate fi ajustată)
+      `-Xms${ramToUseForJava}`, 
+      `-Xmx${ramToUseForJava}`, 
+      '-XX:+UseG1GC',           
+      '-XX:MaxGCPauseMillis=200', 
+      '-XX:+UnlockExperimentalVMOptions', 
+      '-XX:+ParallelRefProcEnabled', 
+      '-XX:+AlwaysPreTouch',      
+      '-XX:G1HeapRegionSize=4M',   
       '-XX:G1NewSizePercent=20',
       '-XX:G1MaxNewSizePercent=60',
       '-XX:G1ReservePercent=20',
       '-XX:InitiatingHeapOccupancyPercent=35',
-      '-XX:+DisableExplicitGC',    // Dezactivează apelurile explicite către System.gc()
-      '-Dsun.rmi.dgc.server.gcInterval=2147483646', // Crește intervalul de GC pentru RMI
-      '-Dsun.rmi.dgc.client.gcInterval=2147483646', // Crește intervalul de GC pentru RMI client
-      '-XX:MaxInlineLevel=15',     // Crește nivelul maxim de inlining
+      '-XX:+DisableExplicitGC',    
+      '-Dsun.rmi.dgc.server.gcInterval=2147483646', 
+      '-Dsun.rmi.dgc.client.gcInterval=2147483646', 
+      '-XX:MaxInlineLevel=15',     
       '-jar',
       paperJarName,
       'nogui'

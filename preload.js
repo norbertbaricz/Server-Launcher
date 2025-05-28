@@ -1,6 +1,13 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  // Window actions
+  minimizeWindow: () => ipcRenderer.send('minimize-window'),
+  maximizeWindow: () => ipcRenderer.send('maximize-window'),
+  closeWindow: () => ipcRenderer.send('close-window'),
+  onWindowMaximized: (callback) => ipcRenderer.on('window-maximized', (_event, isMaximized) => callback(isMaximized)),
+
+
   onUpdateConsole: (callback) => ipcRenderer.on('update-console', (_event, message, type) => callback(message, type)),
   onUpdateStatus: (callback) => ipcRenderer.on('update-status', (_event, message, pulse) => callback(message, pulse)),
   onServerStateChange: (callback) => ipcRenderer.on('server-state-change', (_event, isRunning) => callback(isRunning)),
