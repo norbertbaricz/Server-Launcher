@@ -3,7 +3,7 @@ body {
     margin: 0;
     height: 100vh;
     overflow: hidden;
-    background-color: #1a202c; /* gray-900 */
+    background-color: #111827; /* MODIFICAT: Fundal principal mai închis */
     display: flex;
     flex-direction: column;
 }
@@ -12,39 +12,38 @@ body {
   -webkit-app-region: drag;
   -webkit-user-select: none;
   height: 32px;
-  background-color: #2d3748; /* gray-800 */
-  color: #cbd5e1; /* gray-300 */
+  background-color: #1f2937; /* MODIFICAT: Gri închis pentru bara de titlu */
+  color: #d1d5db; /* MODIFICAT: Culoare text gri deschis */
   display: flex;
-  justify-content: space-between; /* Changed from center to space-between */
+  justify-content: space-between;
   align-items: center;
   font-size: 0.875rem; /* 14px */
   flex-shrink: 0;
-  padding-left: 12px; /* Added padding for title */
-  padding-right: 0; /* No padding on the right, buttons will handle it */
+  padding-left: 12px;
+  padding-right: 0;
 }
 
 #title-bar span {
-    flex-grow: 1; /* Allow title to take available space */
-    text-align: center; /* Center the title text */
-    margin-right: auto; /* Push buttons to the right */
-    padding-left: 60px; /* Offset for buttons width if needed, or adjust dynamically */
+    flex-grow: 1;
+    text-align: center;
+    margin-right: auto;
+    padding-left: 60px;
 }
 
-
 #title-bar-buttons {
-    -webkit-app-region: no-drag; /* Ensure buttons are clickable */
+    -webkit-app-region: no-drag;
     display: flex;
     height: 100%;
 }
 
 .title-bar-btn {
-    -webkit-app-region: no-drag; /* Explicitly set for each button */
+    -webkit-app-region: no-drag;
     background-color: transparent;
     border: none;
     color: #a0aec0; /* gray-400 */
-    padding: 0 15px; /* Adjust padding as needed */
+    padding: 0 15px;
     cursor: pointer;
-    font-size: 0.8rem; /* Slightly smaller icons */
+    font-size: 0.8rem;
     height: 100%;
     display: flex;
     align-items: center;
@@ -53,40 +52,38 @@ body {
 }
 
 .title-bar-btn:hover {
-    background-color: #4a5568; /* gray-600 */
-    color: #e2e8f0; /* gray-200 */
+    background-color: #374151; /* MODIFICAT: Gri mediu la hover */
+    color: #f9fafb; /* MODIFICAT: Alb la hover */
 }
 
 #close-btn:hover {
-    background-color: #e53e3e; /* red-600 */
+    background-color: #ef4444; /* MODIFICAT: Roșu la hover */
     color: white;
 }
 
 .title-bar-btn .fas, .title-bar-btn .far {
-    line-height: 1; /* Ensure icons are centered vertically */
+    line-height: 1;
 }
-
 
 #main-content-area {
     flex-grow: 1;
     overflow-y: auto;
 }
 
-/* Ascunde scrollbar-ul pentru #main-content-area și #console-output */
+/* Ascunde scrollbar-ul */
 #main-content-area::-webkit-scrollbar,
 #console-output::-webkit-scrollbar,
-#mc-version-modal::-webkit-scrollbar { /* Adăugat pentru selectorul de versiuni */
-    display: none; /* Pentru WebKit browsers */
-    width: 0 !important; /* Opțional, pentru a forța */
-    background: transparent; /* Opțional */
+#mc-version-modal::-webkit-scrollbar {
+    display: none;
+    width: 0 !important;
+    background: transparent;
 }
 #main-content-area,
 #console-output,
-#mc-version-modal { /* Adăugat pentru selectorul de versiuni */
-  scrollbar-width: none;  /* Pentru Firefox */
-  -ms-overflow-style: none;  /* Pentru IE/Edge vechi */
+#mc-version-modal {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
-
 
 .btn-disabled {
     opacity: 0.4 !important;
@@ -96,8 +93,6 @@ body {
     color: #a0aec0 !important;
 }
 .btn-disabled:hover {
-    opacity: 0.4 !important;
-    background-color: #4a5568 !important;
     transform: translateY(0) !important;
 }
 .btn-disabled .fas {
@@ -112,6 +107,7 @@ body {
     animation: fadeIn 0.5s ease-out forwards;
 }
 
+/* Animații pentru modal */
 @keyframes fadeInModalBg { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeOutModalBg { from { opacity: 1; } to { opacity: 0; } }
 
@@ -124,14 +120,14 @@ body {
     to { opacity: 0; transform: scale(0.95) translateY(20px); }
 }
 
-@keyframes statusBarPulseYellow {
-    0%, 100% { box-shadow: 0 0 8px rgba(250, 204, 21, 0.3), inset 0 0 5px rgba(250, 204, 21, 0.2); }
-    50% { box-shadow: 0 0 16px rgba(250, 204, 21, 0.7), inset 0 0 10px rgba(250, 204, 21, 0.5); }
+/* MODIFICAT: Animație de pulsare albastră pentru status bar */
+@keyframes statusBarPulseBlue {
+    0%, 100% { box-shadow: 0 0 8px rgba(59, 130, 246, 0.3), inset 0 0 5px rgba(59, 130, 246, 0.2); }
+    50% { box-shadow: 0 0 16px rgba(59, 130, 246, 0.7), inset 0 0 10px rgba(59, 130, 246, 0.5); }
 }
-#status-bar-content.status-bar-pulse { /* Aplică pe conținutul textului statusului */
-    animation: statusBarPulseYellow 2s infinite ease-in-out;
+#status-bar-content.status-bar-pulse {
+    animation: statusBarPulseBlue 2s infinite ease-in-out;
 }
-
 
 @keyframes greenAttentionPulse {
     0% { box-shadow: 0 0 5px rgba(74, 222, 128, 0.2); border-color: rgba(74, 222, 128, 0.3); }
@@ -143,20 +139,21 @@ body {
     border: 1px solid transparent;
 }
 
+/* MODIFICAT: Stil pentru butoanele primare (accent albastru) */
 .btn-primary {
-    background-color: #facc15;
-    color: #1a202c;
+    background-color: #3b82f6;
+    color: white;
     transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
 }
 .btn-primary:hover:not(.btn-disabled) {
-    background-color: #eab308;
+    background-color: #2563eb;
     transform: translateY(-1px);
 }
 .btn-primary:active:not(.btn-disabled) {
     transform: translateY(0px);
 }
 .btn-primary .fas {
-    color: #1a202c;
+    color: white; /* Asigură că iconițele sunt albe */
 }
 
 .btn-secondary {
@@ -177,12 +174,13 @@ body {
     color: #e2e8f0;
 }
 
-#start-button { /* Stilul specific butonului Start, din HTML-ul original */
-    background-color: #16a34a;
+/* MODIFICAT: Stil pentru butonul Start (accent verde) */
+#start-button {
+    background-color: #22c55e;
     color: white !important;
 }
 #start-button:hover:not(.btn-disabled) {
-    background-color: #15803d;
+    background-color: #16a34a;
     transform: translateY(-1px);
 }
 #start-button:active:not(.btn-disabled) {
@@ -192,29 +190,34 @@ body {
     color: white !important;
 }
 
+/* MODIFICAT: Stil pentru butoanele de pericol (accent roșu) */
 .btn-danger {
-    background-color: #dc2626;
-    color: #e2e8f0;
+    background-color: #ef4444;
+    color: white;
     transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
 }
 .btn-danger:hover:not(.btn-disabled) {
-    background-color: #b91c1c;
+    background-color: #dc2626;
     transform: translateY(-1px);
 }
 .btn-danger:active:not(.btn-disabled) {
     transform: translateY(0px);
 }
 .btn-danger .fas {
-    color: #e2e8f0;
+    color: white;
 }
+
 .fas {
       font-family: "Font Awesome 6 Free" !important;
 }
+
+/* MODIFICAT: Stil pentru focus (accent albastru) */
 input:focus, select:focus, textarea:focus {
     outline: none;
-    box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.4);
-    border-color: #facc15 !important;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4);
+    border-color: #3b82f6 !important;
 }
+
 .console-message {
     opacity: 0;
     transform: translateX(-10px);
@@ -229,11 +232,17 @@ input:focus, select:focus, textarea:focus {
     display: none;
 }
 
-/* Ajustare pentru înălțimea butonului Open Folder, pentru a se potrivi cu status bar */
 #open-folder-button-main {
-    /* Tailwind p-3 de la status-bar-content înseamnă padding: 0.75rem;
-       Butonul are px-4 (1rem orizontal). Pentru vertical, folosim py-3 (0.75rem).
-    */
-    padding-top: 0.75rem;    /* Tailwind py-3 */
-    padding-bottom: 0.75rem; /* Tailwind py-3 */
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+}
+
+/* NOU: Animație pentru spinner-ul de încărcare */
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.spinner {
+    animation: spin 1s linear infinite;
 }

@@ -21,13 +21,14 @@ const setupModalContent = document.getElementById('setup-modal-content');
 const mcVersionModalSelect = document.getElementById('mc-version-modal');
 const ramAllocationModalSelect = document.getElementById('ram-allocation-modal');
 const downloadModalButton = document.getElementById('download-button-modal');
+const downloadModalButtonIcon = downloadModalButton.querySelector('i');
+const downloadModalButtonText = document.getElementById('download-button-text');
 
 // Selectoare pentru butoanele din Title Bar
 const minimizeBtn = document.getElementById('minimize-btn');
 const maximizeBtn = document.getElementById('maximize-btn');
 const closeBtn = document.getElementById('close-btn');
 const maximizeBtnIcon = maximizeBtn.querySelector('i');
-
 
 let localIsServerRunning = false;
 let currentServerConfig = {};
@@ -53,60 +54,71 @@ function addToConsole(message, type = 'INFO') {
     consoleOutput.appendChild(p); consoleOutput.scrollTop = consoleOutput.scrollHeight;
 }
 
+function getStatusColor(text) {
+    const lowerText = text.toLowerCase();
+    if (lowerText.includes("running")) return '#22c55e';
+    if (lowerText.includes("failed") || lowerText.includes("error")) return '#ef4444';
+    if (lowerText.includes("successfully") || lowerText.includes("saved") || lowerText.includes("ready")) return '#4ade80';
+    if (lowerText.includes("stopped") || lowerText.includes("initialized")) return '#9ca3af';
+    return '#3b82f6';
+}
+
 function setStatus(text, pulse = false) {
     statusMessageSpan.textContent = text;
     const pulseTarget = statusBarContent;
-
-    if (pulse) {
-        pulseTarget.classList.add('status-bar-pulse'); statusMessageSpan.style.color = '#facc15';
-    } else {
-        pulseTarget.classList.remove('status-bar-pulse');
-        if (text.toLowerCase().includes("running")) { statusMessageSpan.style.color = '#4ade80'; }
-        else if (text.toLowerCase().includes("stopped") || text.toLowerCase().includes("ready") || text.toLowerCase().includes("initialized") || text.toLowerCase().includes("successfully") || text.toLowerCase().includes("saved")) {
-            statusMessageSpan.style.color = (text.toLowerCase().includes("successfully") || text.toLowerCase().includes("saved")) ? '#4ade80' : '#9ca3af';
-        } else if (text.toLowerCase().includes("failed") || text.toLowerCase().includes("error")) { statusMessageSpan.style.color = '#f87171'; }
-        else { statusMessageSpan.style.color = '#facc15'; }
-    }
+    const statusColor = getStatusColor(text);
+    pulseTarget.classList.toggle('status-bar-pulse', pulse);
+    statusMessageSpan.style.color = pulse ? '#3b82f6' : statusColor;
 }
 
+function showDownloadLoading() {
+    downloadModalButton.disabled = true;
+    mcVersionModalSelect.disabled = true;
+    ramAllocationModalSelect.disabled = true;
+    downloadModalButtonIcon.className = 'fas fa-spinner spinner mr-2';
+    downloadModalButtonText.textContent = 'Downloading...';
+}
+
+function hideDownloadLoading() {
+    downloadModalButton.disabled = false;
+    mcVersionModalSelect.disabled = false;
+    ramAllocationModalSelect.disabled = false;
+    downloadModalButtonIcon.className = 'fas fa-download mr-2';
+    downloadModalButtonText.textContent = 'Download / Configure Server';
+}
+
+// **LOGICĂ CORECTATĂ AICI**
 function updateButtonStates(isRunning) {
     localIsServerRunning = isRunning;
     const setupComplete = setupModal.classList.contains('hidden');
 
-    if (isRunning) {
-        startButton.classList.add('btn-disabled'); startButton.disabled = true;
-        stopButton.classList.remove('btn-disabled'); stopButton.disabled = false;
-    } else {
-        stopButton.classList.add('btn-disabled'); stopButton.disabled = true;
-        startButton.disabled = !setupComplete;
-        if (!startButton.disabled) startButton.classList.remove('btn-disabled');
-        else startButton.classList.add('btn-disabled');
-    }
-
-    openFolderButtonMain.disabled = !setupComplete;
-    if(setupComplete) {
-        statusAndOpenFolderArea.classList.remove('hidden');
-        statusAndOpenFolderArea.classList.add('flex');
-        setupActivePlaceholderTop.classList.add('hidden');
-    } else {
-        statusAndOpenFolderArea.classList.add('hidden');
-        statusAndOpenFolderArea.classList.remove('flex');
-        setupActivePlaceholderTop.classList.remove('hidden');
-    }
-
+    // Setează proprietatea 'disabled'
+    startButton.disabled = isRunning || !setupComplete;
+    stopButton.disabled = !isRunning;
     sendCommandButton.disabled = !isRunning;
     commandInput.disabled = !isRunning;
+    openFolderButtonMain.disabled = !setupComplete;
+
+    // Comută clasa vizuală '.btn-disabled' pe baza proprietății
+    startButton.classList.toggle('btn-disabled', startButton.disabled);
+    stopButton.classList.toggle('btn-disabled', stopButton.disabled);
+    sendCommandButton.classList.toggle('btn-disabled', sendCommandButton.disabled);
+    openFolderButtonMain.classList.toggle('btn-disabled', openFolderButtonMain.disabled);
+
+    // Gestionează vizibilitatea elementelor UI
+    statusAndOpenFolderArea.classList.toggle('hidden', !setupComplete);
+    statusAndOpenFolderArea.classList.toggle('flex', setupComplete);
+    setupActivePlaceholderTop.classList.toggle('hidden', setupComplete);
+
     if (!isRunning) commandInput.value = "";
 }
 
 async function populateAndSetMCVersionModal() {
     mcVersionModalSelect.innerHTML = '<option value="" disabled>Loading versions...</option>';
     mcVersionModalSelect.disabled = true;
-
     try {
         const availableVersions = await window.electronAPI.getAvailablePaperMCVersions();
         mcVersionModalSelect.innerHTML = '';
-
         if (availableVersions && availableVersions.length > 0) {
             availableVersions.forEach((version, index) => {
                 const option = document.createElement('option');
@@ -114,21 +126,13 @@ async function populateAndSetMCVersionModal() {
                 option.textContent = version + (index === 0 ? ' (Latest)' : '');
                 mcVersionModalSelect.appendChild(option);
             });
-
-            if (currentServerConfig && typeof currentServerConfig.version === 'string' && availableVersions.includes(currentServerConfig.version)) {
-                mcVersionModalSelect.value = currentServerConfig.version;
-                addToConsole(`Modal: Loaded MC version from config: ${currentServerConfig.version}`, 'INFO');
-            } else {
-                mcVersionModalSelect.value = availableVersions[0];
-                addToConsole(`Modal: Defaulted MC version to API latest: ${availableVersions[0]}`, 'INFO');
-            }
+            const currentVersion = currentServerConfig?.version;
+            mcVersionModalSelect.value = (currentVersion && availableVersions.includes(currentVersion)) ? currentVersion : availableVersions[0];
         } else {
              mcVersionModalSelect.innerHTML = '<option value="" disabled selected>No versions found</option>';
-             addToConsole("Modal: No PaperMC versions found from API.", 'WARN');
         }
     } catch (error) {
         mcVersionModalSelect.innerHTML = '<option value="" disabled selected>Error loading versions</option>';
-        addToConsole(`Modal: Error populating MC versions: ${error.message}`, 'ERROR');
     } finally {
         mcVersionModalSelect.disabled = false;
     }
@@ -137,33 +141,13 @@ async function populateAndSetMCVersionModal() {
 async function showSetupModal() {
     if (isModalAnimating || !setupModal.classList.contains('hidden')) return;
     isModalAnimating = true;
-
     setupModal.classList.remove('hidden');
     setupModal.style.animation = 'fadeInModalBg 0.25s ease-out forwards';
     setupModalContent.style.animation = 'fadeInModalContent 0.3s ease-out 0.05s forwards';
-
     await populateAndSetMCVersionModal();
-
-    if (currentServerConfig && typeof currentServerConfig.ram !== 'undefined') {
-        ramAllocationModalSelect.value = currentServerConfig.ram;
-        addToConsole(`Modal: Loaded RAM allocation from config: ${currentServerConfig.ram}`, 'INFO');
-    } else {
-        ramAllocationModalSelect.value = 'auto';
-        addToConsole(`Modal: Defaulted RAM allocation to 'auto'.`, 'INFO');
-    }
-
-    mcVersionModalSelect.disabled = false; // Asigură că e activ după populare
-    ramAllocationModalSelect.disabled = false;
+    ramAllocationModalSelect.value = currentServerConfig?.ram || 'auto';
     downloadModalButton.disabled = false;
-
-    setupActivePlaceholderTop.textContent = "Please complete server configuration in the popup.";
-    updateButtonStates(localIsServerRunning); // Reflectă starea curentă
-
-    const onAnimationEnd = () => {
-        isModalAnimating = false;
-        setupModalContent.removeEventListener('animationend', onAnimationEnd);
-    };
-    setupModalContent.addEventListener('animationend', onAnimationEnd, {once: true});
+    setupModalContent.addEventListener('animationend', () => isModalAnimating = false, {once: true});
 }
 
 function hideSetupModal(callback) {
@@ -172,195 +156,137 @@ function hideSetupModal(callback) {
         return;
     }
     isModalAnimating = true;
-
     setupModal.style.animation = 'fadeOutModalBg 0.3s ease-in forwards';
     setupModalContent.style.animation = 'fadeOutModalContent 0.25s ease-in forwards';
-
-    const onAnimationEnd = () => {
+    setupModalContent.addEventListener('animationend', () => {
         setupModal.classList.add('hidden');
         isModalAnimating = false;
-        setupModal.style.animation = '';
-        setupModalContent.style.animation = '';
-        setupModalContent.removeEventListener('animationend', onAnimationEnd);
         if (callback) callback();
-    };
-    setupModalContent.addEventListener('animationend', onAnimationEnd, {once: true});
+    }, {once: true});
 }
 
+// **LOGICĂ CORECTATĂ AICI**
 async function refreshUISetupState() {
-    addToConsole("Refreshing UI state...", "INFO");
-    await new Promise(resolve => setTimeout(resolve, 50));
-
     const { needsSetup, config, error } = await window.electronAPI.checkInitialSetup();
-
     if (error) {
-        addToConsole(`Critical Error during setup check: ${error}.`, "ERROR");
-        setStatus("Launcher Initialization Error!", false);
-        hideSetupModal(() => {
-            statusAndOpenFolderArea.classList.add('hidden');
-            statusAndOpenFolderArea.classList.remove('flex');
-            setupActivePlaceholderTop.classList.remove('hidden');
-            setupActivePlaceholderTop.textContent = "Error initializing. Please restart.";
-        });
-        startButton.classList.add('btn-disabled'); startButton.disabled = true;
-        openFolderButtonMain.disabled = true;
+        addToConsole(`Critical Error: ${error}.`, "ERROR");
+        setStatus("Launcher Error!", false);
         updateButtonStates(localIsServerRunning);
         return;
     }
-
     currentServerConfig = config || {};
-
     if (needsSetup) {
         await showSetupModal();
+        updateButtonStates(localIsServerRunning);
     } else {
         hideSetupModal(() => {
             if (!localIsServerRunning) {
-                setStatus("Server ready. Click Start Server.", false);
+                setStatus("Server ready.", false);
             }
+            // Se apelează AICI pentru a asigura că modalul este marcat ca ascuns
             updateButtonStates(localIsServerRunning);
         });
     }
-    updateButtonStates(localIsServerRunning); // Asigură o actualizare finală a stării butoanelor
 }
 
+// --- Event Listeners ---
 
 downloadModalButton.addEventListener('click', () => {
-    if (downloadModalButton.disabled || isModalAnimating) return;
+    if (downloadModalButton.disabled) return;
     const version = mcVersionModalSelect.value;
     const ram = ramAllocationModalSelect.value;
     if (!version) {
-        addToConsole("No Minecraft version selected in modal. Please select a version.", "ERROR");
+        addToConsole("No Minecraft version selected.", "ERROR");
         setStatus("Please select a Minecraft version.", false);
         return;
     }
-    setStatus(`Processing: PaperMC ${version}, RAM ${ram}...`, true);
-    addToConsole(`Action 'Download/Configure' (Modal) for MC ${version}, RAM: ${ram}`, 'INFO');
-
-    downloadModalButton.disabled = true;
-    mcVersionModalSelect.disabled = true;
-    ramAllocationModalSelect.disabled = true;
-
+    showDownloadLoading();
     window.electronAPI.downloadPaperMC({ mcVersion: version, ramAllocation: ram });
 });
 
 openFolderButtonMain.addEventListener('click', () => {
-    if(openFolderButtonMain.disabled) return;
-    addToConsole("Requesting to open server folder...", "INFO");
-    window.electronAPI.openServerFolder();
+    if(!openFolderButtonMain.disabled) window.electronAPI.openServerFolder();
 });
 
 startButton.addEventListener('click', () => {
-    if (startButton.disabled || !setupModal.classList.contains('hidden')) return;
-    setStatus('Requesting server start...', true);
-    addToConsole("Requesting server start (version/RAM from config.json).", "INFO");
-    window.electronAPI.startServer();
+    if (!startButton.disabled) window.electronAPI.startServer();
 });
 
 stopButton.addEventListener('click', () => {
-    if (stopButton.disabled) return;
-    setStatus('Requesting server stop...', true);
-    addToConsole("Requesting server stop...", "INFO");
-    window.electronAPI.stopServer();
+    if (!stopButton.disabled) window.electronAPI.stopServer();
 });
 
 sendCommandButton.addEventListener('click', () => {
     const command = commandInput.value.trim();
-    if (command === '') return;
-    if (!localIsServerRunning) {
-        addToConsole(`Error: Server is not running. Command "${command}" not sent.`, 'ERROR');
-        commandInput.value = ''; return;
+    if (command && localIsServerRunning) {
+        addToConsole(`> ${command}`, 'CMD');
+        window.electronAPI.sendCommand(command);
+        commandInput.value = '';
     }
-    addToConsole(`> ${command}`, 'CMD');
-    window.electronAPI.sendCommand(command);
-    commandInput.value = '';
 });
 
-commandInput.addEventListener('keypress', function(event) {
-    if (event.key === 'Enter') { event.preventDefault(); sendCommandButton.click(); }
+commandInput.addEventListener('keypress', (event) => {
+    if (event.key === 'Enter') sendCommandButton.click();
 });
 
-// Event Listeners pentru butoanele din Title Bar
-minimizeBtn.addEventListener('click', () => {
-    window.electronAPI.minimizeWindow();
-});
+minimizeBtn.addEventListener('click', () => window.electronAPI.minimizeWindow());
+maximizeBtn.addEventListener('click', () => window.electronAPI.maximizeWindow());
+closeBtn.addEventListener('click', () => window.electronAPI.closeWindow());
 
-maximizeBtn.addEventListener('click', () => {
-    window.electronAPI.maximizeWindow();
-});
+// --- Electron API Listeners ---
 
-closeBtn.addEventListener('click', () => {
-    window.electronAPI.closeWindow();
-});
-
-// Actualizează iconița butonului de maximalizare/restaurare
 window.electronAPI.onWindowMaximized((isMaximized) => {
-    if (isMaximized) {
-        maximizeBtnIcon.classList.remove('fa-square');
-        maximizeBtnIcon.classList.add('fa-window-restore'); // Iconiță pentru restaurare
-        maximizeBtn.setAttribute('aria-label', 'Restore');
-    } else {
-        maximizeBtnIcon.classList.remove('fa-window-restore');
-        maximizeBtnIcon.classList.add('fa-square'); // Iconiță pentru maximalizare
-        maximizeBtn.setAttribute('aria-label', 'Maximize');
-    }
+    maximizeBtnIcon.className = isMaximized ? 'far fa-window-restore' : 'far fa-square';
+    maximizeBtn.setAttribute('aria-label', isMaximized ? 'Restore' : 'Maximize');
 });
 
-
-window.electronAPI.onUpdateConsole((message, type) => { addToConsole(message, type); });
+window.electronAPI.onUpdateConsole((message, type) => addToConsole(message, type));
 
 window.electronAPI.onUpdateStatus(async (message, pulse) => {
     setStatus(message, pulse);
     const lowerMessage = message.toLowerCase();
     if (lowerMessage.includes('downloaded successfully') || lowerMessage.includes('configuration saved')) {
+        hideDownloadLoading();
         await refreshUISetupState();
-    } else if ( (lowerMessage.includes('failed') || lowerMessage.includes('error')) && !setupModal.classList.contains('hidden') ) {
-        // Reactivează controalele din modal dacă a eșuat și modalul e încă vizibil
-        mcVersionModalSelect.disabled = false;
-        ramAllocationModalSelect.disabled = false;
-        downloadModalButton.disabled = false;
+    } else if ((lowerMessage.includes('failed') || lowerMessage.includes('error')) && !setupModal.classList.contains('hidden')) {
+        hideDownloadLoading();
     }
 });
 
 window.electronAPI.onServerStateChange(async (isRunning) => {
     updateButtonStates(isRunning);
-    await refreshUISetupState();
-
     if (isRunning) {
-        if (!statusMessageSpan.textContent.toLowerCase().includes("running")) { setStatus('Server is running.'); }
-        if (ipInfoBarDiv) {
-            ipInfoBarDiv.classList.add('animate-green-attention');
-            ipInfoBarDiv.addEventListener('animationend', () => ipInfoBarDiv.classList.remove('animate-green-attention'), { once: true });
-        }
+        setStatus('Server is running.', false);
+        ipInfoBarDiv.classList.add('animate-green-attention');
+        ipInfoBarDiv.addEventListener('animationend', () => ipInfoBarDiv.classList.remove('animate-green-attention'), { once: true });
     } else {
-        if (setupModal.classList.contains('hidden')) { // Doar dacă setup-ul e complet
-            const currentStatus = statusMessageSpan.textContent.toLowerCase();
-            if (!currentStatus.includes("download") && !currentStatus.includes("fetching") &&
-                !currentStatus.includes("failed") && !currentStatus.includes("error") &&
-                !currentStatus.includes("successfully") && !currentStatus.includes("saved")) {
-                if (!currentStatus.includes("stopped")) { setStatus('Server is stopped.'); }
-            }
+        const currentStatus = statusMessageSpan.textContent.toLowerCase();
+        if (!currentStatus.includes("downloading") && !currentStatus.includes("starting")) {
+             // Doar actualizează starea butoanelor, nu și statusul, care poate fi "Stopped" sau "Failed"
+             // și nu vrem să-l suprascriem. `refreshUISetupState` va fi apelat dacă e necesar.
         }
     }
+     await refreshUISetupState(); // Reîmprospătează starea UI după schimbarea stării serverului
 });
 
 window.electronAPI.onRequestStatusCheckForFail(() => {
-    if(statusMessageSpan.textContent.toLowerCase().includes('starting')) {
+    if (statusMessageSpan.textContent.toLowerCase().includes('starting')) {
         setStatus('Server failed to stay running.', false);
     }
 });
 
 async function fetchAndDisplayIPs() {
     try {
-        const localIP = await window.electronAPI.getLocalIP(); localIpAddressSpan.textContent = localIP || 'N/A';
-    } catch (error) { console.error('Failed to get local IP:', error); localIpAddressSpan.textContent = 'Error'; addToConsole(`Failed to get Local IP: ${error.message || 'Unknown error'}`, 'ERROR'); }
+        localIpAddressSpan.textContent = await window.electronAPI.getLocalIP() || 'N/A';
+    } catch (error) { localIpAddressSpan.textContent = 'Error'; }
     try {
-        const publicIP = await window.electronAPI.getPublicIP(); publicIpAddressSpan.textContent = publicIP || 'N/A';
-    } catch (error) { console.error('Failed to get public IP:', error); publicIpAddressSpan.textContent = 'Error'; }
+        publicIpAddressSpan.textContent = await window.electronAPI.getPublicIP() || 'N/A';
+    } catch (error) { publicIpAddressSpan.textContent = 'Error'; }
 }
 
 async function initializeApp() {
     addToConsole("Launcher initializing...", "INFO");
-    setStatus("Initializing launcher...", true);
+    setStatus("Initializing...", true);
     await fetchAndDisplayIPs();
     await refreshUISetupState();
     addToConsole("Launcher initialized.", "INFO");

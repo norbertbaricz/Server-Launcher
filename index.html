@@ -76,7 +76,7 @@
 
     <div id="setup-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
         <div id="setup-modal-content" class="bg-gray-800 p-6 md:p-8 rounded-lg shadow-2xl w-11/12 md:w-3/4 lg:w-1/2 xl:w-1/3">
-            <h2 class="text-xl md:text-2xl font-semibold text-yellow-400 mb-5 text-center">Server Setup Required</h2>
+            <h2 class="text-xl md:text-2xl font-semibold text-blue-400 mb-5 text-center">Server Setup Required</h2>
             <p class="text-gray-300 mb-6 text-center text-sm">
                 Server files (paper.jar) or configuration (config.json) are missing.
                 Please select options and click "Download / Configure".
@@ -84,13 +84,13 @@
             <div id="modal-setup-form-controls" class="space-y-5">
                 <div>
                     <label for="mc-version-modal" class="block text-sm font-medium text-gray-300 mb-1">Minecraft Version:</label>
-                    <select id="mc-version-modal" name="mc-version-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-yellow-500 focus:border-yellow-500">
+                    <select id="mc-version-modal" name="mc-version-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500">
                         <option value="" disabled selected>Loading versions...</option>
                     </select>
                 </div>
                 <div>
                     <label for="ram-allocation-modal" class="block text-sm font-medium text-gray-300 mb-1">RAM Allocation:</label>
-                    <select id="ram-allocation-modal" name="ram-allocation-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-yellow-500 focus:border-yellow-500">
+                    <select id="ram-allocation-modal" name="ram-allocation-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500">
                         <option value="auto" selected>Auto (Detect System)</option>
                         <option value="512M">512MB (Very Small/Test)</option>
                         <option value="1024M">1GB (Minimum)</option>
@@ -106,7 +106,8 @@
                 </div>
                 <div class="pt-2">
                     <button id="download-button-modal" class="w-full btn-primary font-semibold py-3 px-4 rounded-md shadow-md flex items-center justify-center text-base">
-                        <i class="fas fa-download mr-2"></i>Download / Configure Server
+                        <i class="fas fa-download mr-2"></i>
+                        <span id="download-button-text">Download / Configure Server</span>
                     </button>
                 </div>
             </div>
