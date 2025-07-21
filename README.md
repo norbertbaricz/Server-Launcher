@@ -1,7 +1,5 @@
 # 🎮 Server-Launcher
 
-![Server Launcher Icon](https://raw.githubusercontent.com/norbertbaricz/server-launcher/main/build/icon.png)
-
 [![ISC License](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)  
 [![Electron](https://img.shields.io/badge/Built_with-Electron-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)  
 [![Tailwind CSS](https://img.shields.io/badge/Styled_with-Tailwind_CSS-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
