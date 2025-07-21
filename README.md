@@ -1,5 +1,4 @@
 # Server-Launcher
-# Server Launcher
 
 ![Server Launcher Icon](build/icon.png)
 
