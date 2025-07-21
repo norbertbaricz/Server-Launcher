@@ -8,8 +8,7 @@
 
 An intuitive desktop app to manage and run your own Minecraft server. Built with Electron, this launcher radically simplifies the process of setting up, starting, stopping, and interacting with a PaperMC server.
 
-![Server Launcher Screenshot](https://placehold.co/800x500/1f2937/9ca3af?text=App+Screenshot+Here)  
-*Add a screenshot of your app interface here!*
+![Server Launcher Screenshot](https://placehold.co/800x500/1f2937/9ca3af?text=App+Screenshot+Here)
 
 ---
 
