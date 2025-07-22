@@ -28,11 +28,16 @@
     <div id="main-content-area" class="flex-grow flex flex-col space-y-3 p-4 overflow-y-auto">
 
         <div class="bg-gray-800 p-4 rounded-lg shadow-xl animate-fadeIn" style="animation-delay: 0.1s;">
-            <div id="status-and-open-folder-area" class="hidden flex items-stretch justify-between"> <div id="status-bar-content" class="bg-gray-700 p-3 rounded-l-md flex-grow min-w-0 flex items-center">
+            <div id="status-and-open-folder-area" class="hidden flex items-stretch justify-between">
+                 <div id="status-bar-content" class="bg-gray-700 p-3 rounded-l-md flex-grow min-w-0 flex items-center">
                     <span class="text-sm font-medium text-gray-400">Status:</span>
                     <span id="status-message" class="text-sm text-yellow-400 ml-2 truncate">Initializing...</span>
                 </div>
-                <button id="open-folder-button-main" class="btn-primary font-semibold px-4 rounded-r-md shadow-md flex items-center justify-center" style="border-left: 1px solid #374151;"> <i class="fas fa-folder-open mr-2"></i>Open Folder
+                <button id="open-folder-button-main" class="btn-primary font-semibold px-4 flex items-center justify-center rounded-none">
+                    <i class="fas fa-folder-open mr-2"></i>Open Folder
+                </button>
+                <button id="settings-button" class="btn-secondary font-semibold px-4 flex items-center justify-center rounded-r-md rounded-l-none" style="border-left: 1px solid #374151;">
+                    <i class="fas fa-cog mr-2"></i>Settings
                 </button>
             </div>
 
@@ -75,7 +80,7 @@
     </div>
 
     <div id="setup-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
-        <div id="setup-modal-content" class="bg-gray-800 p-6 md:p-8 rounded-lg shadow-2xl w-11/12 md:w-3/4 lg:w-1/2 xl:w-1/3">
+        <div id="setup-modal-content" class="modal-content bg-gray-800 p-6 md:p-8 rounded-lg shadow-2xl w-11/12 md:w-3/4 lg:w-1/2 xl:w-1/3">
             <h2 class="text-xl md:text-2xl font-semibold text-blue-400 mb-5 text-center">Server Setup Required</h2>
             <p class="text-gray-300 mb-6 text-center text-sm">
                 Server files (paper.jar) or configuration (config.json) are missing.
@@ -113,6 +118,64 @@
             </div>
         </div>
     </div>
+
+    <div id="settings-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
+        <div id="settings-modal-content" class="modal-content bg-gray-800 p-6 md:p-8 rounded-lg shadow-2xl w-11/12 md:w-3/4 lg:w-1/2 xl:w-1/3">
+            <h2 class="text-xl md:text-2xl font-semibold text-gray-200 mb-6 text-center">Settings</h2>
+            
+            <div class="space-y-5">
+                <div>
+                    <h3 class="text-lg font-medium text-blue-400 mb-3">Server Configuration</h3>
+                    <div>
+                        <label for="mc-version-settings" class="block text-sm font-medium text-gray-300 mb-1">Minecraft Version:</label>
+                        <select id="mc-version-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="" disabled>Loading...</option>
+                        </select>
+                    </div>
+                    <div class="mt-4">
+                        <label for="ram-allocation-settings" class="block text-sm font-medium text-gray-300 mb-1">RAM Allocation:</label>
+                        <select id="ram-allocation-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="auto">Auto (Detect System)</option>
+                            <option value="512M">512MB</option>
+                            <option value="1024M">1GB</option>
+                            <option value="1536M">1.5GB</option>
+                            <option value="2048M">2GB</option>
+                            <option value="3072M">3GB</option>
+                            <option value="4096M">4GB</option>
+                            <option value="6144M">6GB</option>
+                            <option value="8192M">8GB</option>
+                            <option value="12288M">12GB</option>
+                            <option value="16384M">16GB</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="border-t border-gray-700 pt-5">
+                     <h3 class="text-lg font-medium text-blue-400 mb-3">Launcher Settings</h3>
+                    <label for="start-with-windows-checkbox" class="flex items-center justify-between p-3 bg-gray-700 rounded-md cursor-pointer hover:bg-gray-600 transition-colors">
+                        <span class="text-gray-300">Start with Windows</span>
+                        <div class="switch">
+                            <input type="checkbox" id="start-with-windows-checkbox" class="sr-only">
+                            <div class="switch-track"><div class="switch-thumb"></div></div>
+                        </div>
+                    </label>
+                    <label for="start-minimized-checkbox" class="flex items-center justify-between p-3 bg-gray-700 rounded-md cursor-pointer hover:bg-gray-600 transition-colors mt-3">
+                        <span class="text-gray-300">Start Minimized (at login)</span>
+                        <div class="switch">
+                            <input type="checkbox" id="start-minimized-checkbox" class="sr-only">
+                            <div class="switch-track"><div class="switch-thumb"></div></div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <div class="flex justify-end space-x-3 mt-8">
+                <button id="close-settings-button" class="btn-secondary font-semibold py-2 px-5 rounded-md shadow-md">Close</button>
+                <button id="save-settings-button" class="btn-primary font-semibold py-2 px-5 rounded-md shadow-md">Save & Apply</button>
+            </div>
+        </div>
+    </div>
+
     <script src="script.js"></script>
 </body>
 </html>

@@ -9,13 +9,16 @@ const sendCommandButton = document.getElementById('send-command-button');
 const startButton = document.getElementById('start-button');
 const stopButton = document.getElementById('stop-button');
 
-// Container pentru Status Bar + Open Folder
+// Butoane de acțiune
+const openFolderButtonMain = document.getElementById('open-folder-button-main');
+const settingsButton = document.getElementById('settings-button');
+
+// Container
 const statusAndOpenFolderArea = document.getElementById('status-and-open-folder-area');
 const statusBarContent = document.getElementById('status-bar-content');
-const openFolderButtonMain = document.getElementById('open-folder-button-main');
 const setupActivePlaceholderTop = document.getElementById('setup-active-placeholder-top');
 
-// Selectoare pentru Modalul de Setup
+// Modal Setup
 const setupModal = document.getElementById('setup-modal');
 const setupModalContent = document.getElementById('setup-modal-content');
 const mcVersionModalSelect = document.getElementById('mc-version-modal');
@@ -24,7 +27,17 @@ const downloadModalButton = document.getElementById('download-button-modal');
 const downloadModalButtonIcon = downloadModalButton.querySelector('i');
 const downloadModalButtonText = document.getElementById('download-button-text');
 
-// Selectoare pentru butoanele din Title Bar
+// Modal Settings
+const settingsModal = document.getElementById('settings-modal');
+const settingsModalContent = document.getElementById('settings-modal-content');
+const mcVersionSettingsSelect = document.getElementById('mc-version-settings');
+const ramAllocationSettingsSelect = document.getElementById('ram-allocation-settings');
+const startWithWindowsCheckbox = document.getElementById('start-with-windows-checkbox');
+const startMinimizedCheckbox = document.getElementById('start-minimized-checkbox');
+const saveSettingsButton = document.getElementById('save-settings-button');
+const closeSettingsButton = document.getElementById('close-settings-button');
+
+// Title Bar
 const minimizeBtn = document.getElementById('minimize-btn');
 const maximizeBtn = document.getElementById('maximize-btn');
 const closeBtn = document.getElementById('close-btn');
@@ -33,6 +46,7 @@ const maximizeBtnIcon = maximizeBtn.querySelector('i');
 let localIsServerRunning = false;
 let currentServerConfig = {};
 let isModalAnimating = false;
+let availableMcVersionsCache = [];
 
 function addToConsole(message, type = 'INFO') {
     const timestamp = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -87,85 +101,77 @@ function hideDownloadLoading() {
     downloadModalButtonText.textContent = 'Download / Configure Server';
 }
 
-// **LOGICĂ CORECTATĂ AICI**
 function updateButtonStates(isRunning) {
     localIsServerRunning = isRunning;
     const setupComplete = setupModal.classList.contains('hidden');
-
-    // Setează proprietatea 'disabled'
     startButton.disabled = isRunning || !setupComplete;
     stopButton.disabled = !isRunning;
     sendCommandButton.disabled = !isRunning;
     commandInput.disabled = !isRunning;
     openFolderButtonMain.disabled = !setupComplete;
-
-    // Comută clasa vizuală '.btn-disabled' pe baza proprietății
+    settingsButton.disabled = isRunning || !setupComplete;
     startButton.classList.toggle('btn-disabled', startButton.disabled);
     stopButton.classList.toggle('btn-disabled', stopButton.disabled);
     sendCommandButton.classList.toggle('btn-disabled', sendCommandButton.disabled);
     openFolderButtonMain.classList.toggle('btn-disabled', openFolderButtonMain.disabled);
-
-    // Gestionează vizibilitatea elementelor UI
+    settingsButton.classList.toggle('btn-disabled', settingsButton.disabled);
     statusAndOpenFolderArea.classList.toggle('hidden', !setupComplete);
     statusAndOpenFolderArea.classList.toggle('flex', setupComplete);
     setupActivePlaceholderTop.classList.toggle('hidden', setupComplete);
-
     if (!isRunning) commandInput.value = "";
 }
 
-async function populateAndSetMCVersionModal() {
-    mcVersionModalSelect.innerHTML = '<option value="" disabled>Loading versions...</option>';
-    mcVersionModalSelect.disabled = true;
-    try {
-        const availableVersions = await window.electronAPI.getAvailablePaperMCVersions();
-        mcVersionModalSelect.innerHTML = '';
-        if (availableVersions && availableVersions.length > 0) {
-            availableVersions.forEach((version, index) => {
-                const option = document.createElement('option');
-                option.value = version;
-                option.textContent = version + (index === 0 ? ' (Latest)' : '');
-                mcVersionModalSelect.appendChild(option);
-            });
-            const currentVersion = currentServerConfig?.version;
-            mcVersionModalSelect.value = (currentVersion && availableVersions.includes(currentVersion)) ? currentVersion : availableVersions[0];
-        } else {
-             mcVersionModalSelect.innerHTML = '<option value="" disabled selected>No versions found</option>';
+async function populateMcVersionSelect(selectElement, currentVersion) {
+    selectElement.disabled = true;
+    if (availableMcVersionsCache.length === 0) {
+        selectElement.innerHTML = '<option value="" disabled>Loading versions...</option>';
+        try {
+            availableMcVersionsCache = await window.electronAPI.getAvailablePaperMCVersions();
+        } catch (error) {
+            selectElement.innerHTML = '<option value="" disabled selected>Error loading versions</option>';
+            return;
         }
-    } catch (error) {
-        mcVersionModalSelect.innerHTML = '<option value="" disabled selected>Error loading versions</option>';
-    } finally {
-        mcVersionModalSelect.disabled = false;
     }
+
+    selectElement.innerHTML = '';
+    if (availableMcVersionsCache.length > 0) {
+        availableMcVersionsCache.forEach((version, index) => {
+            const option = document.createElement('option');
+            option.value = version;
+            option.textContent = version + (index === 0 ? ' (Latest)' : '');
+            selectElement.appendChild(option);
+        });
+        selectElement.value = (currentVersion && availableMcVersionsCache.includes(currentVersion)) ? currentVersion : availableMcVersionsCache[0];
+    } else {
+        selectElement.innerHTML = '<option value="" disabled selected>No versions found</option>';
+    }
+    selectElement.disabled = false;
 }
 
-async function showSetupModal() {
-    if (isModalAnimating || !setupModal.classList.contains('hidden')) return;
+function showModal(modal, content) {
+    if (isModalAnimating || !modal.classList.contains('hidden')) return;
     isModalAnimating = true;
-    setupModal.classList.remove('hidden');
-    setupModal.style.animation = 'fadeInModalBg 0.25s ease-out forwards';
-    setupModalContent.style.animation = 'fadeInModalContent 0.3s ease-out 0.05s forwards';
-    await populateAndSetMCVersionModal();
-    ramAllocationModalSelect.value = currentServerConfig?.ram || 'auto';
-    downloadModalButton.disabled = false;
-    setupModalContent.addEventListener('animationend', () => isModalAnimating = false, {once: true});
+    modal.classList.remove('hidden');
+    modal.style.animation = 'fadeInModalBg 0.25s ease-out forwards';
+    content.style.animation = 'fadeInModalContent 0.3s ease-out 0.05s forwards';
+    content.addEventListener('animationend', () => isModalAnimating = false, { once: true });
 }
 
-function hideSetupModal(callback) {
-    if (isModalAnimating || setupModal.classList.contains('hidden')) {
-        if(callback) callback();
+function hideModal(modal, content, callback) {
+    if (isModalAnimating || modal.classList.contains('hidden')) {
+        if (callback) callback();
         return;
     }
     isModalAnimating = true;
-    setupModal.style.animation = 'fadeOutModalBg 0.3s ease-in forwards';
-    setupModalContent.style.animation = 'fadeOutModalContent 0.25s ease-in forwards';
-    setupModalContent.addEventListener('animationend', () => {
-        setupModal.classList.add('hidden');
+    modal.style.animation = 'fadeOutModalBg 0.3s ease-in forwards';
+    content.style.animation = 'fadeOutModalContent 0.25s ease-in forwards';
+    content.addEventListener('animationend', () => {
+        modal.classList.add('hidden');
         isModalAnimating = false;
         if (callback) callback();
-    }, {once: true});
+    }, { once: true });
 }
 
-// **LOGICĂ CORECTATĂ AICI**
 async function refreshUISetupState() {
     const { needsSetup, config, error } = await window.electronAPI.checkInitialSetup();
     if (error) {
@@ -176,28 +182,28 @@ async function refreshUISetupState() {
     }
     currentServerConfig = config || {};
     if (needsSetup) {
-        await showSetupModal();
+        hideModal(settingsModal, settingsModalContent);
+        showModal(setupModal, setupModalContent);
+        await populateMcVersionSelect(mcVersionModalSelect, currentServerConfig.version);
+        ramAllocationModalSelect.value = currentServerConfig.ram || 'auto';
         updateButtonStates(localIsServerRunning);
     } else {
-        hideSetupModal(() => {
+        hideModal(setupModal, setupModalContent, () => {
             if (!localIsServerRunning) {
                 setStatus("Server ready.", false);
             }
-            // Se apelează AICI pentru a asigura că modalul este marcat ca ascuns
             updateButtonStates(localIsServerRunning);
         });
     }
 }
 
 // --- Event Listeners ---
-
 downloadModalButton.addEventListener('click', () => {
     if (downloadModalButton.disabled) return;
     const version = mcVersionModalSelect.value;
     const ram = ramAllocationModalSelect.value;
     if (!version) {
         addToConsole("No Minecraft version selected.", "ERROR");
-        setStatus("Please select a Minecraft version.", false);
         return;
     }
     showDownloadLoading();
@@ -206,6 +212,38 @@ downloadModalButton.addEventListener('click', () => {
 
 openFolderButtonMain.addEventListener('click', () => {
     if(!openFolderButtonMain.disabled) window.electronAPI.openServerFolder();
+});
+
+settingsButton.addEventListener('click', async () => {
+    if (settingsButton.disabled) return;
+    // Fetch and populate launcher settings
+    const launcherSettings = await window.electronAPI.getSettings();
+    startWithWindowsCheckbox.checked = launcherSettings.startWithWindows;
+    startMinimizedCheckbox.checked = launcherSettings.startMinimized;
+    // Fetch and populate server settings
+    const serverConfig = await window.electronAPI.getServerConfig();
+    await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version);
+    ramAllocationSettingsSelect.value = serverConfig.ram || 'auto';
+    showModal(settingsModal, settingsModalContent);
+});
+
+closeSettingsButton.addEventListener('click', () => {
+    hideModal(settingsModal, settingsModalContent);
+});
+
+saveSettingsButton.addEventListener('click', () => {
+    // Save launcher settings
+    const newLauncherSettings = {
+        startWithWindows: startWithWindowsCheckbox.checked,
+        startMinimized: startMinimizedCheckbox.checked,
+    };
+    window.electronAPI.setSettings(newLauncherSettings);
+    // Save server settings and trigger download if needed
+    const newMcVersion = mcVersionSettingsSelect.value;
+    const newRam = ramAllocationSettingsSelect.value;
+    window.electronAPI.downloadPaperMC({ mcVersion: newMcVersion, ramAllocation: newRam });
+    addToConsole("Settings saved and applied.", "SUCCESS");
+    hideModal(settingsModal, settingsModalContent);
 });
 
 startButton.addEventListener('click', () => {
@@ -234,7 +272,6 @@ maximizeBtn.addEventListener('click', () => window.electronAPI.maximizeWindow())
 closeBtn.addEventListener('click', () => window.electronAPI.closeWindow());
 
 // --- Electron API Listeners ---
-
 window.electronAPI.onWindowMaximized((isMaximized) => {
     maximizeBtnIcon.className = isMaximized ? 'far fa-window-restore' : 'far fa-square';
     maximizeBtn.setAttribute('aria-label', isMaximized ? 'Restore' : 'Maximize');
@@ -259,14 +296,8 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         setStatus('Server is running.', false);
         ipInfoBarDiv.classList.add('animate-green-attention');
         ipInfoBarDiv.addEventListener('animationend', () => ipInfoBarDiv.classList.remove('animate-green-attention'), { once: true });
-    } else {
-        const currentStatus = statusMessageSpan.textContent.toLowerCase();
-        if (!currentStatus.includes("downloading") && !currentStatus.includes("starting")) {
-             // Doar actualizează starea butoanelor, nu și statusul, care poate fi "Stopped" sau "Failed"
-             // și nu vrem să-l suprascriem. `refreshUISetupState` va fi apelat dacă e necesar.
-        }
     }
-     await refreshUISetupState(); // Reîmprospătează starea UI după schimbarea stării serverului
+    await refreshUISetupState();
 });
 
 window.electronAPI.onRequestStatusCheckForFail(() => {

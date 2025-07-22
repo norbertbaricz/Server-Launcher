@@ -3,7 +3,7 @@ body {
     margin: 0;
     height: 100vh;
     overflow: hidden;
-    background-color: #111827; /* MODIFICAT: Fundal principal mai închis */
+    background-color: #111827;
     display: flex;
     flex-direction: column;
 }
@@ -12,8 +12,8 @@ body {
   -webkit-app-region: drag;
   -webkit-user-select: none;
   height: 32px;
-  background-color: #1f2937; /* MODIFICAT: Gri închis pentru bara de titlu */
-  color: #d1d5db; /* MODIFICAT: Culoare text gri deschis */
+  background-color: #1f2937;
+  color: #d1d5db;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -40,7 +40,7 @@ body {
     -webkit-app-region: no-drag;
     background-color: transparent;
     border: none;
-    color: #a0aec0; /* gray-400 */
+    color: #a0aec0;
     padding: 0 15px;
     cursor: pointer;
     font-size: 0.8rem;
@@ -52,12 +52,12 @@ body {
 }
 
 .title-bar-btn:hover {
-    background-color: #374151; /* MODIFICAT: Gri mediu la hover */
-    color: #f9fafb; /* MODIFICAT: Alb la hover */
+    background-color: #374151;
+    color: #f9fafb;
 }
 
 #close-btn:hover {
-    background-color: #ef4444; /* MODIFICAT: Roșu la hover */
+    background-color: #ef4444;
     color: white;
 }
 
@@ -70,7 +70,6 @@ body {
     overflow-y: auto;
 }
 
-/* Ascunde scrollbar-ul */
 #main-content-area::-webkit-scrollbar,
 #console-output::-webkit-scrollbar,
 #mc-version-modal::-webkit-scrollbar {
@@ -107,7 +106,6 @@ body {
     animation: fadeIn 0.5s ease-out forwards;
 }
 
-/* Animații pentru modal */
 @keyframes fadeInModalBg { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeOutModalBg { from { opacity: 1; } to { opacity: 0; } }
 
@@ -120,7 +118,6 @@ body {
     to { opacity: 0; transform: scale(0.95) translateY(20px); }
 }
 
-/* MODIFICAT: Animație de pulsare albastră pentru status bar */
 @keyframes statusBarPulseBlue {
     0%, 100% { box-shadow: 0 0 8px rgba(59, 130, 246, 0.3), inset 0 0 5px rgba(59, 130, 246, 0.2); }
     50% { box-shadow: 0 0 16px rgba(59, 130, 246, 0.7), inset 0 0 10px rgba(59, 130, 246, 0.5); }
@@ -139,7 +136,6 @@ body {
     border: 1px solid transparent;
 }
 
-/* MODIFICAT: Stil pentru butoanele primare (accent albastru) */
 .btn-primary {
     background-color: #3b82f6;
     color: white;
@@ -153,7 +149,7 @@ body {
     transform: translateY(0px);
 }
 .btn-primary .fas {
-    color: white; /* Asigură că iconițele sunt albe */
+    color: white;
 }
 
 .btn-secondary {
@@ -174,7 +170,6 @@ body {
     color: #e2e8f0;
 }
 
-/* MODIFICAT: Stil pentru butonul Start (accent verde) */
 #start-button {
     background-color: #22c55e;
     color: white !important;
@@ -190,7 +185,6 @@ body {
     color: white !important;
 }
 
-/* MODIFICAT: Stil pentru butoanele de pericol (accent roșu) */
 .btn-danger {
     background-color: #ef4444;
     color: white;
@@ -211,7 +205,6 @@ body {
       font-family: "Font Awesome 6 Free" !important;
 }
 
-/* MODIFICAT: Stil pentru focus (accent albastru) */
 input:focus, select:focus, textarea:focus {
     outline: none;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4);
@@ -228,7 +221,13 @@ input:focus, select:focus, textarea:focus {
     to { opacity: 1; transform: translateX(0); }
 }
 
-#setup-modal.hidden {
+.modal-content {
+    animation-duration: 0.3s;
+    animation-timing-function: ease-out;
+    animation-fill-mode: forwards;
+}
+
+#setup-modal.hidden, #settings-modal.hidden {
     display: none;
 }
 
@@ -237,7 +236,6 @@ input:focus, select:focus, textarea:focus {
     padding-bottom: 0.75rem;
 }
 
-/* NOU: Animație pentru spinner-ul de încărcare */
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
@@ -245,4 +243,48 @@ input:focus, select:focus, textarea:focus {
 
 .spinner {
     animation: spin 1s linear infinite;
+}
+
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 22px;
+}
+.switch .switch-track {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #4a5568;
+    transition: .4s;
+    border-radius: 22px;
+}
+.switch .switch-thumb {
+    position: absolute;
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+input:checked + .switch-track {
+    background-color: #3b82f6;
+}
+input:checked + .switch-track .switch-thumb {
+    transform: translateX(18px);
+}
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0,0,0,0);
+    border: 0;
 }
