@@ -17,36 +17,62 @@ let serverPropertiesFilePath;
 const serverPropertiesFileName = 'server.properties';
 
 let localIsServerRunningGlobal = false;
+let mainWindow;
 
+// --- Funcții Helper pentru Auto-Start pe Linux ---
+const getAutoStartPath = () => {
+    if (process.platform !== 'linux') return '';
+    const appName = app.getName();
+    return path.join(app.getPath('home'), '.config', 'autostart', `${appName}.desktop`);
+};
+
+const createDesktopFile = (startMinimized) => {
+    const appName = app.getName();
+    const appPath = app.getPath('exe');
+    const execPath = `"${appPath}" ${startMinimized ? '--hidden' : ''}`.trim();
+
+    const desktopFileContent = `[Desktop Entry]
+Type=Application
+Name=${appName}
+Exec=${execPath}
+Icon=${path.join(__dirname, 'build', 'icon.png')}
+Comment=Minecraft Server Launcher
+X-GNOME-Autostart-enabled=true
+`;
+    
+    const autoStartDir = path.dirname(getAutoStartPath());
+    if (!fs.existsSync(autoStartDir)) {
+        fs.mkdirSync(autoStartDir, { recursive: true });
+    }
+    fs.writeFileSync(getAutoStartPath(), desktopFileContent);
+};
+
+// --- Funcții Principale ---
 function getMainWindow() {
-    const windows = BrowserWindow.getAllWindows();
-    return windows.length > 0 ? windows[0] : null;
+    return mainWindow;
 }
 
 function sendStatus(message, pulse = false) {
-    const mainWindow = getMainWindow();
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update-status', message, pulse);
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) win.webContents.send('update-status', message, pulse);
 }
 
 function sendConsole(message, type = 'INFO') {
-    const mainWindow = getMainWindow();
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update-console', message, type);
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) win.webContents.send('update-console', message, type);
 }
 
 function sendServerStateChange(isRunning) {
     localIsServerRunningGlobal = isRunning;
-    const mainWindow = getMainWindow();
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('server-state-change', isRunning);
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) win.webContents.send('server-state-change', isRunning);
 }
 
 function readJsonFile(filePath, fileNameForLog) {
     try {
         if (fs.existsSync(filePath)) {
             const fileData = fs.readFileSync(filePath, 'utf8');
-            if (fileData.trim() === "") {
-                sendConsole(`${fileNameForLog} is empty. Using defaults.`, 'WARN');
-                return {};
-            }
+            if (fileData.trim() === "") { return {}; }
             return JSON.parse(fileData);
         }
     } catch (error) {
@@ -64,21 +90,10 @@ function writeJsonFile(filePath, dataObject, fileNameForLog) {
     }
 }
 
-function readServerConfig() {
-    return readJsonFile(serverConfigFilePath, serverConfigFileName);
-}
-
-function writeServerConfig(configObject) {
-    writeJsonFile(serverConfigFilePath, configObject, serverConfigFileName);
-}
-
-function readLauncherSettings() {
-    return readJsonFile(launcherSettingsFilePath, launcherSettingsFileName);
-}
-
-function writeLauncherSettings(settingsObject) {
-    writeJsonFile(launcherSettingsFilePath, settingsObject, launcherSettingsFileName);
-}
+function readServerConfig() { return readJsonFile(serverConfigFilePath, serverConfigFileName); }
+function writeServerConfig(configObject) { writeJsonFile(serverConfigFilePath, configObject, serverConfigFileName); }
+function readLauncherSettings() { return readJsonFile(launcherSettingsFilePath, launcherSettingsFileName); }
+function writeLauncherSettings(settingsObject) { writeJsonFile(launcherSettingsFilePath, settingsObject, launcherSettingsFileName); }
 
 
 function getLocalIPv4() {
@@ -121,16 +136,17 @@ async function getPublicIP() {
 }
 
 function createWindow () {
-  const settings = readLauncherSettings();
-  const wasOpenedAtLogin = app.getLoginItemSettings().wasOpenedAtLogin;
+  const launcherSettings = readLauncherSettings();
+  const loginSettings = app.getLoginItemSettings();
+  const wasOpenedAsHidden = launcherSettings.startMinimized && loginSettings.wasOpenedAtLogin;
 
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
     resizable: true,
     fullscreenable: true,
     frame: false,
-    show: !(settings.startMinimized && wasOpenedAtLogin),
+    show: !wasOpenedAsHidden,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -138,11 +154,6 @@ function createWindow () {
       devTools: !app.isPackaged
     }
   });
-
-  if (settings.startMinimized && wasOpenedAtLogin) {
-      console.log('App started at login and "start minimized" is on. Window will be minimized.');
-      mainWindow.minimize();
-  }
 
   mainWindow.loadFile('index.html');
   mainWindow.webContents.on('did-finish-load', () => {
@@ -161,15 +172,9 @@ app.whenReady().then(() => {
   launcherSettingsFilePath = path.join(userDataPath, launcherSettingsFileName);
   serverPropertiesFilePath = path.join(serverFilesDir, serverPropertiesFileName);
 
-  console.log(`Server files dir: ${serverFilesDir}`);
-  console.log(`Server config path: ${serverConfigFilePath}`);
-  console.log(`Launcher settings path: ${launcherSettingsFilePath}`);
-  console.log(`Server properties path: ${serverPropertiesFilePath}`);
-
   if (!fs.existsSync(serverFilesDir)) {
     try {
       fs.mkdirSync(serverFilesDir, { recursive: true });
-      console.log(`Created server directory: ${serverFilesDir}`);
     } catch (error) {
       console.error(`FATAL: Failed to create directory ${serverFilesDir}:`, error);
       dialog.showErrorBox('Directory Creation Failed', `Failed to create server directory at ${serverFilesDir}:\n${error.message}`);
@@ -200,33 +205,42 @@ ipcMain.on('close-window', () => getMainWindow()?.close());
 
 // Settings IPC
 ipcMain.handle('get-settings', () => {
-    const loginSettings = app.getLoginItemSettings();
-    const launcherSettings = readLauncherSettings();
+    const settings = readLauncherSettings();
     return {
-        startWithWindows: loginSettings.openAtLogin,
-        startMinimized: launcherSettings.startMinimized || false
+        openAtLogin: settings.startWithWindows || false,
+        openAsHidden: settings.startMinimized || false,
     };
 });
 
 ipcMain.on('set-settings', (event, settings) => {
-    app.setLoginItemSettings({
-        openAtLogin: settings.startWithWindows,
-        path: app.getPath('exe'),
-        args: [
-            '--hidden'
-        ]
-    });
-    writeLauncherSettings({ startMinimized: settings.startMinimized });
-});
-
-ipcMain.handle('get-server-config', () => {
-    return readServerConfig();
-});
-
-ipcMain.handle('get-server-properties', () => {
-    if (!fs.existsSync(serverPropertiesFilePath)) {
-        return null;
+    const { openAtLogin, openAsHidden } = settings;
+    
+    // Aplică setările sistemului de operare
+    if (process.platform === 'linux') {
+        if (openAtLogin) {
+            createDesktopFile(openAsHidden);
+        } else {
+            if (fs.existsSync(getAutoStartPath())) {
+                fs.unlinkSync(getAutoStartPath());
+            }
+        }
+    } else {
+        app.setLoginItemSettings({
+            openAtLogin: openAtLogin,
+            openAsHidden: openAsHidden,
+        });
     }
+    
+    // Salvează setările în fișierul local
+    writeLauncherSettings({
+        startWithWindows: openAtLogin,
+        startMinimized: openAsHidden,
+    });
+});
+
+ipcMain.handle('get-server-config', () => readServerConfig());
+ipcMain.handle('get-server-properties', () => {
+    if (!fs.existsSync(serverPropertiesFilePath)) { return null; }
     try {
         const fileContent = fs.readFileSync(serverPropertiesFilePath, 'utf8');
         const properties = {};
@@ -251,9 +265,7 @@ ipcMain.on('set-server-properties', (event, newProperties) => {
     try {
         const lines = fs.readFileSync(serverPropertiesFilePath, 'utf8').split(/\r?\n/);
         const updatedLines = lines.map(line => {
-            if (line.startsWith('#') || !line.includes('=')) {
-                return line;
-            }
+            if (line.startsWith('#') || !line.includes('=')) { return line; }
             const [key] = line.split('=');
             const trimmedKey = key.trim();
             if (newProperties.hasOwnProperty(trimmedKey)) {
@@ -269,7 +281,7 @@ ipcMain.on('set-server-properties', (event, newProperties) => {
 });
 
 
-// App Functionality
+// ... (restul fișierului rămâne neschimbat)
 ipcMain.handle('get-app-path', () => app.getAppPath());
 ipcMain.handle('check-initial-setup', async () => {
     const jarPath = path.join(serverFilesDir, paperJarName);

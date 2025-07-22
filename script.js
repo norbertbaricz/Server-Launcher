@@ -268,8 +268,11 @@ openFolderButtonMain.addEventListener('click', () => {
 settingsButton.addEventListener('click', async () => {
     if (settingsButton.disabled) return;
     const launcherSettings = await window.electronAPI.getSettings();
-    startWithWindowsCheckbox.checked = launcherSettings.startWithWindows;
-    startMinimizedCheckbox.checked = launcherSettings.startMinimized;
+    startWithWindowsCheckbox.checked = launcherSettings.openAtLogin;
+    startMinimizedCheckbox.checked = launcherSettings.openAsHidden;
+    
+    startMinimizedCheckbox.disabled = !startWithWindowsCheckbox.checked;
+    startMinimizedCheckbox.parentElement.parentElement.classList.toggle('opacity-50', !startWithWindowsCheckbox.checked);
 
     const serverConfig = await window.electronAPI.getServerConfig();
     await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version);
@@ -280,14 +283,22 @@ settingsButton.addEventListener('click', async () => {
     showModal(settingsModal, settingsModalContent);
 });
 
+startWithWindowsCheckbox.addEventListener('change', () => {
+    startMinimizedCheckbox.disabled = !startWithWindowsCheckbox.checked;
+    startMinimizedCheckbox.parentElement.parentElement.classList.toggle('opacity-50', !startWithWindowsCheckbox.checked);
+    if (!startWithWindowsCheckbox.checked) {
+        startMinimizedCheckbox.checked = false;
+    }
+});
+
 closeSettingsButton.addEventListener('click', () => {
     hideModal(settingsModal, settingsModalContent);
 });
 
 saveSettingsButton.addEventListener('click', () => {
     const newLauncherSettings = {
-        startWithWindows: startWithWindowsCheckbox.checked,
-        startMinimized: startMinimizedCheckbox.checked,
+        openAtLogin: startWithWindowsCheckbox.checked,
+        openAsHidden: startMinimizedCheckbox.checked,
     };
     window.electronAPI.setSettings(newLauncherSettings);
 
