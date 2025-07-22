@@ -3,7 +3,7 @@ body {
     margin: 0;
     height: 100vh;
     overflow: hidden;
-    background-color: #111827;
+    background-color: #111827; /* MODIFICAT: Fundal principal mai închis */
     display: flex;
     flex-direction: column;
 }
@@ -12,8 +12,8 @@ body {
   -webkit-app-region: drag;
   -webkit-user-select: none;
   height: 32px;
-  background-color: #1f2937;
-  color: #d1d5db;
+  background-color: #1f2937; /* MODIFICAT: Gri închis pentru bara de titlu */
+  color: #d1d5db; /* MODIFICAT: Culoare text gri deschis */
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -40,7 +40,7 @@ body {
     -webkit-app-region: no-drag;
     background-color: transparent;
     border: none;
-    color: #a0aec0;
+    color: #a0aec0; /* gray-400 */
     padding: 0 15px;
     cursor: pointer;
     font-size: 0.8rem;
@@ -52,12 +52,12 @@ body {
 }
 
 .title-bar-btn:hover {
-    background-color: #374151;
-    color: #f9fafb;
+    background-color: #374151; /* MODIFICAT: Gri mediu la hover */
+    color: #f9fafb; /* MODIFICAT: Alb la hover */
 }
 
 #close-btn:hover {
-    background-color: #ef4444;
+    background-color: #ef4444; /* MODIFICAT: Roșu la hover */
     color: white;
 }
 
@@ -70,16 +70,13 @@ body {
     overflow-y: auto;
 }
 
-#main-content-area::-webkit-scrollbar,
-#console-output::-webkit-scrollbar,
-#mc-version-modal::-webkit-scrollbar {
+/* Ascunde toate scrollbar-urile din aplicație */
+*::-webkit-scrollbar {
     display: none;
     width: 0 !important;
     background: transparent;
 }
-#main-content-area,
-#console-output,
-#mc-version-modal {
+* {
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
@@ -106,6 +103,7 @@ body {
     animation: fadeIn 0.5s ease-out forwards;
 }
 
+/* Animații pentru modal */
 @keyframes fadeInModalBg { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeOutModalBg { from { opacity: 1; } to { opacity: 0; } }
 
@@ -118,6 +116,7 @@ body {
     to { opacity: 0; transform: scale(0.95) translateY(20px); }
 }
 
+/* MODIFICAT: Animație de pulsare albastră pentru status bar */
 @keyframes statusBarPulseBlue {
     0%, 100% { box-shadow: 0 0 8px rgba(59, 130, 246, 0.3), inset 0 0 5px rgba(59, 130, 246, 0.2); }
     50% { box-shadow: 0 0 16px rgba(59, 130, 246, 0.7), inset 0 0 10px rgba(59, 130, 246, 0.5); }
@@ -136,6 +135,7 @@ body {
     border: 1px solid transparent;
 }
 
+/* MODIFICAT: Stil pentru butoanele primare (accent albastru) */
 .btn-primary {
     background-color: #3b82f6;
     color: white;
@@ -149,7 +149,7 @@ body {
     transform: translateY(0px);
 }
 .btn-primary .fas {
-    color: white;
+    color: white; /* Asigură că iconițele sunt albe */
 }
 
 .btn-secondary {
@@ -170,6 +170,7 @@ body {
     color: #e2e8f0;
 }
 
+/* MODIFICAT: Stil pentru butonul Start (accent verde) */
 #start-button {
     background-color: #22c55e;
     color: white !important;
@@ -185,6 +186,7 @@ body {
     color: white !important;
 }
 
+/* MODIFICAT: Stil pentru butoanele de pericol (accent roșu) */
 .btn-danger {
     background-color: #ef4444;
     color: white;
@@ -205,6 +207,7 @@ body {
       font-family: "Font Awesome 6 Free" !important;
 }
 
+/* MODIFICAT: Stil pentru focus (accent albastru) */
 input:focus, select:focus, textarea:focus {
     outline: none;
     box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.4);
@@ -236,6 +239,7 @@ input:focus, select:focus, textarea:focus {
     padding-bottom: 0.75rem;
 }
 
+/* NOU: Animație pentru spinner-ul de încărcare */
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }

@@ -34,4 +34,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Settings
   getSettings: () => ipcRenderer.invoke('get-settings'),
   setSettings: (settings) => ipcRenderer.send('set-settings', settings),
+  getServerProperties: () => ipcRenderer.invoke('get-server-properties'),
+  setServerProperties: (properties) => ipcRenderer.send('set-server-properties', properties),
 });

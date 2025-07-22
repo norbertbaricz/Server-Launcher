@@ -32,10 +32,12 @@ const settingsModal = document.getElementById('settings-modal');
 const settingsModalContent = document.getElementById('settings-modal-content');
 const mcVersionSettingsSelect = document.getElementById('mc-version-settings');
 const ramAllocationSettingsSelect = document.getElementById('ram-allocation-settings');
+const javaArgumentsSettingsSelect = document.getElementById('java-arguments-settings');
 const startWithWindowsCheckbox = document.getElementById('start-with-windows-checkbox');
 const startMinimizedCheckbox = document.getElementById('start-minimized-checkbox');
 const saveSettingsButton = document.getElementById('save-settings-button');
 const closeSettingsButton = document.getElementById('close-settings-button');
+const serverPropertiesContainer = document.getElementById('server-properties-container');
 
 // Title Bar
 const minimizeBtn = document.getElementById('minimize-btn');
@@ -197,6 +199,55 @@ async function refreshUISetupState() {
     }
 }
 
+async function populateServerProperties() {
+    serverPropertiesContainer.innerHTML = '<p class="text-gray-400 text-center">Loading properties...</p>';
+    const properties = await window.electronAPI.getServerProperties();
+    serverPropertiesContainer.innerHTML = ''; // Clear loading message
+
+    if (!properties || Object.keys(properties).length === 0) {
+        serverPropertiesContainer.innerHTML = '<p class="text-gray-400 text-center">Could not load server.properties. Run the server once to generate it.</p>';
+        return;
+    }
+
+    for (const key in properties) {
+        const value = properties[key];
+        const propDiv = document.createElement('div');
+        propDiv.className = 'flex items-center justify-between';
+
+        const label = document.createElement('label');
+        label.textContent = key.replace(/-/g, ' ');
+        label.className = 'text-sm text-gray-300 capitalize';
+        label.htmlFor = `prop-${key}`;
+
+        let input;
+        if (value === 'true' || value === 'false') {
+            input = document.createElement('select');
+            input.className = 'w-1/2 bg-gray-600 border border-gray-500 text-gray-200 text-sm rounded-md p-1.5 focus:ring-blue-500 focus:border-blue-500';
+            const trueOpt = document.createElement('option');
+            trueOpt.value = 'true';
+            trueOpt.textContent = 'True';
+            const falseOpt = document.createElement('option');
+            falseOpt.value = 'false';
+            falseOpt.textContent = 'False';
+            input.appendChild(trueOpt);
+            input.appendChild(falseOpt);
+            input.value = value;
+        } else {
+            input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'w-1/2 bg-gray-600 border border-gray-500 text-gray-200 text-sm rounded-md p-1.5 focus:ring-blue-500 focus:border-blue-500';
+            input.value = value;
+        }
+        
+        input.id = `prop-${key}`;
+        input.dataset.key = key;
+
+        propDiv.appendChild(label);
+        propDiv.appendChild(input);
+        serverPropertiesContainer.appendChild(propDiv);
+    }
+}
+
 // --- Event Listeners ---
 downloadModalButton.addEventListener('click', () => {
     if (downloadModalButton.disabled) return;
@@ -207,7 +258,7 @@ downloadModalButton.addEventListener('click', () => {
         return;
     }
     showDownloadLoading();
-    window.electronAPI.downloadPaperMC({ mcVersion: version, ramAllocation: ram });
+    window.electronAPI.downloadPaperMC({ mcVersion: version, ramAllocation: ram, javaArgs: 'Default' });
 });
 
 openFolderButtonMain.addEventListener('click', () => {
@@ -216,14 +267,16 @@ openFolderButtonMain.addEventListener('click', () => {
 
 settingsButton.addEventListener('click', async () => {
     if (settingsButton.disabled) return;
-    // Fetch and populate launcher settings
     const launcherSettings = await window.electronAPI.getSettings();
     startWithWindowsCheckbox.checked = launcherSettings.startWithWindows;
     startMinimizedCheckbox.checked = launcherSettings.startMinimized;
-    // Fetch and populate server settings
+
     const serverConfig = await window.electronAPI.getServerConfig();
     await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version);
     ramAllocationSettingsSelect.value = serverConfig.ram || 'auto';
+    javaArgumentsSettingsSelect.value = serverConfig.javaArgs || 'Default';
+
+    await populateServerProperties();
     showModal(settingsModal, settingsModalContent);
 });
 
@@ -232,16 +285,30 @@ closeSettingsButton.addEventListener('click', () => {
 });
 
 saveSettingsButton.addEventListener('click', () => {
-    // Save launcher settings
     const newLauncherSettings = {
         startWithWindows: startWithWindowsCheckbox.checked,
         startMinimized: startMinimizedCheckbox.checked,
     };
     window.electronAPI.setSettings(newLauncherSettings);
-    // Save server settings and trigger download if needed
+
+    const newProperties = {};
+    const inputs = serverPropertiesContainer.querySelectorAll('input, select');
+    inputs.forEach(input => {
+        newProperties[input.dataset.key] = input.value;
+    });
+    if(Object.keys(newProperties).length > 0) {
+        window.electronAPI.setServerProperties(newProperties);
+    }
+
     const newMcVersion = mcVersionSettingsSelect.value;
     const newRam = ramAllocationSettingsSelect.value;
-    window.electronAPI.downloadPaperMC({ mcVersion: newMcVersion, ramAllocation: newRam });
+    const newJavaArgs = javaArgumentsSettingsSelect.value;
+    window.electronAPI.downloadPaperMC({ 
+        mcVersion: newMcVersion, 
+        ramAllocation: newRam,
+        javaArgs: newJavaArgs 
+    });
+    
     addToConsole("Settings saved and applied.", "SUCCESS");
     hideModal(settingsModal, settingsModalContent);
 });

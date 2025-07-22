@@ -13,6 +13,8 @@ let serverConfigFilePath;
 const serverConfigFileName = 'config.json';
 let launcherSettingsFilePath;
 const launcherSettingsFileName = 'launcher-settings.json';
+let serverPropertiesFilePath;
+const serverPropertiesFileName = 'server.properties';
 
 let localIsServerRunningGlobal = false;
 
@@ -157,10 +159,12 @@ app.whenReady().then(() => {
   serverFilesDir = path.join(userDataPath, 'MinecraftServer');
   serverConfigFilePath = path.join(serverFilesDir, serverConfigFileName);
   launcherSettingsFilePath = path.join(userDataPath, launcherSettingsFileName);
+  serverPropertiesFilePath = path.join(serverFilesDir, serverPropertiesFileName);
 
   console.log(`Server files dir: ${serverFilesDir}`);
   console.log(`Server config path: ${serverConfigFilePath}`);
   console.log(`Launcher settings path: ${launcherSettingsFilePath}`);
+  console.log(`Server properties path: ${serverPropertiesFilePath}`);
 
   if (!fs.existsSync(serverFilesDir)) {
     try {
@@ -218,6 +222,52 @@ ipcMain.on('set-settings', (event, settings) => {
 ipcMain.handle('get-server-config', () => {
     return readServerConfig();
 });
+
+ipcMain.handle('get-server-properties', () => {
+    if (!fs.existsSync(serverPropertiesFilePath)) {
+        return null;
+    }
+    try {
+        const fileContent = fs.readFileSync(serverPropertiesFilePath, 'utf8');
+        const properties = {};
+        const lines = fileContent.split(/\r?\n/);
+        for (const line of lines) {
+            if (line.startsWith('#') || !line.includes('=')) continue;
+            const [key, ...valueParts] = line.split('=');
+            properties[key.trim()] = valueParts.join('=').trim();
+        }
+        return properties;
+    } catch (error) {
+        sendConsole(`Error reading server.properties: ${error.message}`, 'ERROR');
+        return null;
+    }
+});
+
+ipcMain.on('set-server-properties', (event, newProperties) => {
+    if (!fs.existsSync(serverPropertiesFilePath)) {
+        sendConsole('Cannot save server.properties, file does not exist.', 'ERROR');
+        return;
+    }
+    try {
+        const lines = fs.readFileSync(serverPropertiesFilePath, 'utf8').split(/\r?\n/);
+        const updatedLines = lines.map(line => {
+            if (line.startsWith('#') || !line.includes('=')) {
+                return line;
+            }
+            const [key] = line.split('=');
+            const trimmedKey = key.trim();
+            if (newProperties.hasOwnProperty(trimmedKey)) {
+                return `${trimmedKey}=${newProperties[trimmedKey]}`;
+            }
+            return line;
+        });
+        fs.writeFileSync(serverPropertiesFilePath, updatedLines.join('\n'));
+        sendConsole('server.properties saved successfully.', 'SUCCESS');
+    } catch (error) {
+        sendConsole(`Error writing to server.properties: ${error.message}`, 'ERROR');
+    }
+});
+
 
 // App Functionality
 ipcMain.handle('get-app-path', () => app.getAppPath());
@@ -289,15 +339,17 @@ ipcMain.on('open-server-folder', () => {
     .catch(err => { sendConsole(`Failed to open folder ${serverFilesDir}: ${err.message}`, 'ERROR'); console.error("Shell openPath error:", err);});
 });
 
-ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation }) => {
-  sendConsole(`Action 'Download/Configure': Version ${mcVersion}, RAM ${ramAllocation}`, 'INFO');
+ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArgs }) => {
+  sendConsole(`Action 'Download/Configure': Version ${mcVersion}, RAM ${ramAllocation}, Java Args: ${javaArgs}`, 'INFO');
   const currentConfig = readServerConfig();
   const oldVersion = currentConfig.version;
+  
   currentConfig.version = mcVersion;
+  currentConfig.javaArgs = javaArgs || 'Default';
   if (ramAllocation && ramAllocation.toLowerCase() !== 'auto') { currentConfig.ram = ramAllocation; }
   else { delete currentConfig.ram; }
   writeServerConfig(currentConfig);
-  
+
   const jarPath = path.join(serverFilesDir, paperJarName);
   if (fs.existsSync(jarPath) && oldVersion === mcVersion) {
       sendConsole(`Configuration updated for version ${mcVersion}.`, 'INFO');
@@ -356,7 +408,7 @@ ipcMain.on('start-server', async () => {
   if (!fs.existsSync(serverJarPath)) { sendConsole(`${paperJarName} not found.`, 'ERROR'); sendStatus(`${paperJarName} not found.`, false); return; }
   const serverConfig = readServerConfig();
   if (!serverConfig.version) { sendConsole('Server version missing in config.', 'ERROR'); sendStatus('Config error.', false); return; }
-  
+
   const eulaPath = path.join(serverFilesDir, 'eula.txt');
   try {
     if (!fs.existsSync(eulaPath) || !fs.readFileSync(eulaPath, 'utf8').includes('eula=true')) {
@@ -364,7 +416,7 @@ ipcMain.on('start-server', async () => {
       sendConsole('EULA accepted.', 'INFO');
     }
   } catch (error) { sendConsole(`EULA file error: ${error.message}`, 'ERROR'); sendStatus('EULA error.', false); return; }
-  
+
   let ramToUseForJava = "";
   if (serverConfig.ram && serverConfig.ram.toLowerCase() !== 'auto') {
     ramToUseForJava = serverConfig.ram;
@@ -374,16 +426,35 @@ ipcMain.on('start-server', async () => {
     if (autoRamMB < 1024) autoRamMB = 1024;
     ramToUseForJava = `${autoRamMB}M`;
   }
-  sendConsole(`Starting server with ${ramToUseForJava} RAM...`, 'INFO');
-  sendStatus('Starting server...', true);
-  try {
-    serverProcess = spawn('java', [
+  
+  const javaArgsProfile = serverConfig.javaArgs || 'Default';
+  let javaArgs = [];
+
+  const performanceArgs = [
       `-Xms${ramToUseForJava}`, `-Xmx${ramToUseForJava}`, 
       '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-XX:+UnlockExperimentalVMOptions',
       '-XX:MaxGCPauseMillis=200', '-XX:G1NewSizePercent=30', '-XX:G1MaxNewSizePercent=40',
       '-XX:G1HeapRegionSize=8M', '-XX:G1ReservePercent=20', '-XX:InitiatingHeapOccupancyPercent=45',
       '-jar', paperJarName, 'nogui'
-    ], { cwd: serverFilesDir, stdio: ['pipe', 'pipe', 'pipe'] });
+  ];
+
+  const defaultArgs = [
+      `-Xms${ramToUseForJava}`, `-Xmx${ramToUseForJava}`,
+      '-jar', paperJarName, 'nogui'
+  ];
+
+  if (javaArgsProfile === 'Performance') {
+      javaArgs = performanceArgs;
+      sendConsole('Using Performance Java arguments.', 'INFO');
+  } else {
+      javaArgs = defaultArgs;
+      sendConsole('Using Default Java arguments.', 'INFO');
+  }
+
+  sendConsole(`Starting server with ${ramToUseForJava} RAM...`, 'INFO');
+  sendStatus('Starting server...', true);
+  try {
+    serverProcess = spawn('java', javaArgs, { cwd: serverFilesDir, stdio: ['pipe', 'pipe', 'pipe'] });
     
     serverProcess.killedInternally = false;
     sendServerStateChange(true);
