@@ -6,6 +6,11 @@ const { spawn } = require('node:child_process');
 const os = require('node:os');
 const { autoUpdater } = require('electron-updater');
 
+// --- Configurare Auto-Updater ---
+// Acest logger va scrie log-urile updater-ului în consola principală
+autoUpdater.logger = require("electron-log");
+autoUpdater.logger.transports.file.level = "info";
+
 let serverFilesDir;
 const paperJarName = 'paper.jar';
 let serverProcess = null;
@@ -185,10 +190,47 @@ app.whenReady().then(() => {
   }
   createWindow();
 
-  autoUpdater.checkForUpdatesAndNotify();
+  // Verifică actualizări DOAR dacă aplicația este împachetată (nu în dezvoltare)
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdates();
+  }
 
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow();});
 });
+
+// --- Evenimente Auto-Updater ---
+autoUpdater.on('checking-for-update', () => {
+  sendConsole('Updater: Căutare actualizări...', 'INFO');
+});
+autoUpdater.on('update-available', (info) => {
+  sendConsole(`Updater: Actualizare disponibilă! Versiune: ${info.version}`, 'SUCCESS');
+});
+autoUpdater.on('update-not-available', (info) => {
+  sendConsole('Updater: Nicio actualizare disponibilă.', 'INFO');
+});
+autoUpdater.on('error', (err) => {
+  sendConsole('Updater: Eroare la actualizare. ' + err, 'ERROR');
+});
+autoUpdater.on('download-progress', (progressObj) => {
+  let log_message = "Viteză de descărcare: " + progressObj.bytesPerSecond;
+  log_message = log_message + ' - Descărcat ' + progressObj.percent + '%';
+  log_message = log_message + ' (' + progressObj.transferred + "/" + progressObj.total + ')';
+  sendStatus(log_message, true);
+});
+autoUpdater.on('update-downloaded', (info) => {
+  sendConsole(`Updater: Actualizare descărcată (${info.version}). Se va instala la repornire.`, 'SUCCESS');
+  dialog.showMessageBox({
+    type: 'info',
+    title: 'Actualizare Pregătită',
+    message: 'O nouă versiune a fost descărcată. Repornește aplicația pentru a o instala.',
+    buttons: ['Repornește', 'Mai târziu']
+  }).then(buttonIndex => {
+    if (buttonIndex.response === 0) {
+      autoUpdater.quitAndInstall();
+    }
+  });
+});
+
 
 app.on('window-all-closed', () => {
   if (serverProcess && typeof serverProcess.kill === 'function' && !serverProcess.killed) {
