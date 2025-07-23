@@ -5,11 +5,12 @@ const https = require('node:https');
 const { spawn } = require('node:child_process');
 const os = require('node:os');
 const { autoUpdater } = require('electron-updater');
+const log = require('electron-log');
 
-// --- Configurare Auto-Updater ---
-// Acest logger va scrie log-urile updater-ului în consola principală
-autoUpdater.logger = require("electron-log");
-autoUpdater.logger.transports.file.level = "info";
+// --- Auto-Updater Configuration ---
+// This logger will write updater logs to the main console and a file
+autoUpdater.logger = log;
+autoUpdater.logger.transports.file.level = 'info';
 
 let serverFilesDir;
 const paperJarName = 'paper.jar';
@@ -25,7 +26,7 @@ const serverPropertiesFileName = 'server.properties';
 let localIsServerRunningGlobal = false;
 let mainWindow;
 
-// --- Funcții Helper pentru Auto-Start pe Linux ---
+// --- Helper Functions for Linux Auto-Start ---
 const getAutoStartPath = () => {
     if (process.platform !== 'linux') return '';
     const appName = app.getName();
@@ -53,7 +54,7 @@ X-GNOME-Autostart-enabled=true
     fs.writeFileSync(getAutoStartPath(), desktopFileContent);
 };
 
-// --- Funcții Principale ---
+// --- Main Functions ---
 function getMainWindow() {
     return mainWindow;
 }
@@ -184,13 +185,13 @@ app.whenReady().then(() => {
     try {
       fs.mkdirSync(serverFilesDir, { recursive: true });
     } catch (error) {
-      console.error(`FATAL: Failed to create directory ${serverFilesDir}:`, error);
+      log.error(`FATAL: Failed to create directory ${serverFilesDir}:`, error);
       dialog.showErrorBox('Directory Creation Failed', `Failed to create server directory at ${serverFilesDir}:\n${error.message}`);
     }
   }
   createWindow();
 
-  // Verifică actualizări DOAR dacă aplicația este împachetată (nu în dezvoltare)
+  // Check for updates only if the app is packaged (not in development)
   if (app.isPackaged) {
     autoUpdater.checkForUpdates();
   }
@@ -198,34 +199,34 @@ app.whenReady().then(() => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow();});
 });
 
-// --- Evenimente Auto-Updater ---
+// --- Auto-Updater Events ---
 autoUpdater.on('checking-for-update', () => {
-  sendConsole('Updater: Căutare actualizări...', 'INFO');
+  sendConsole('Updater: Checking for updates...', 'INFO');
 });
 autoUpdater.on('update-available', (info) => {
-  sendConsole(`Updater: Actualizare disponibilă! Versiune: ${info.version}`, 'SUCCESS');
+  sendConsole(`Updater: Update available! Version: ${info.version}`, 'SUCCESS');
 });
 autoUpdater.on('update-not-available', (info) => {
-  sendConsole('Updater: Nicio actualizare disponibilă.', 'INFO');
+  sendConsole('Updater: No new updates available.', 'INFO');
 });
 autoUpdater.on('error', (err) => {
-  sendConsole('Updater: Eroare la actualizare. ' + err, 'ERROR');
+  sendConsole('Updater: Error during update. ' + err.message, 'ERROR');
 });
 autoUpdater.on('download-progress', (progressObj) => {
-  let log_message = "Viteză de descărcare: " + progressObj.bytesPerSecond;
-  log_message = log_message + ' - Descărcat ' + progressObj.percent + '%';
-  log_message = log_message + ' (' + progressObj.transferred + "/" + progressObj.total + ')';
+  let log_message = "Download speed: " + Math.round(progressObj.bytesPerSecond / 1024) + " KB/s";
+  log_message = log_message + ' - Downloaded ' + Math.round(progressObj.percent) + '%';
+  log_message = log_message + ' (' + Math.round(progressObj.transferred / 1024) + "/" + Math.round(progressObj.total / 1024) + ' KB)';
   sendStatus(log_message, true);
 });
 autoUpdater.on('update-downloaded', (info) => {
-  sendConsole(`Updater: Actualizare descărcată (${info.version}). Se va instala la repornire.`, 'SUCCESS');
+  sendConsole(`Updater: Update downloaded (${info.version}). It will be installed on restart.`, 'SUCCESS');
   dialog.showMessageBox({
     type: 'info',
-    title: 'Actualizare Pregătită',
-    message: 'O nouă versiune a fost descărcată. Repornește aplicația pentru a o instala.',
-    buttons: ['Repornește', 'Mai târziu']
-  }).then(buttonIndex => {
-    if (buttonIndex.response === 0) {
+    title: 'Update Ready',
+    message: 'A new version has been downloaded. Restart the application to install the update.',
+    buttons: ['Restart Now', 'Later']
+  }).then(({ response }) => {
+    if (response === 0) {
       autoUpdater.quitAndInstall();
     }
   });
@@ -257,8 +258,8 @@ ipcMain.handle('get-settings', () => {
     const openAtLogin = settings.startWithWindows || false;
     const openAsHidden = openAtLogin && (settings.startMinimized || false);
     return {
-        openAtLogin: openAtLogin,
-        openAsHidden: openAsHidden,
+        openAtLogin,
+        openAsHidden,
     };
 });
 
@@ -280,7 +281,6 @@ ipcMain.on('set-settings', (event, settings) => {
         });
     }
     
-    // Salvează setările în fișierul local
     writeLauncherSettings({
         startWithWindows: openAtLogin,
         startMinimized: openAsHidden,
@@ -330,7 +330,6 @@ ipcMain.on('set-server-properties', (event, newProperties) => {
 });
 
 
-// ... (restul fișierului rămâne neschimbat)
 ipcMain.handle('get-app-path', () => app.getAppPath());
 ipcMain.handle('check-initial-setup', async () => {
     const jarPath = path.join(serverFilesDir, paperJarName);
@@ -342,27 +341,6 @@ ipcMain.handle('check-initial-setup', async () => {
     if (!configExists) sendConsole(`${serverConfigFileName} not found.`, 'INFO');
     if (!needsSetup) sendConsole(`Setup check OK: ${paperJarName} and ${serverConfigFileName} exist.`, 'INFO');
     return { needsSetup, config };
-});
-
-ipcMain.handle('get-latest-papermc-version', async () => {
-    try {
-        const projectApiUrl = `https://api.papermc.io/v2/projects/paper`;
-        const projectResponseData = await new Promise((resolve, reject) => {
-            const req = https.get(projectApiUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
-                if (res.statusCode !== 200) { res.resume(); return reject(new Error(`Failed to get project info (Status ${res.statusCode})`)); }
-                let data = ''; res.on('data', (chunk) => { data += chunk; });
-                res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse project JSON.' + e.message)); }});
-            });
-            req.on('error', (err) => reject(new Error(`API request error for project versions: ${err.message}`))); req.end();
-        });
-        if (projectResponseData.versions && projectResponseData.versions.length > 0) {
-            return projectResponseData.versions[projectResponseData.versions.length - 1];
-        }
-        throw new Error('No versions found for PaperMC project.');
-    } catch (error) {
-        sendConsole(`Could not fetch latest PaperMC version: ${error.message}`, 'ERROR');
-        return null;
-    }
 });
 
 ipcMain.handle('get-available-papermc-versions', async () => {
@@ -378,8 +356,7 @@ ipcMain.handle('get-available-papermc-versions', async () => {
         });
 
         if (projectResponseData.versions && projectResponseData.versions.length > 0) {
-            const versions = projectResponseData.versions.reverse();
-            return versions;
+            return projectResponseData.versions.reverse();
         }
         throw new Error('No versions found for PaperMC project.');
     } catch (error) {
@@ -397,7 +374,7 @@ ipcMain.on('open-server-folder', () => {
       if (result !== "") { sendConsole(`Error opening folder ${serverFilesDir}: ${result}`, 'ERROR'); }
       else { sendConsole(`Opened folder: ${serverFilesDir}`, 'INFO'); }
     })
-    .catch(err => { sendConsole(`Failed to open folder ${serverFilesDir}: ${err.message}`, 'ERROR'); console.error("Shell openPath error:", err);});
+    .catch(err => { sendConsole(`Failed to open folder ${serverFilesDir}: ${err.message}`, 'ERROR');});
 });
 
 ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArgs }) => {
@@ -456,7 +433,6 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
     sendConsole(`${paperJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
     sendServerStateChange(localIsServerRunningGlobal);
   } catch (error) {
-    console.error('Download error:', error);
     sendStatus('Download failed.', false);
     sendConsole(`ERROR: ${error.message}`, 'ERROR');
     sendServerStateChange(localIsServerRunningGlobal);

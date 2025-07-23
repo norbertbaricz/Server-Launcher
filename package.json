@@ -1,6 +1,6 @@
 {
   "name": "server-launcher",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "A Minecraft server launcher built with Electron and Node.js",
   "main": "main.js",
   "scripts": {
