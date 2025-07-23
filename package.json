@@ -1,6 +1,6 @@
 {
   "name": "server-launcher",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A Minecraft server launcher built with Electron and Node.js",
   "main": "main.js",
   "scripts": {
@@ -22,9 +22,19 @@
     "electron": "^36.2.1",
     "electron-builder": "^26.0.12"
   },
+  "dependencies": {
+    "electron-updater": "^6.1.1"
+  },
   "build": {
     "appId": "com.maxultimat3.serverlauncher",
     "productName": "Server Launcher",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "norbertbaricz",
+        "repo": "server-launcher"
+      }
+    ],
     "directories": {
       "output": "dist_electron"
     },

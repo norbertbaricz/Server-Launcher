@@ -267,12 +267,13 @@ openFolderButtonMain.addEventListener('click', () => {
 
 settingsButton.addEventListener('click', async () => {
     if (settingsButton.disabled) return;
+
     const launcherSettings = await window.electronAPI.getSettings();
     startWithWindowsCheckbox.checked = launcherSettings.openAtLogin;
     startMinimizedCheckbox.checked = launcherSettings.openAsHidden;
     
     startMinimizedCheckbox.disabled = !startWithWindowsCheckbox.checked;
-    startMinimizedCheckbox.parentElement.parentElement.classList.toggle('opacity-50', !startWithWindowsCheckbox.checked);
+    startMinimizedCheckbox.closest('label').classList.toggle('opacity-50', !startWithWindowsCheckbox.checked);
 
     const serverConfig = await window.electronAPI.getServerConfig();
     await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version);
@@ -284,9 +285,10 @@ settingsButton.addEventListener('click', async () => {
 });
 
 startWithWindowsCheckbox.addEventListener('change', () => {
-    startMinimizedCheckbox.disabled = !startWithWindowsCheckbox.checked;
-    startMinimizedCheckbox.parentElement.parentElement.classList.toggle('opacity-50', !startWithWindowsCheckbox.checked);
-    if (!startWithWindowsCheckbox.checked) {
+    const isEnabled = startWithWindowsCheckbox.checked;
+    startMinimizedCheckbox.disabled = !isEnabled;
+    startMinimizedCheckbox.closest('label').classList.toggle('opacity-50', !isEnabled);
+    if (!isEnabled) {
         startMinimizedCheckbox.checked = false;
     }
 });

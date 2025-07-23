@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const https = require('node:https');
 const { spawn } = require('node:child_process');
 const os = require('node:os');
+const { autoUpdater } = require('electron-updater');
 
 let serverFilesDir;
 const paperJarName = 'paper.jar';
@@ -29,7 +30,7 @@ const getAutoStartPath = () => {
 const createDesktopFile = (startMinimized) => {
     const appName = app.getName();
     const appPath = app.getPath('exe');
-    const execPath = `"${appPath}" ${startMinimized ? '--hidden' : ''}`.trim();
+    const execPath = `"${appPath}"${startMinimized ? ' --hidden' : ''}`;
 
     const desktopFileContent = `[Desktop Entry]
 Type=Application
@@ -138,7 +139,9 @@ async function getPublicIP() {
 function createWindow () {
   const launcherSettings = readLauncherSettings();
   const loginSettings = app.getLoginItemSettings();
-  const wasOpenedAsHidden = launcherSettings.startMinimized && loginSettings.wasOpenedAtLogin;
+
+  const startMinimizedSetting = launcherSettings.startWithWindows && launcherSettings.startMinimized;
+  const wasOpenedAsHidden = startMinimizedSetting && (loginSettings.wasOpenedAtLogin || process.argv.includes('--hidden'));
 
   mainWindow = new BrowserWindow({
     width: 1280,
@@ -181,6 +184,9 @@ app.whenReady().then(() => {
     }
   }
   createWindow();
+
+  autoUpdater.checkForUpdatesAndNotify();
+
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow();});
 });
 
@@ -206,16 +212,17 @@ ipcMain.on('close-window', () => getMainWindow()?.close());
 // Settings IPC
 ipcMain.handle('get-settings', () => {
     const settings = readLauncherSettings();
+    const openAtLogin = settings.startWithWindows || false;
+    const openAsHidden = openAtLogin && (settings.startMinimized || false);
     return {
-        openAtLogin: settings.startWithWindows || false,
-        openAsHidden: settings.startMinimized || false,
+        openAtLogin: openAtLogin,
+        openAsHidden: openAsHidden,
     };
 });
 
 ipcMain.on('set-settings', (event, settings) => {
     const { openAtLogin, openAsHidden } = settings;
     
-    // Aplică setările sistemului de operare
     if (process.platform === 'linux') {
         if (openAtLogin) {
             createDesktopFile(openAsHidden);
