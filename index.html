@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Server Launcher v1.0.5</title>
+    <title>Server Launcher</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
@@ -12,7 +12,7 @@
 <body class="bg-gray-900 text-gray-200 flex flex-col h-screen">
 
     <div id="title-bar">
-        <span>Server Launcher v1.0.5</span>
+        <span id="app-title-version">Server Launcher</span>
         <div id="title-bar-buttons">
             <button id="minimize-btn" class="title-bar-btn" aria-label="Minimize">
                 <i class="fas fa-window-minimize"></i>
@@ -60,6 +60,10 @@
             <div class="flex items-center">
                 <span class="text-sm font-medium text-gray-400">Public IP:</span>
                 <span id="public-ip-address" class="text-sm text-gray-200 ml-2">Fetching...</span>
+            </div>
+            <div class="flex items-center">
+                <span class="text-sm font-medium text-gray-400">Version:</span>
+                <span id="server-version" class="text-sm text-gray-200 ml-2">N/A</span>
             </div>
         </div>
 

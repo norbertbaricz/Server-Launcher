@@ -2,6 +2,7 @@
 const statusMessageSpan = document.getElementById('status-message');
 const localIpAddressSpan = document.getElementById('local-ip-address');
 const publicIpAddressSpan = document.getElementById('public-ip-address');
+const serverVersionSpan = document.getElementById('server-version');
 const ipInfoBarDiv = document.getElementById('ip-info-bar');
 const consoleOutput = document.getElementById('console-output');
 const commandInput = document.getElementById('command-input');
@@ -121,6 +122,13 @@ function updateButtonStates(isRunning) {
     statusAndOpenFolderArea.classList.toggle('flex', setupComplete);
     setupActivePlaceholderTop.classList.toggle('hidden', setupComplete);
     if (!isRunning) commandInput.value = "";
+
+    // Actualizează versiunea serverului afișată în UI
+    if (currentServerConfig && currentServerConfig.version) {
+        serverVersionSpan.textContent = currentServerConfig.version;
+    } else {
+        serverVersionSpan.textContent = 'N/A';
+    }
 }
 
 async function populateMcVersionSelect(selectElement, currentVersion) {
@@ -197,6 +205,8 @@ async function refreshUISetupState() {
             updateButtonStates(localIsServerRunning);
         });
     }
+    // Re-fetch IPs and port, as server.properties might have been created/changed.
+    await fetchAndDisplayIPs();
 }
 
 async function populateServerProperties() {
@@ -387,18 +397,36 @@ window.electronAPI.onRequestStatusCheckForFail(() => {
 });
 
 async function fetchAndDisplayIPs() {
+    let port = '';
     try {
-        localIpAddressSpan.textContent = await window.electronAPI.getLocalIP() || 'N/A';
+        // First, try to get the server port from server.properties
+        const properties = await window.electronAPI.getServerProperties();
+        if (properties && properties['server-port']) {
+            port = `:${properties['server-port']}`;
+        }
+    } catch (error) {
+        // It's not critical if this fails, we just won't display the port.
+        console.warn("Could not fetch server port for display.", error);
+    }
+
+    try {
+        const localIP = await window.electronAPI.getLocalIP() || 'N/A';
+        localIpAddressSpan.textContent = (localIP !== 'N/A' && localIP !== 'Error') ? `${localIP}${port}` : localIP;
     } catch (error) { localIpAddressSpan.textContent = 'Error'; }
     try {
-        publicIpAddressSpan.textContent = await window.electronAPI.getPublicIP() || 'N/A';
+        const publicIP = await window.electronAPI.getPublicIP() || 'N/A';
+        publicIpAddressSpan.textContent = (publicIP !== 'N/A' && publicIP !== 'Error') ? `${publicIP}${port}` : publicIP;
     } catch (error) { publicIpAddressSpan.textContent = 'Error'; }
 }
 
 async function initializeApp() {
     addToConsole("Launcher initializing...", "INFO");
     setStatus("Initializing...", true);
-    await fetchAndDisplayIPs();
+    // Fetch and set the app version in the title
+    const version = await window.electronAPI.getAppVersion();
+    const titleText = `Server Launcher v${version}`;
+    document.title = titleText;
+    document.getElementById('app-title-version').textContent = titleText;
     await refreshUISetupState();
     addToConsole("Launcher initialized.", "INFO");
 }

@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const { version } = require('./package.json');
 const https = require('node:https');
 const { spawn } = require('node:child_process');
 const os = require('node:os');
@@ -286,6 +287,8 @@ ipcMain.on('set-settings', (event, settings) => {
         startMinimized: openAsHidden,
     });
 });
+
+ipcMain.handle('get-app-version', () => version);
 
 ipcMain.handle('get-server-config', () => readServerConfig());
 ipcMain.handle('get-server-properties', () => {
