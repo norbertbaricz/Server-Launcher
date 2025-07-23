@@ -12,7 +12,11 @@
 <body class="bg-gray-900 text-gray-200 flex flex-col h-screen">
 
     <div id="title-bar">
-        <span id="app-title-version">Server Launcher</span>
+        <div class="flex items-center">
+            <img src="build/icon.ico" alt="App Icon" class="w-4 h-4 mr-3">
+            <span id="app-title-version">Server Launcher</span>
+        </div>
+        
         <div id="title-bar-buttons">
             <button id="minimize-btn" class="title-bar-btn" aria-label="Minimize">
                 <i class="fas fa-window-minimize"></i>
@@ -30,6 +34,7 @@
         <div class="bg-gray-800 p-4 rounded-lg shadow-xl animate-fadeIn" style="animation-delay: 0.1s;">
             <div id="status-and-open-folder-area" class="hidden flex items-stretch justify-between">
                  <div id="status-bar-content" class="bg-gray-700 p-3 rounded-l-md flex-grow min-w-0 flex items-center">
+                    <i class="fas fa-info-circle text-gray-400 mr-2"></i>
                     <span class="text-sm font-medium text-gray-400">Status:</span>
                     <span id="status-message" class="text-sm text-yellow-400 ml-2 truncate">Initializing...</span>
                 </div>
@@ -54,14 +59,17 @@
 
         <div id="ip-info-bar" class="bg-gray-800 p-3 rounded-lg shadow-xl flex flex-wrap justify-start items-center gap-x-6 gap-y-2 animate-fadeIn" style="animation-delay: 0.25s;">
             <div class="flex items-center">
+                <i class="fas fa-network-wired text-gray-400 mr-2"></i>
                 <span class="text-sm font-medium text-gray-400">Local IP:</span>
                 <span id="local-ip-address" class="text-sm text-gray-200 ml-2">Fetching...</span>
             </div>
             <div class="flex items-center">
+                <i class="fas fa-globe text-gray-400 mr-2"></i>
                 <span class="text-sm font-medium text-gray-400">Public IP:</span>
                 <span id="public-ip-address" class="text-sm text-gray-200 ml-2">Fetching...</span>
             </div>
             <div class="flex items-center">
+                <i class="fas fa-tag text-gray-400 mr-2"></i>
                 <span class="text-sm font-medium text-gray-400">Version:</span>
                 <span id="server-version" class="text-sm text-gray-200 ml-2">N/A</span>
             </div>
