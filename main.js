@@ -7,11 +7,17 @@ const { spawn } = require('node:child_process');
 const os = require('node:os');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
+const RPC = require('discord-rpc');
 
 // --- Auto-Updater Configuration ---
 // This logger will write updater logs to the main console and a file
 autoUpdater.logger = log;
 autoUpdater.logger.transports.file.level = 'info';
+
+// --- Discord Rich Presence ---
+const clientId = '1397585400553541682'; // IMPORTANT: Replace with your actual Client ID from Discord Developer Portal
+let rpc;
+let rpcStartTime;
 
 let serverFilesDir;
 const paperJarName = 'paper.jar';
@@ -40,13 +46,13 @@ const createDesktopFile = (startMinimized) => {
     const execPath = `"${appPath}"${startMinimized ? ' --hidden' : ''}`;
 
     const desktopFileContent = `[Desktop Entry]
-Type=Application
-Name=${appName}
-Exec=${execPath}
-Icon=${path.join(__dirname, 'build', 'icon.png')}
-Comment=Minecraft Server Launcher
-X-GNOME-Autostart-enabled=true
-`;
+    Type=Application
+    Name=${appName}
+    Exec=${execPath}
+    Icon=${path.join(__dirname, 'build', 'icon.png')}
+    Comment=Minecraft Server Launcher
+    X-GNOME-Autostart-enabled=true
+    `;
     
     const autoStartDir = path.dirname(getAutoStartPath());
     if (!fs.existsSync(autoStartDir)) {
@@ -74,6 +80,33 @@ function sendServerStateChange(isRunning) {
     localIsServerRunningGlobal = isRunning;
     const win = getMainWindow();
     if (win && !win.isDestroyed()) win.webContents.send('server-state-change', isRunning);
+}
+
+function setDiscordActivity() {
+    if (!rpc || !mainWindow) {
+        return;
+    }
+
+    const serverConfig = readServerConfig();
+    const state = serverConfig.version ? `Version: ${serverConfig.version}` : 'Configuring server...';
+
+    const activity = {
+        details: localIsServerRunningGlobal ? 'Server is running' : 'Server is stopped',
+        state: state,
+        startTimestamp: rpcStartTime,
+        largeImageKey: 'server_icon_large', // You need to upload an image named 'server_icon_large' in your Discord App's Rich Presence assets
+        largeImageText: 'Server Launcher',
+        smallImageKey: localIsServerRunningGlobal ? 'play_icon' : 'stop_icon', // And 'play_icon', 'stop_icon'
+        smallImageText: localIsServerRunningGlobal ? 'Running' : 'Stopped',
+        instance: false,
+    };
+
+    rpc.setActivity(activity).catch(err => {
+        // We don't need to spam the console if Discord isn't running
+        if (!err.message.includes('Could not connect')) {
+            sendConsole(`Discord RPC Error: ${err.message}`, 'ERROR');
+        }
+    });
 }
 
 function readJsonFile(filePath, fileNameForLog) {
@@ -192,6 +225,26 @@ app.whenReady().then(() => {
   }
   createWindow();
 
+  // Initialize Discord RPC
+  rpc = new RPC.Client({ transport: 'ipc' });
+
+  rpc.on('ready', () => {
+    sendConsole('Discord Rich Presence is active.', 'INFO');
+    rpcStartTime = new Date();
+    setDiscordActivity();
+
+    // Update presence periodically
+    setInterval(() => {
+      setDiscordActivity();
+    }, 15000); // every 15 seconds
+  });
+
+  rpc.login({ clientId }).catch(err => {
+      if (!err.message.includes('Could not connect')) {
+          sendConsole(`Discord RPC login error: ${err.message}`, 'ERROR');
+      }
+  });
+
   // Check for updates only if the app is packaged (not in development)
   if (app.isPackaged) {
     autoUpdater.checkForUpdates();
@@ -240,6 +293,13 @@ app.on('window-all-closed', () => {
     serverProcess.kill('SIGKILL');
     serverProcess = null;
     sendServerStateChange(false);
+  }
+  if (rpc) {
+      rpc.destroy().catch(err => {
+        if (!err.message.includes('Could not connect')) {
+            sendConsole(`Discord RPC destroy error: ${err.message}`, 'ERROR');
+        }
+      });
   }
   if (process.platform !== 'darwin') app.quit();
 });
@@ -471,15 +531,33 @@ ipcMain.on('start-server', async () => {
   let javaArgs = [];
 
   const performanceArgs = [
-      `-Xms${ramToUseForJava}`, `-Xmx${ramToUseForJava}`, 
-      '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-XX:+UnlockExperimentalVMOptions',
-      '-XX:MaxGCPauseMillis=200', '-XX:G1NewSizePercent=30', '-XX:G1MaxNewSizePercent=40',
-      '-XX:G1HeapRegionSize=8M', '-XX:G1ReservePercent=20', '-XX:InitiatingHeapOccupancyPercent=45',
+      `-Xms${ramToUseForJava}`, `-Xmx${ramToUseForJava}`,
+      '-XX:+UseG1GC',
+      '-XX:+ParallelRefProcEnabled',
+      '-XX:MaxGCPauseMillis=200',
+      '-XX:+UnlockExperimentalVMOptions',
+      '-XX:+DisableExplicitGC',
+      '-XX:+AlwaysPreTouch',
+      '-XX:G1NewSizePercent=40',
+      '-XX:G1MaxNewSizePercent=50',
+      '-XX:G1HeapRegionSize=16M',
+      '-XX:G1ReservePercent=15',
+      '-XX:G1HeapWastePercent=5',
+      '-XX:InitiatingHeapOccupancyPercent=20',
+      '-XX:G1MixedGCLiveThresholdPercent=90',
+      '-XX:G1RSetUpdatingPauseTimePercent=5',
+      '-XX:SurvivorRatio=32',
+      '-XX:MaxTenuringThreshold=1',
+      '-Dusing.aikars.flags=https://mcflags.emc.gs',
+      '-Daikars.new.flags=true',
       '-jar', paperJarName, 'nogui'
   ];
 
   const defaultArgs = [
       `-Xms${ramToUseForJava}`, `-Xmx${ramToUseForJava}`,
+      '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-XX:+UnlockExperimentalVMOptions',
+      '-XX:MaxGCPauseMillis=200', '-XX:G1NewSizePercent=30', '-XX:G1MaxNewSizePercent=40',
+      '-XX:G1HeapRegionSize=8M', '-XX:G1ReservePercent=20', '-XX:InitiatingHeapOccupancyPercent=45',
       '-jar', paperJarName, 'nogui'
   ];
 
@@ -505,11 +583,13 @@ ipcMain.on('start-server', async () => {
       const wasKilled = serverProcess?.killedInternally;
       serverProcess = null;
       sendServerStateChange(false);
-      if (wasKilled) sendStatus('Server stopped.', false);
-      else {
+      if (wasKilled) {
+        sendStatus('Server stopped.', false);
+      } else {
           sendStatus('Server stopped unexpectedly.', false);
           getMainWindow()?.webContents.send('request-status-check-for-fail');
       }
+      setDiscordActivity();
     });
     serverProcess.on('error', (err) => {
       sendConsole(`Failed to start process: ${err.message}`, 'ERROR');
