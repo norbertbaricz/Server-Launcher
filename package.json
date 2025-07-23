@@ -5,7 +5,6 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "echo \"Error: no test specified\" && exit 1",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
     "dist:win": "electron-builder --win"
@@ -68,6 +67,7 @@
       "icon": "build/icon.ico"
     },
     "nsis": {
+      "artifactName": "Server-Launcher-Setup-${version}.${ext}",
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
