@@ -1,6 +1,6 @@
 ISC License
 
-Copyright (c) 2025 MaxUltimat3
+Copyright (c) 2025 Norbert (Aka MaxUltimat3)
 
 Permission to use, copy, modify, and/or distribute this software for any
 purpose with or without fee is hereby granted, provided that the above
@@ -13,3 +13,31 @@ ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
 WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+-----------------------------------------------------------------------
+
+### Application Functionality and Data Access
+
+This Minecraft Server Launcher is designed to simplify the management of your server. Below are the details regarding the data it accesses and the actions it performs to function correctly.
+
+**Network Access:**
+* **PaperMC API:** The application connects to `api.papermc.io` to fetch the list of available server versions (PaperMC) and to download the corresponding `.jar` file based on your selection.
+* **Public IP Address:** It contacts `api.ipify.org` to retrieve and display your public IP address. This feature is intended to make it easier for you to share your IP with friends so they can connect to your server.
+* **Auto-Updater:** The application checks for new versions on the official GitHub repository (`norbertbaricz/server-launcher`). If an update is available, it will be downloaded to keep the launcher up-to-date.
+
+**File System Access:**
+* **Server Directory:** The launcher creates a `MinecraftServer` folder within the application's user data directory (`userData`) to store all server-related files, including `paper.jar`, `server.properties`, worlds, and logs.
+* **Configuration Files:**
+    * `config.json`: Saves server-specific settings you configure, such as the selected Minecraft version, RAM allocation, and Java arguments.
+    * `launcher-settings.json`: Saves launcher-specific settings, such as the option to start with the operating system.
+    * `server.properties`: Reads and writes to this file to apply the settings you configure in the UI, such as game rules and server settings.
+* **EULA Agreement:** To start the server, the launcher automatically accepts Mojang's End User License Agreement (EULA) on your behalf by creating and writing to the `eula.txt` file.
+
+**Process Management:**
+* **Java Server Process:** The launcher starts and stops the Java process required to run the `paper.jar` file, which operates the Minecraft server. It also reads the console output from this process to display it within the application.
+
+**Operating System Integration:**
+* **Local IP Address:** The launcher detects and displays your computer's local network IP address.
+* **Autostart:** If enabled in the settings, the application will configure itself to launch when you log in to your operating system. On Linux, this is done by creating a `.desktop` file in `~/.config/autostart/`.
+
+All these functionalities are designed to provide a seamless and centralized user experience, eliminating the need for manual server setup and management.
