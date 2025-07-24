@@ -340,6 +340,14 @@ window.electronAPI.onUpdateConsole((message, type) => addToConsole(message, type
 window.electronAPI.onUpdateStatus(async (message, pulse) => {
     setStatus(message, pulse);
     const lowerMessage = message.toLowerCase();
+
+    // ADAUGĂ ACESTE LINII
+    if (lowerMessage.includes('starting')) {
+        settingsButton.disabled = true;
+        settingsButton.classList.add('btn-disabled');
+    }
+    // SFÂRȘITUL MODIFICĂRII
+
     if (lowerMessage.includes('downloaded successfully') || lowerMessage.includes('configuration saved')) {
         hideDownloadLoading();
         await refreshUISetupState();
