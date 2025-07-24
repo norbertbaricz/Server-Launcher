@@ -36,6 +36,12 @@
         "repo": "server-launcher"
       }
     ],
+    "extraResources": [
+      {
+        "from": "build/icon.ico",
+        "to": "icon.ico"
+      }
+    ],
     "directories": {
       "output": "dist_electron"
     },
@@ -85,7 +91,7 @@
         "deb",
         "tar.gz"
       ],
-      "icon": "build/icon.png",
+      "icon": "build/icon.ico",
       "category": "Game"
     },
     "mac": {

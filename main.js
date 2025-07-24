@@ -49,7 +49,7 @@ const createDesktopFile = (startMinimized) => {
     Type=Application
     Name=${appName}
     Exec=${execPath}
-    Icon=${path.join(__dirname, 'build', 'icon.png')}
+    Icon=${path.join(__dirname, 'build', 'icon.ico')}
     Comment=Minecraft Server Launcher
     X-GNOME-Autostart-enabled=true
     `;
@@ -315,7 +315,20 @@ ipcMain.on('close-window', () => getMainWindow()?.close());
 
 // --- Handler nou pentru calea iconitei ---
 ipcMain.handle('get-icon-path', () => {
-    return path.join(__dirname, 'build/icon.png');
+    // În build: fișierul este în resources
+    let iconPath = path.join(process.resourcesPath, 'icon.ico');
+
+    // În dev: fișierul este în proiect (ex: build/icon.ico)
+    if (!fs.existsSync(iconPath)) {
+        iconPath = path.join(__dirname, 'build', 'icon.ico');
+    }
+
+    // Verifică dacă există
+    if (fs.existsSync(iconPath)) {
+        return iconPath;
+    }
+
+    return null; // fallback
 });
 
 // Settings IPC
