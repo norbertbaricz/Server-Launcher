@@ -33,8 +33,7 @@ const serverPropertiesFileName = 'server.properties';
 
 let localIsServerRunningGlobal = false;
 let mainWindow;
-let tpsInterval = null;
-let memoryInterval = null;
+let performanceStatsInterval = null;
 let manualTpsCheck = false;
 
 const getAutoStartPath = () => {
@@ -457,35 +456,32 @@ ipcMain.on('start-server', async () => {
 
     try {
         const allocatedRamGB = parseRamToGB(ramToUseForJava);
+        getMainWindow()?.webContents.send('update-performance-stats', { allocatedRamGB });
+
         serverProcess = spawn('java', javaArgs, { cwd: serverFilesDir, stdio: ['pipe', 'pipe', 'pipe'] });
         serverProcess.killedInternally = false;
         let serverIsFullyStarted = false;
         
-        if (tpsInterval) clearInterval(tpsInterval);
-        if (memoryInterval) clearInterval(memoryInterval);
+        if (performanceStatsInterval) clearInterval(performanceStatsInterval);
 
-        tpsInterval = setInterval(() => {
-            if (serverProcess && !serverProcess.killed) {
-                try { serverProcess.stdin.write("tps\n"); } catch (e) {
-                    clearInterval(tpsInterval);
-                }
-            } else { clearInterval(tpsInterval); }
-        }, 2000);
-
-        memoryInterval = setInterval(async () => {
+        performanceStatsInterval = setInterval(async () => {
             if (!serverProcess || !serverProcess.pid) {
-                clearInterval(memoryInterval);
+                clearInterval(performanceStatsInterval);
                 return;
             }
             try {
+                serverProcess.stdin.write("tps\n");
                 const processes = await si.processes();
                 const serverProcData = processes.list.find(p => p.pid === serverProcess.pid);
                 if (serverProcData) {
-                    const memoryGB = (serverProcData.mem_rss / 1024 / 1024).toFixed(2);
+                    const memInfo = await si.mem();
+                    const totalSystemMemoryBytes = memInfo.total;
+                    const memoryUsageBytes = (totalSystemMemoryBytes * (serverProcData.pmem / 100));
+                    const memoryGB = (memoryUsageBytes / (1024 * 1024 * 1024));
                     getMainWindow()?.webContents.send('update-performance-stats', { memoryGB });
                 }
             } catch (e) {
-                clearInterval(memoryInterval);
+                // Nu afisa erori minore in consola utilizatorului
             }
         }, 2000);
 
@@ -496,7 +492,7 @@ ipcMain.on('start-server', async () => {
 
             if (tpsMatch && tpsMatch[1]) {
                 const tps = tpsMatch[1];
-                getMainWindow()?.webContents.send('update-performance-stats', { tps, allocatedRamGB });
+                getMainWindow()?.webContents.send('update-performance-stats', { tps });
                 if (manualTpsCheck) {
                     sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
                     manualTpsCheck = false;
@@ -518,8 +514,7 @@ ipcMain.on('start-server', async () => {
         });
 
         serverProcess.on('close', (code) => {
-            if (tpsInterval) clearInterval(tpsInterval);
-            if (memoryInterval) clearInterval(memoryInterval);
+            if (performanceStatsInterval) clearInterval(performanceStatsInterval);
             sendConsole(`Server process exited (code ${code}).`, code === 0 || serverProcess?.killedInternally ? 'INFO' : 'ERROR');
             serverProcess = null;
             sendServerStateChange(false);
@@ -528,16 +523,14 @@ ipcMain.on('start-server', async () => {
         });
 
         serverProcess.on('error', (err) => {
-            if (tpsInterval) clearInterval(tpsInterval);
-            if (memoryInterval) clearInterval(memoryInterval);
+            if (performanceStatsInterval) clearInterval(performanceStatsInterval);
             sendConsole(`Failed to start process: ${err.message}`, 'ERROR');
             sendStatus(err.message.includes('ENOENT') ? 'Java not found!' : 'Server start failed.');
             serverProcess = null;
             sendServerStateChange(false);
         });
     } catch (error) {
-        if (tpsInterval) clearInterval(tpsInterval);
-        if (memoryInterval) clearInterval(memoryInterval);
+        if (performanceStatsInterval) clearInterval(performanceStatsInterval);
         sendConsole(`Error spawning server: ${error.message}`, 'ERROR');
         serverProcess = null;
         sendServerStateChange(false);
@@ -547,8 +540,7 @@ ipcMain.on('start-server', async () => {
 
 ipcMain.on('stop-server', async () => {
     if (!serverProcess || serverProcess.killed) { sendConsole('Server not running.', 'WARN'); return; }
-    if (tpsInterval) clearInterval(tpsInterval);
-    if (memoryInterval) clearInterval(memoryInterval);
+    if (performanceStatsInterval) clearInterval(performanceStatsInterval);
     sendConsole('Stopping server...', 'INFO');
     sendStatus('Stopping server...', true);
     serverProcess.killedInternally = true;

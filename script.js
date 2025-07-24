@@ -52,6 +52,7 @@ let localIsServerRunning = false;
 let currentServerConfig = {};
 let isModalAnimating = false;
 let availableMcVersionsCache = [];
+let allocatedRamCache = 'N/A';
 
 function addToConsole(message, type = 'INFO') {
     const timestamp = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -352,22 +353,30 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         setStatus('Server is running.', false);
         ipInfoBarDiv.classList.add('animate-green-attention');
         ipInfoBarDiv.addEventListener('animationend', () => ipInfoBarDiv.classList.remove('animate-green-attention'), { once: true });
+        // Seteaza un text initial la pornire
+        memoryUsageSpan.textContent = `— / ${allocatedRamCache !== 'N/A' ? allocatedRamCache : '...'} GB`;
     } else {
+        // Reseteaza la oprire
         memoryUsageSpan.textContent = '— / — GB';
         serverTpsSpan.textContent = '— / 20.0';
         serverTpsSpan.style.color = '';
+        allocatedRamCache = 'N/A'; 
     }
     await refreshUISetupState();
 });
 
-let allocatedRamCache = 'N/A';
 window.electronAPI.onUpdatePerformanceStats(({ tps, memoryGB, allocatedRamGB }) => {
     if (allocatedRamGB) {
         allocatedRamCache = allocatedRamGB;
     }
-    if (memoryGB) {
-        memoryUsageSpan.textContent = `${memoryGB} GB / ${allocatedRamCache} GB`;
+    
+    if (typeof memoryGB !== 'undefined') {
+        const memUsage = parseFloat(memoryGB);
+        if (!isNaN(memUsage) && allocatedRamCache !== 'N/A') {
+            memoryUsageSpan.textContent = `${memUsage.toFixed(2)} GB / ${allocatedRamCache} GB`;
+        }
     }
+
     if (tps) {
         const tpsValue = parseFloat(tps);
         serverTpsSpan.textContent = `${tpsValue.toFixed(1)} / 20.0`;
