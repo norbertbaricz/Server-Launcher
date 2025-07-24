@@ -521,11 +521,24 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
 });
 
 ipcMain.on('start-server', async () => {
-  if (serverProcess) { sendConsole('Server is already running.', 'WARN'); return; }
+  if (serverProcess) {
+    sendConsole('Server is already running.', 'WARN');
+    return;
+  }
+
   const serverJarPath = path.join(serverFilesDir, paperJarName);
-  if (!fs.existsSync(serverJarPath)) { sendConsole(`${paperJarName} not found.`, 'ERROR'); sendStatus(`${paperJarName} not found.`, false); return; }
+  if (!fs.existsSync(serverJarPath)) {
+    sendConsole(`${paperJarName} not found.`, 'ERROR');
+    sendStatus(`${paperJarName} not found.`, false);
+    return;
+  }
+
   const serverConfig = readServerConfig();
-  if (!serverConfig.version) { sendConsole('Server version missing in config.', 'ERROR'); sendStatus('Config error.', false); return; }
+  if (!serverConfig.version) {
+    sendConsole('Server version missing in config.', 'ERROR');
+    sendStatus('Config error.', false);
+    return;
+  }
 
   const eulaPath = path.join(serverFilesDir, 'eula.txt');
   try {
@@ -533,7 +546,11 @@ ipcMain.on('start-server', async () => {
       fs.writeFileSync(eulaPath, 'eula=true\n');
       sendConsole('EULA accepted.', 'INFO');
     }
-  } catch (error) { sendConsole(`EULA file error: ${error.message}`, 'ERROR'); sendStatus('EULA error.', false); return; }
+  } catch (error) {
+    sendConsole(`EULA file error: ${error.message}`, 'ERROR');
+    sendStatus('EULA error.', false);
+    return;
+  }
 
   let ramToUseForJava = "";
   if (serverConfig.ram && serverConfig.ram.toLowerCase() !== 'auto') {
@@ -544,30 +561,19 @@ ipcMain.on('start-server', async () => {
     if (autoRamMB < 1024) autoRamMB = 1024;
     ramToUseForJava = `${autoRamMB}M`;
   }
-  
+
   const javaArgsProfile = serverConfig.javaArgs || 'Default';
   let javaArgs = [];
 
   const performanceArgs = [
       `-Xms${ramToUseForJava}`, `-Xmx${ramToUseForJava}`,
-      '-XX:+UseG1GC',
-      '-XX:+ParallelRefProcEnabled',
-      '-XX:MaxGCPauseMillis=200',
-      '-XX:+UnlockExperimentalVMOptions',
-      '-XX:+DisableExplicitGC',
-      '-XX:+AlwaysPreTouch',
-      '-XX:G1NewSizePercent=40',
-      '-XX:G1MaxNewSizePercent=50',
-      '-XX:G1HeapRegionSize=16M',
-      '-XX:G1ReservePercent=15',
-      '-XX:G1HeapWastePercent=5',
-      '-XX:InitiatingHeapOccupancyPercent=20',
-      '-XX:G1MixedGCLiveThresholdPercent=90',
-      '-XX:G1RSetUpdatingPauseTimePercent=5',
-      '-XX:SurvivorRatio=32',
-      '-XX:MaxTenuringThreshold=1',
-      '-Dusing.aikars.flags=https://mcflags.emc.gs',
-      '-Daikars.new.flags=true',
+      '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-XX:MaxGCPauseMillis=200',
+      '-XX:+UnlockExperimentalVMOptions', '-XX:+DisableExplicitGC', '-XX:+AlwaysPreTouch',
+      '-XX:G1NewSizePercent=40', '-XX:G1MaxNewSizePercent=50', '-XX:G1HeapRegionSize=16M',
+      '-XX:G1ReservePercent=15', '-XX:G1HeapWastePercent=5', '-XX:InitiatingHeapOccupancyPercent=20',
+      '-XX:G1MixedGCLiveThresholdPercent=90', '-XX:G1RSetUpdatingPauseTimePercent=5',
+      '-XX:SurvivorRatio=32', '-XX:MaxTenuringThreshold=1',
+      '-Dusing.aikars.flags=https://mcflags.emc.gs', '-Daikars.new.flags=true',
       '-jar', paperJarName, 'nogui'
   ];
 
@@ -579,23 +585,32 @@ ipcMain.on('start-server', async () => {
       '-jar', paperJarName, 'nogui'
   ];
 
-  if (javaArgsProfile === 'Performance') {
-      javaArgs = performanceArgs;
-      sendConsole('Using Performance Java arguments.', 'INFO');
-  } else {
-      javaArgs = defaultArgs;
-      sendConsole('Using Default Java arguments.', 'INFO');
-  }
+  javaArgs = (javaArgsProfile === 'Performance') ? performanceArgs : defaultArgs;
+  sendConsole(`Using ${javaArgsProfile} Java arguments.`, 'INFO');
 
   sendConsole(`Starting server with ${ramToUseForJava} RAM...`, 'INFO');
   sendStatus('Starting server...', true);
+
   try {
     serverProcess = spawn('java', javaArgs, { cwd: serverFilesDir, stdio: ['pipe', 'pipe', 'pipe'] });
-    
     serverProcess.killedInternally = false;
-    sendServerStateChange(true);
-    serverProcess.stdout.on('data', (data) => sendConsole(data.toString().trimEnd(), 'SERVER_LOG'));
+    let serverIsFullyStarted = false;
+
+    serverProcess.stdout.on('data', (data) => {
+      const output = data.toString().trimEnd();
+      sendConsole(output, 'SERVER_LOG');
+
+      if (!serverIsFullyStarted && /Done \([^)]+\)! For help, type "help"/.test(output)) {
+        serverIsFullyStarted = true;
+        sendServerStateChange(true);
+        // AICI ESTE CORECȚIA: setStatus -> sendStatus
+        sendStatus('Server is running.', false); 
+        setDiscordActivity();
+      }
+    });
+
     serverProcess.stderr.on('data', (data) => sendConsole(data.toString().trimEnd(), 'SERVER_ERROR'));
+
     serverProcess.on('close', (code) => {
       sendConsole(`Server process exited (code ${code}).`, code === 0 || serverProcess?.killedInternally ? 'INFO' : 'ERROR');
       const wasKilled = serverProcess?.killedInternally;
@@ -604,20 +619,26 @@ ipcMain.on('start-server', async () => {
       if (wasKilled) {
         sendStatus('Server stopped.', false);
       } else {
-          sendStatus('Server stopped unexpectedly.', false);
-          getMainWindow()?.webContents.send('request-status-check-for-fail');
+        sendStatus('Server stopped unexpectedly.', false);
+        getMainWindow()?.webContents.send('request-status-check-for-fail');
       }
       setDiscordActivity();
     });
+
     serverProcess.on('error', (err) => {
       sendConsole(`Failed to start process: ${err.message}`, 'ERROR');
-      if (err.message.includes('ENOENT')) sendStatus('Java not found!', false);
-      else sendStatus('Server start failed.', false);
-      serverProcess = null; sendServerStateChange(false);
+      if (err.message.includes('ENOENT')) {
+          sendStatus('Java not found!', false);
+      } else {
+          sendStatus('Server start failed.', false);
+      }
+      serverProcess = null;
+      sendServerStateChange(false);
     });
   } catch (error) {
     sendConsole(`Error spawning server: ${error.message}`, 'ERROR');
-    serverProcess = null; sendServerStateChange(false);
+    serverProcess = null;
+    sendServerStateChange(false);
     sendStatus('Error starting server.', false);
   }
 });
