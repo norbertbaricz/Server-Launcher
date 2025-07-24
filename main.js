@@ -313,6 +313,11 @@ ipcMain.on('maximize-window', () => {
 });
 ipcMain.on('close-window', () => getMainWindow()?.close());
 
+// --- Handler nou pentru calea iconitei ---
+ipcMain.handle('get-icon-path', () => {
+    return path.join(__dirname, 'build/icon.png');
+});
+
 // Settings IPC
 ipcMain.handle('get-settings', () => {
     const settings = readLauncherSettings();

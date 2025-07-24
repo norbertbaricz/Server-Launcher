@@ -419,7 +419,12 @@ async function fetchAndDisplayIPs() {
     } catch (error) { publicIpAddressSpan.textContent = 'Error'; }
 }
 
+// Modificat pentru a fi async și a seta iconița
 async function initializeApp() {
+    // Setează calea către iconiță
+    const iconPath = await window.electronAPI.getIconPath();
+    document.getElementById('app-icon').src = iconPath;
+
     addToConsole("Launcher initializing...", "INFO");
     setStatus("Initializing...", true);
     // Fetch and set the app version in the title

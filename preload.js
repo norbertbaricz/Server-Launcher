@@ -30,4 +30,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAvailablePaperMCVersions: () => ipcRenderer.invoke('get-available-papermc-versions'),
     getLocalIP: () => ipcRenderer.invoke('get-local-ip'),
     getPublicIP: () => ipcRenderer.invoke('get-public-ip'),
+    // Funcție nouă adăugată
+    getIconPath: () => ipcRenderer.invoke('get-icon-path'),
 });
