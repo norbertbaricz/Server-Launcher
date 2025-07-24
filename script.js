@@ -9,6 +9,8 @@ const commandInput = document.getElementById('command-input');
 const sendCommandButton = document.getElementById('send-command-button');
 const startButton = document.getElementById('start-button');
 const stopButton = document.getElementById('stop-button');
+const memoryUsageSpan = document.getElementById('memory-usage');
+const serverTpsSpan = document.getElementById('server-tps');
 
 // Butoane de acțiune
 const openFolderButtonMain = document.getElementById('open-folder-button-main');
@@ -55,20 +57,25 @@ function addToConsole(message, type = 'INFO') {
     const timestamp = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const p = document.createElement('p');
     p.classList.add('console-message');
+
+    if (type === 'SERVER_LOG_HTML') {
+        p.innerHTML = `<span class="text-gray-500">[${timestamp}]</span> ${message}`;
+        consoleOutput.appendChild(p);
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        return;
+    }
+    
     let typeColor = '#9ca3af'; let typeText = type.toUpperCase();
     if (type === 'ERROR' || type === 'SERVER_ERROR') { typeColor = '#f87171'; typeText = type === 'SERVER_ERROR' ? 'STDERR' : 'ERROR'; }
     else if (type === 'WARN') { typeColor = '#facc15'; }
     else if (type === 'SUCCESS') { typeColor = '#4ade80'; }
     else if (type === 'CMD') { typeColor = '#60a5fa'; }
-    else if (type === 'SERVER_LOG') {
-        const sanitizedMessage = String(message).replace(/</g, "&lt;").replace(/>/g, "&gt;");
-        p.innerHTML = `<span class="text-gray-500">[${timestamp}]</span> ${sanitizedMessage}`;
-        consoleOutput.appendChild(p); consoleOutput.scrollTop = consoleOutput.scrollHeight; return;
-    }
+
     const sanitizedMessage = String(message).replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const typePrefix = `<span style="color: ${typeColor}; font-weight: bold;">[${typeText}]</span> `;
     p.innerHTML = `<span class="text-gray-500">[${timestamp}]</span> ${typePrefix}${sanitizedMessage}`;
-    consoleOutput.appendChild(p); consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    consoleOutput.appendChild(p);
+    consoleOutput.scrollTop = consoleOutput.scrollHeight;
 }
 
 function getStatusColor(text) {
@@ -123,7 +130,6 @@ function updateButtonStates(isRunning) {
     setupActivePlaceholderTop.classList.toggle('hidden', setupComplete);
     if (!isRunning) commandInput.value = "";
 
-    // Actualizează versiunea serverului afișată în UI
     if (currentServerConfig && currentServerConfig.version) {
         serverVersionSpan.textContent = currentServerConfig.version;
     } else {
@@ -205,14 +211,13 @@ async function refreshUISetupState() {
             updateButtonStates(localIsServerRunning);
         });
     }
-    // Re-fetch IPs and port, as server.properties might have been created/changed.
     await fetchAndDisplayIPs();
 }
 
 async function populateServerProperties() {
     serverPropertiesContainer.innerHTML = '<p class="text-gray-400 text-center">Loading properties...</p>';
     const properties = await window.electronAPI.getServerProperties();
-    serverPropertiesContainer.innerHTML = ''; // Clear loading message
+    serverPropertiesContainer.innerHTML = '';
 
     if (!properties || Object.keys(properties).length === 0) {
         serverPropertiesContainer.innerHTML = '<p class="text-gray-400 text-center">Could not load server.properties. Run the server once to generate it.</p>';
@@ -223,12 +228,10 @@ async function populateServerProperties() {
         const value = properties[key];
         const propDiv = document.createElement('div');
         propDiv.className = 'flex items-center justify-between';
-
         const label = document.createElement('label');
         label.textContent = key.replace(/-/g, ' ');
         label.className = 'text-sm text-gray-300 capitalize';
         label.htmlFor = `prop-${key}`;
-
         let input;
         if (value === 'true' || value === 'false') {
             input = document.createElement('select');
@@ -248,17 +251,14 @@ async function populateServerProperties() {
             input.className = 'w-1/2 bg-gray-600 border border-gray-500 text-gray-200 text-sm rounded-md p-1.5 focus:ring-blue-500 focus:border-blue-500';
             input.value = value;
         }
-        
         input.id = `prop-${key}`;
         input.dataset.key = key;
-
         propDiv.appendChild(label);
         propDiv.appendChild(input);
         serverPropertiesContainer.appendChild(propDiv);
     }
 }
 
-// --- Event Listeners ---
 downloadModalButton.addEventListener('click', () => {
     if (downloadModalButton.disabled) return;
     const version = mcVersionModalSelect.value;
@@ -271,25 +271,18 @@ downloadModalButton.addEventListener('click', () => {
     window.electronAPI.downloadPaperMC({ mcVersion: version, ramAllocation: ram, javaArgs: 'Default' });
 });
 
-openFolderButtonMain.addEventListener('click', () => {
-    if(!openFolderButtonMain.disabled) window.electronAPI.openServerFolder();
-});
-
+openFolderButtonMain.addEventListener('click', () => { if(!openFolderButtonMain.disabled) window.electronAPI.openServerFolder(); });
 settingsButton.addEventListener('click', async () => {
     if (settingsButton.disabled) return;
-
     const launcherSettings = await window.electronAPI.getSettings();
     startWithWindowsCheckbox.checked = launcherSettings.openAtLogin;
     startMinimizedCheckbox.checked = launcherSettings.openAsHidden;
-    
     startMinimizedCheckbox.disabled = !startWithWindowsCheckbox.checked;
     startMinimizedCheckbox.closest('label').classList.toggle('opacity-50', !startWithWindowsCheckbox.checked);
-
     const serverConfig = await window.electronAPI.getServerConfig();
     await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version);
     ramAllocationSettingsSelect.value = serverConfig.ram || 'auto';
     javaArgumentsSettingsSelect.value = serverConfig.javaArgs || 'Default';
-
     await populateServerProperties();
     showModal(settingsModal, settingsModalContent);
 });
@@ -298,51 +291,29 @@ startWithWindowsCheckbox.addEventListener('change', () => {
     const isEnabled = startWithWindowsCheckbox.checked;
     startMinimizedCheckbox.disabled = !isEnabled;
     startMinimizedCheckbox.closest('label').classList.toggle('opacity-50', !isEnabled);
-    if (!isEnabled) {
-        startMinimizedCheckbox.checked = false;
-    }
+    if (!isEnabled) startMinimizedCheckbox.checked = false;
 });
 
-closeSettingsButton.addEventListener('click', () => {
-    hideModal(settingsModal, settingsModalContent);
-});
+closeSettingsButton.addEventListener('click', () => hideModal(settingsModal, settingsModalContent));
 
 saveSettingsButton.addEventListener('click', () => {
-    const newLauncherSettings = {
-        openAtLogin: startWithWindowsCheckbox.checked,
-        openAsHidden: startMinimizedCheckbox.checked,
-    };
+    const newLauncherSettings = { openAtLogin: startWithWindowsCheckbox.checked, openAsHidden: startMinimizedCheckbox.checked };
     window.electronAPI.setSettings(newLauncherSettings);
-
     const newProperties = {};
-    const inputs = serverPropertiesContainer.querySelectorAll('input, select');
-    inputs.forEach(input => {
+    serverPropertiesContainer.querySelectorAll('input, select').forEach(input => {
         newProperties[input.dataset.key] = input.value;
     });
-    if(Object.keys(newProperties).length > 0) {
-        window.electronAPI.setServerProperties(newProperties);
-    }
-
+    if (Object.keys(newProperties).length > 0) window.electronAPI.setServerProperties(newProperties);
     const newMcVersion = mcVersionSettingsSelect.value;
     const newRam = ramAllocationSettingsSelect.value;
     const newJavaArgs = javaArgumentsSettingsSelect.value;
-    window.electronAPI.downloadPaperMC({ 
-        mcVersion: newMcVersion, 
-        ramAllocation: newRam,
-        javaArgs: newJavaArgs 
-    });
-    
+    window.electronAPI.downloadPaperMC({ mcVersion: newMcVersion, ramAllocation: newRam, javaArgs: newJavaArgs });
     addToConsole("Settings saved and applied.", "SUCCESS");
     hideModal(settingsModal, settingsModalContent);
 });
 
-startButton.addEventListener('click', () => {
-    if (!startButton.disabled) window.electronAPI.startServer();
-});
-
-stopButton.addEventListener('click', () => {
-    if (!stopButton.disabled) window.electronAPI.stopServer();
-});
+startButton.addEventListener('click', () => { if (!startButton.disabled) window.electronAPI.startServer(); });
+stopButton.addEventListener('click', () => { if (!stopButton.disabled) window.electronAPI.stopServer(); });
 
 sendCommandButton.addEventListener('click', () => {
     const command = commandInput.value.trim();
@@ -353,22 +324,17 @@ sendCommandButton.addEventListener('click', () => {
     }
 });
 
-commandInput.addEventListener('keypress', (event) => {
-    if (event.key === 'Enter') sendCommandButton.click();
-});
-
+commandInput.addEventListener('keypress', (event) => { if (event.key === 'Enter') sendCommandButton.click(); });
 minimizeBtn.addEventListener('click', () => window.electronAPI.minimizeWindow());
 maximizeBtn.addEventListener('click', () => window.electronAPI.maximizeWindow());
 closeBtn.addEventListener('click', () => window.electronAPI.closeWindow());
 
-// --- Electron API Listeners ---
 window.electronAPI.onWindowMaximized((isMaximized) => {
     maximizeBtnIcon.className = isMaximized ? 'far fa-window-restore' : 'far fa-square';
     maximizeBtn.setAttribute('aria-label', isMaximized ? 'Restore' : 'Maximize');
 });
 
 window.electronAPI.onUpdateConsole((message, type) => addToConsole(message, type));
-
 window.electronAPI.onUpdateStatus(async (message, pulse) => {
     setStatus(message, pulse);
     const lowerMessage = message.toLowerCase();
@@ -386,8 +352,29 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         setStatus('Server is running.', false);
         ipInfoBarDiv.classList.add('animate-green-attention');
         ipInfoBarDiv.addEventListener('animationend', () => ipInfoBarDiv.classList.remove('animate-green-attention'), { once: true });
+    } else {
+        memoryUsageSpan.textContent = '— / — GB';
+        serverTpsSpan.textContent = '— / 20.0';
+        serverTpsSpan.style.color = '';
     }
     await refreshUISetupState();
+});
+
+let allocatedRamCache = 'N/A';
+window.electronAPI.onUpdatePerformanceStats(({ tps, memoryGB, allocatedRamGB }) => {
+    if (allocatedRamGB) {
+        allocatedRamCache = allocatedRamGB;
+    }
+    if (memoryGB) {
+        memoryUsageSpan.textContent = `${memoryGB} GB / ${allocatedRamCache} GB`;
+    }
+    if (tps) {
+        const tpsValue = parseFloat(tps);
+        serverTpsSpan.textContent = `${tpsValue.toFixed(1)} / 20.0`;
+        if (tpsValue < 15) serverTpsSpan.style.color = '#ef4444';
+        else if (tpsValue < 18) serverTpsSpan.style.color = '#facc15';
+        else serverTpsSpan.style.color = '#4ade80';
+    }
 });
 
 window.electronAPI.onRequestStatusCheckForFail(() => {
@@ -399,16 +386,13 @@ window.electronAPI.onRequestStatusCheckForFail(() => {
 async function fetchAndDisplayIPs() {
     let port = '';
     try {
-        // First, try to get the server port from server.properties
         const properties = await window.electronAPI.getServerProperties();
         if (properties && properties['server-port']) {
             port = `:${properties['server-port']}`;
         }
     } catch (error) {
-        // It's not critical if this fails, we just won't display the port.
         console.warn("Could not fetch server port for display.", error);
     }
-
     try {
         const localIP = await window.electronAPI.getLocalIP() || 'N/A';
         localIpAddressSpan.textContent = (localIP !== 'N/A' && localIP !== 'Error') ? `${localIP}${port}` : localIP;
@@ -419,15 +403,11 @@ async function fetchAndDisplayIPs() {
     } catch (error) { publicIpAddressSpan.textContent = 'Error'; }
 }
 
-// Modificat pentru a fi async și a seta iconița
 async function initializeApp() {
-    // Setează calea către iconiță
     const iconPath = await window.electronAPI.getIconPath();
     document.getElementById('app-icon').src = iconPath;
-
     addToConsole("Launcher initializing...", "INFO");
     setStatus("Initializing...", true);
-    // Fetch and set the app version in the title
     const version = await window.electronAPI.getAppVersion();
     const titleText = `Server Launcher v${version}`;
     document.title = titleText;

@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onUpdateStatus: (callback) => ipcRenderer.on('update-status', (_event, ...args) => callback(...args)),
     onServerStateChange: (callback) => ipcRenderer.on('server-state-change', (_event, ...args) => callback(...args)),
     onRequestStatusCheckForFail: (callback) => ipcRenderer.on('request-status-check-for-fail', (_event, ...args) => callback(...args)),
+    onUpdatePerformanceStats: (callback) => ipcRenderer.on('update-performance-stats', (_event, ...args) => callback(...args)),
 
     // --- Renderer to Main (send) ---
     minimizeWindow: () => ipcRenderer.send('minimize-window'),
@@ -17,7 +18,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     downloadPaperMC: (options) => ipcRenderer.send('download-papermc', options),
     startServer: () => ipcRenderer.send('start-server'),
     stopServer: () => ipcRenderer.send('stop-server'),
-    // AICI ESTE MODIFICAREA
     sendCommand: (command) => ipcRenderer.send('send-command', command),
     setServerProperties: (properties) => ipcRenderer.send('set-server-properties', properties),
 
@@ -31,6 +31,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getAvailablePaperMCVersions: () => ipcRenderer.invoke('get-available-papermc-versions'),
     getLocalIP: () => ipcRenderer.invoke('get-local-ip'),
     getPublicIP: () => ipcRenderer.invoke('get-public-ip'),
-    // Funcție nouă adăugată
     getIconPath: () => ipcRenderer.invoke('get-icon-path'),
 });
