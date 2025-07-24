@@ -17,7 +17,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     downloadPaperMC: (options) => ipcRenderer.send('download-papermc', options),
     startServer: () => ipcRenderer.send('start-server'),
     stopServer: () => ipcRenderer.send('stop-server'),
-    sendCommand: (command) => ipcRenderer.send('send-command'),
+    // AICI ESTE MODIFICAREA
+    sendCommand: (command) => ipcRenderer.send('send-command', command),
     setServerProperties: (properties) => ipcRenderer.send('set-server-properties', properties),
 
     // --- Renderer to Main (invoke) ---

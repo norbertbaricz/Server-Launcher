@@ -634,7 +634,9 @@ ipcMain.on('stop-server', async () => {
 
 ipcMain.on('send-command', (event, command) => {
   if (serverProcess && !serverProcess.killed) {
-    try { serverProcess.stdin.write(command + '\n'); }
+    try { 
+      serverProcess.stdin.write(command + '\n'); 
+    }
     catch (error) { sendConsole(`Error writing to stdin: ${error.message}`, 'ERROR'); }
   } else { sendConsole('Cannot send command: Server not running.', 'ERROR'); }
 });
