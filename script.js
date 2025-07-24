@@ -55,12 +55,12 @@ let availableMcVersionsCache = [];
 let allocatedRamCache = '-';
 
 function addToConsole(message, type = 'INFO') {
-    const timestamp = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const p = document.createElement('p');
     p.classList.add('console-message');
 
     if (type === 'SERVER_LOG_HTML') {
-        p.innerHTML = `<span class="text-gray-500">[${timestamp}]</span> ${message}`;
+        // Am eliminat timestamp-ul de aici
+        p.innerHTML = `${message}`;
         consoleOutput.appendChild(p);
         consoleOutput.scrollTop = consoleOutput.scrollHeight;
         return;
@@ -74,7 +74,8 @@ function addToConsole(message, type = 'INFO') {
 
     const sanitizedMessage = String(message).replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const typePrefix = `<span style="color: ${typeColor}; font-weight: bold;">[${typeText}]</span> `;
-    p.innerHTML = `<span class="text-gray-500">[${timestamp}]</span> ${typePrefix}${sanitizedMessage}`;
+    // Și de aici am eliminat timestamp-ul
+    p.innerHTML = `${typePrefix}${sanitizedMessage}`;
     consoleOutput.appendChild(p);
     consoleOutput.scrollTop = consoleOutput.scrollHeight;
 }
