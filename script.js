@@ -383,7 +383,7 @@ window.electronAPI.onUpdatePerformanceStats(({ tps, memoryGB, allocatedRamGB }) 
         const memUsage = parseFloat(memoryGB);
         if (!isNaN(memUsage) && allocatedRamCache !== '-') {
             // Scădem 1 din valoarea memoriei înainte de a o afișa
-            const adjustedMemUsage = memUsage - 1;
+            const adjustedMemUsage = memUsage - 0.20;
             
             // Ne asigurăm că rezultatul nu este negativ
             const finalMemUsage = Math.max(0, adjustedMemUsage);
