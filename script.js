@@ -52,7 +52,7 @@ let localIsServerRunning = false;
 let currentServerConfig = {};
 let isModalAnimating = false;
 let availableMcVersionsCache = [];
-let allocatedRamCache = 'N/A';
+let allocatedRamCache = '-';
 
 function addToConsole(message, type = 'INFO') {
     const timestamp = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -134,7 +134,7 @@ function updateButtonStates(isRunning) {
     if (currentServerConfig && currentServerConfig.version) {
         serverVersionSpan.textContent = currentServerConfig.version;
     } else {
-        serverVersionSpan.textContent = 'N/A';
+        serverVersionSpan.textContent = '-';
     }
 }
 
@@ -354,13 +354,13 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         ipInfoBarDiv.classList.add('animate-green-attention');
         ipInfoBarDiv.addEventListener('animationend', () => ipInfoBarDiv.classList.remove('animate-green-attention'), { once: true });
         // Seteaza un text initial la pornire
-        memoryUsageSpan.textContent = `— / ${allocatedRamCache !== 'N/A' ? allocatedRamCache : '...'} GB`;
+        memoryUsageSpan.textContent = `— / ${allocatedRamCache !== '-' ? allocatedRamCache : '...'} GB`;
     } else {
         // Reseteaza la oprire
         memoryUsageSpan.textContent = '— / — GB';
         serverTpsSpan.textContent = '— / 20.0';
         serverTpsSpan.style.color = '';
-        allocatedRamCache = 'N/A'; 
+        allocatedRamCache = '-'; 
     }
     await refreshUISetupState();
 });
@@ -372,8 +372,14 @@ window.electronAPI.onUpdatePerformanceStats(({ tps, memoryGB, allocatedRamGB }) 
     
     if (typeof memoryGB !== 'undefined') {
         const memUsage = parseFloat(memoryGB);
-        if (!isNaN(memUsage) && allocatedRamCache !== 'N/A') {
-            memoryUsageSpan.textContent = `${memUsage.toFixed(2)} GB / ${allocatedRamCache} GB`;
+        if (!isNaN(memUsage) && allocatedRamCache !== '-') {
+            // Scădem 1 din valoarea memoriei înainte de a o afișa
+            const adjustedMemUsage = memUsage - 1;
+            
+            // Ne asigurăm că rezultatul nu este negativ
+            const finalMemUsage = Math.max(0, adjustedMemUsage);
+
+            memoryUsageSpan.textContent = `${finalMemUsage.toFixed(2)} / ${allocatedRamCache} GB`;
         }
     }
 
@@ -403,12 +409,12 @@ async function fetchAndDisplayIPs() {
         console.warn("Could not fetch server port for display.", error);
     }
     try {
-        const localIP = await window.electronAPI.getLocalIP() || 'N/A';
-        localIpAddressSpan.textContent = (localIP !== 'N/A' && localIP !== 'Error') ? `${localIP}${port}` : localIP;
+        const localIP = await window.electronAPI.getLocalIP() || '-';
+        localIpAddressSpan.textContent = (localIP !== '-' && localIP !== 'Error') ? `${localIP}${port}` : localIP;
     } catch (error) { localIpAddressSpan.textContent = 'Error'; }
     try {
-        const publicIP = await window.electronAPI.getPublicIP() || 'N/A';
-        publicIpAddressSpan.textContent = (publicIP !== 'N/A' && publicIP !== 'Error') ? `${publicIP}${port}` : publicIP;
+        const publicIP = await window.electronAPI.getPublicIP() || '-';
+        publicIpAddressSpan.textContent = (publicIP !== '-' && publicIP !== 'Error') ? `${publicIP}${port}` : publicIP;
     } catch (error) { publicIpAddressSpan.textContent = 'Error'; }
 }
 

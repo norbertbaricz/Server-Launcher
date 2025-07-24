@@ -8,7 +8,7 @@ const os = require('node:os');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
 const RPC = require('discord-rpc');
-const si = require('systeminformation');
+const pidusage = require('pidusage');
 const AnsiToHtml = require('ansi-to-html');
 
 const ansiConverter = new AnsiToHtml();
@@ -137,7 +137,7 @@ function getLocalIPv4() {
             }
         }
     }
-    return 'N/A';
+    return '-';
 }
 
 async function getPublicIP() {
@@ -152,7 +152,7 @@ async function getPublicIP() {
             res.on('end', () => {
                 try {
                     const jsonData = JSON.parse(data);
-                    resolve(jsonData.ip || 'N/A');
+                    resolve(jsonData.ip || '-');
                 } catch (e) {
                     reject(new Error('Failed to parse public IP response.'));
                 }
@@ -444,12 +444,12 @@ ipcMain.on('start-server', async () => {
     sendStatus('Starting server...', true);
 
     function parseRamToGB(ramString) {
-        if (!ramString) return 'N/A';
+        if (!ramString) return '-';
         const value = parseInt(ramString.slice(0, -1));
         const unit = ramString.slice(-1).toUpperCase();
         if (unit === 'G') return value.toFixed(1);
         if (unit === 'M') return (value / 1024).toFixed(1);
-        return 'N/A';
+        return '-';
     }
 
     const stripAnsiCodes = (str) => str.replace(/\u001b\[(?:\d{1,3}(?:;\d{1,3})*)?[m|K]/g, '');
@@ -462,28 +462,35 @@ ipcMain.on('start-server', async () => {
         serverProcess.killedInternally = false;
         let serverIsFullyStarted = false;
         
-        if (performanceStatsInterval) clearInterval(performanceStatsInterval);
+    if (performanceStatsInterval) clearInterval(performanceStatsInterval);
 
-        performanceStatsInterval = setInterval(async () => {
-            if (!serverProcess || !serverProcess.pid) {
-                clearInterval(performanceStatsInterval);
-                return;
-            }
-            try {
-                serverProcess.stdin.write("tps\n");
-                const processes = await si.processes();
-                const serverProcData = processes.list.find(p => p.pid === serverProcess.pid);
-                if (serverProcData) {
-                    const memInfo = await si.mem();
-                    const totalSystemMemoryBytes = memInfo.total;
-                    const memoryUsageBytes = (totalSystemMemoryBytes * (serverProcData.pmem / 100));
-                    const memoryGB = (memoryUsageBytes / (1024 * 1024 * 1024));
-                    getMainWindow()?.webContents.send('update-performance-stats', { memoryGB });
-                }
+    performanceStatsInterval = setInterval(async () => {
+        if (!serverProcess || !serverProcess.pid) {
+            clearInterval(performanceStatsInterval);
+            return;
+        }
+
+        try {
+            // Trimite comanda pentru TPS la fiecare 4 secunde (mai rar)
+            serverProcess.stdin.write("tps\n");
+
+            // Folosește pidusage pentru a obține statisticile procesului
+            const stats = await pidusage(serverProcess.pid);
+
+            // stats.memory este direct în Bytes, deci convertim în GB
+            const memoryGB = stats.memory / (1024 * 1024 * 1024);
+
+            // Trimite datele către interfață
+            getMainWindow()?.webContents.send('update-performance-stats', { memoryGB });
+
             } catch (e) {
-                // Nu afisa erori minore in consola utilizatorului
+                // Oprește intervalul dacă procesul nu mai există
+                if (e.message.includes('No matching pid found')) {
+                    clearInterval(performanceStatsInterval);
+                }
+                // Ignorăm alte erori minore
             }
-        }, 2000);
+        }, 2000); // Verificăm la fiecare 2 secunde
 
         serverProcess.stdout.on('data', (data) => {
             const rawOutput = data.toString();
@@ -566,6 +573,6 @@ ipcMain.handle('get-public-ip', async () => {
     try { return await getPublicIP(); }
     catch (error) {
         sendConsole(`Could not fetch Public IP: ${error.message}`, 'ERROR');
-        return 'N/A (Error)';
+        return '- (Error)';
     }
 });
