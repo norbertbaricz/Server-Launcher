@@ -15,7 +15,7 @@
     "Launcher",
     "Electron"
   ],
-  "author": "MaxUltimat3",
+  "author": "Skypixel",
   "license": "ISC",
   "devDependencies": {
     "electron": "^36.2.1",
@@ -30,7 +30,7 @@
     "systeminformation": "^5.22.11"
   },
   "build": {
-    "appId": "com.maxultimat3.serverlauncher",
+    "appId": "com.skypixel.serverlauncher",
     "productName": "Server Launcher",
     "publish": [
       {
