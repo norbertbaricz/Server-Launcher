@@ -150,43 +150,6 @@ async function checkJava() {
     });
 }
 
-
-let javaInstallPollInterval = null;
-
-const pollForJavaInstallation = (win) => {
-    if (javaInstallPollInterval) {
-        clearInterval(javaInstallPollInterval);
-    }
-
-    let pollCount = 0;
-    const maxPolls = 120; // Timeout de 10 minute (120 * 5 secunde)
-
-    javaInstallPollInterval = setInterval(async () => {
-        pollCount++;
-        const hasJava = await checkJava();
-
-        if (hasJava) {
-            clearInterval(javaInstallPollInterval);
-            javaInstallPollInterval = null;
-            win.webContents.send('java-install-status', 'Java 21 detected! Restarting the launcher...');
-            log.info('Java installation successful, restarting app.');
-            
-            setTimeout(() => {
-                app.relaunch();
-                app.quit();
-            }, 2000);
-            return;
-        }
-
-        if (pollCount > maxPolls) {
-            clearInterval(javaInstallPollInterval);
-            javaInstallPollInterval = null;
-            win.webContents.send('java-install-status', 'Java installation check timed out. Please restart the launcher manually.');
-            log.warn('Polling for Java installation timed out.');
-        }
-    }, 5000); // Verifică la fiecare 5 secunde
-};
-
 async function downloadAndInstallJava() {
     const win = getMainWindow();
     if (!win) return;
@@ -273,9 +236,12 @@ async function downloadAndInstallJava() {
             if (errorMessage) {
                 throw new Error(`Failed to open installer: ${errorMessage}`);
             }
-            win.webContents.send('java-install-status', 'The Java installer has been launched. Please follow its instructions. The launcher will automatically restart when installation is complete.');
-            log.info('Java installer launched. Starting to poll for installation completion.');
-            pollForJavaInstallation(win);
+            win.webContents.send('java-install-status', 'Installer launched. Please complete the installation, then restart the launcher. The application will now close.');
+            log.info('Java installer launched. Closing the launcher.');
+            
+            setTimeout(() => {
+                app.quit();
+            }, 4000); // Give user time to read the message
         });
 
     } catch (error) {
@@ -284,7 +250,6 @@ async function downloadAndInstallJava() {
             'java-install-status',
             `Error: ${error.message}. Please try again or install Java manually.`
         );
-        if (javaInstallPollInterval) clearInterval(javaInstallPollInterval);
     }
 }
 const getAutoStartPath = () => {
@@ -512,9 +477,6 @@ autoUpdater.on('update-downloaded', (info) => {
 });
 
 app.on('window-all-closed', () => {
-    if (javaInstallPollInterval) {
-        clearInterval(javaInstallPollInterval);
-    }
     if (serverProcess && typeof serverProcess.kill === 'function' && !serverProcess.killed) {
         serverProcess.killedInternally = true;
         serverProcess.kill('SIGKILL');
