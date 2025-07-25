@@ -391,12 +391,14 @@ window.electronAPI.onUpdateStatus(async (message, pulse) => {
         settingsButton.classList.add('btn-disabled');
     }
 
-    if (lowerMessage.includes('downloaded successfully') || lowerMessage.includes('configuration saved')) {
-        hideDownloadLoading();
-        await refreshUISetupState();
-    } else if ((lowerMessage.includes('failed') || lowerMessage.includes('error')) && !setupModal.classList.contains('hidden')) {
+    if ((lowerMessage.includes('failed') || lowerMessage.includes('error')) && !setupModal.classList.contains('hidden')) {
         hideDownloadLoading();
     }
+});
+
+window.electronAPI.onSetupFinished(async () => {
+    hideDownloadLoading();
+    await refreshUISetupState();
 });
 
 window.electronAPI.onServerStateChange(async (isRunning) => {

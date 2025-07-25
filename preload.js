@@ -9,9 +9,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onRequestStatusCheckForFail: (callback) => ipcRenderer.on('request-status-check-for-fail', (_event, ...args) => callback(...args)),
     onUpdatePerformanceStats: (callback) => ipcRenderer.on('update-performance-stats', (_event, ...args) => callback(...args)),
     onStartCountdown: (callback) => ipcRenderer.on('start-countdown', (_event, ...args) => callback(...args)),
-    // Canale noi pentru instalarea Java
     onJavaInstallRequired: (callback) => ipcRenderer.on('java-install-required', (_event, ...args) => callback(...args)),
     onJavaInstallStatus: (callback) => ipcRenderer.on('java-install-status', (_event, ...args) => callback(...args)),
+    onSetupFinished: (callback) => ipcRenderer.on('setup-finished', (_event, ...args) => callback(...args)), // Eveniment nou
 
 
     // --- Renderer to Main (send) ---
@@ -25,7 +25,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     stopServer: () => ipcRenderer.send('stop-server'),
     sendCommand: (command) => ipcRenderer.send('send-command', command),
     setServerProperties: (properties) => ipcRenderer.send('set-server-properties', properties),
-    // Canale noi pentru instalarea Java
     startJavaInstall: () => ipcRenderer.send('start-java-install'),
     restartApp: () => ipcRenderer.send('restart-app'),
 

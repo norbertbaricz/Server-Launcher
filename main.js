@@ -50,14 +50,14 @@ let manualTpsCheck = false;
 async function checkJava() {
     return new Promise((resolve) => {
         const javaCheck = spawn('java', ['-version']);
-        javaCheck.on('error', () => resolve(false)); // Nu a putut rula comanda
+        javaCheck.on('error', () => resolve(false));
         javaCheck.stderr.on('data', (data) => {
             if (data.toString().includes('version')) {
-                resolve(true); // Java este instalat
+                resolve(true);
             }
         });
         javaCheck.on('close', (code) => {
-            if (code !== 0) resolve(false); // Comanda a eșuat
+            if (code !== 0) resolve(false);
         });
     });
 }
@@ -83,11 +83,13 @@ async function downloadAndInstallJava() {
         });
 
         const releases = JSON.parse(responseText);
-        const pkg = releases[0]?.binary?.package;
-        if (!pkg || !pkg.link) {
-            throw new Error('Could not find a valid download link for Java.');
+        const installerRelease = releases.find(r => r.binary.package.name.endsWith('.msi'));
+        
+        if (!installerRelease || !installerRelease.binary?.package?.link) {
+            throw new Error('Could not find a valid .msi installer for Java.');
         }
 
+        const pkg = installerRelease.binary.package;
         const downloadUrl = pkg.link;
         const fileName = path.basename(downloadUrl);
         const tempDir = app.getPath('temp');
@@ -112,23 +114,14 @@ async function downloadAndInstallJava() {
             }).on('error', reject);
         });
 
-        win.webContents.send('java-install-status', 'Download complete. Installing...');
+        win.webContents.send('java-install-status', 'Download complete. Please follow the installation prompts.');
 
-        if (osName === 'windows') {
-            await new Promise((resolve, reject) => {
-                execFile('msiexec', ['/i', filePath, '/qn'], (error) => {
-                    if (error) {
-                        return reject(error);
-                    }
-                    resolve();
-                });
-            });
-             win.webContents.send('java-install-status', 'Installation complete! Please restart the launcher.');
-        } else {
-            // Pentru Mac & Linux, deschidem fișierul și lăsăm utilizatorul să instaleze
-            shell.openPath(filePath);
-            win.webContents.send('java-install-status', 'Installation file opened. Please complete the installation and then restart the launcher.');
-        }
+        shell.openPath(filePath).then((errorMessage) => {
+            if (errorMessage) {
+                throw new Error(`Failed to open installer: ${errorMessage}`);
+            }
+            win.webContents.send('java-install-status', 'Installation complete! Please restart the launcher.');
+        });
 
     } catch (error) {
         log.error('Java install error:', error);
@@ -290,7 +283,7 @@ function createWindow () {
   mainWindow.loadFile('index.html');
   mainWindow.webContents.on('did-finish-load', async () => {
       const hasJava = await checkJava();
-      if (!hasJava) {
+      if (!hasJava && app.isPackaged) {
           mainWindow.webContents.send('java-install-required');
           return;
       }
@@ -486,6 +479,7 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
 
     if (fs.existsSync(path.join(serverFilesDir, paperJarName)) && currentConfig.version === mcVersion) {
         sendStatus('Configuration saved!', false);
+        getMainWindow()?.webContents.send('setup-finished'); // Anunță finalizarea
         return;
     }
     sendStatus(`Downloading PaperMC ${mcVersion}...`, true);
@@ -512,6 +506,7 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
         });
         sendStatus('PaperMC downloaded successfully!', false);
         sendConsole(`${paperJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
+        getMainWindow()?.webContents.send('setup-finished'); // Anunță finalizarea
     } catch (error) {
         sendStatus('Download failed.', false);
         sendConsole(`ERROR: ${error.message}`, 'ERROR');
