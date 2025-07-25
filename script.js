@@ -37,7 +37,6 @@ const mcVersionSettingsSelect = document.getElementById('mc-version-settings');
 const ramAllocationSettingsSelect = document.getElementById('ram-allocation-settings');
 const javaArgumentsSettingsSelect = document.getElementById('java-arguments-settings');
 const startWithWindowsCheckbox = document.getElementById('start-with-windows-checkbox');
-const startMinimizedCheckbox = document.getElementById('start-minimized-checkbox');
 const saveSettingsButton = document.getElementById('save-settings-button');
 const closeSettingsButton = document.getElementById('close-settings-button');
 const serverPropertiesContainer = document.getElementById('server-properties-container');
@@ -59,7 +58,6 @@ function addToConsole(message, type = 'INFO') {
     p.classList.add('console-message');
 
     if (type === 'SERVER_LOG_HTML') {
-        // Am eliminat timestamp-ul de aici
         p.innerHTML = `${message}`;
         consoleOutput.appendChild(p);
         consoleOutput.scrollTop = consoleOutput.scrollHeight;
@@ -74,7 +72,6 @@ function addToConsole(message, type = 'INFO') {
 
     const sanitizedMessage = String(message).replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const typePrefix = `<span style="color: ${typeColor}; font-weight: bold;">[${typeText}]</span> `;
-    // Și de aici am eliminat timestamp-ul
     p.innerHTML = `${typePrefix}${sanitizedMessage}`;
     consoleOutput.appendChild(p);
     consoleOutput.scrollTop = consoleOutput.scrollHeight;
@@ -274,13 +271,13 @@ downloadModalButton.addEventListener('click', () => {
 });
 
 openFolderButtonMain.addEventListener('click', () => { if(!openFolderButtonMain.disabled) window.electronAPI.openServerFolder(); });
+
 settingsButton.addEventListener('click', async () => {
     if (settingsButton.disabled) return;
     const launcherSettings = await window.electronAPI.getSettings();
     startWithWindowsCheckbox.checked = launcherSettings.openAtLogin;
-    startMinimizedCheckbox.checked = launcherSettings.openAsHidden;
-    startMinimizedCheckbox.disabled = !startWithWindowsCheckbox.checked;
-    startMinimizedCheckbox.closest('label').classList.toggle('opacity-50', !startWithWindowsCheckbox.checked);
+    document.getElementById('auto-start-server-checkbox').checked = launcherSettings.autoStartServer;
+    
     const serverConfig = await window.electronAPI.getServerConfig();
     await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version);
     ramAllocationSettingsSelect.value = serverConfig.ram || 'auto';
@@ -289,27 +286,26 @@ settingsButton.addEventListener('click', async () => {
     showModal(settingsModal, settingsModalContent);
 });
 
-startWithWindowsCheckbox.addEventListener('change', () => {
-    const isEnabled = startWithWindowsCheckbox.checked;
-    startMinimizedCheckbox.disabled = !isEnabled;
-    startMinimizedCheckbox.closest('label').classList.toggle('opacity-50', !isEnabled);
-    if (!isEnabled) startMinimizedCheckbox.checked = false;
-});
-
 closeSettingsButton.addEventListener('click', () => hideModal(settingsModal, settingsModalContent));
 
 saveSettingsButton.addEventListener('click', () => {
-    const newLauncherSettings = { openAtLogin: startWithWindowsCheckbox.checked, openAsHidden: startMinimizedCheckbox.checked };
+    const newLauncherSettings = { 
+        openAtLogin: startWithWindowsCheckbox.checked, 
+        autoStartServer: document.getElementById('auto-start-server-checkbox').checked 
+    };
     window.electronAPI.setSettings(newLauncherSettings);
+    
     const newProperties = {};
     serverPropertiesContainer.querySelectorAll('input, select').forEach(input => {
         newProperties[input.dataset.key] = input.value;
     });
     if (Object.keys(newProperties).length > 0) window.electronAPI.setServerProperties(newProperties);
+    
     const newMcVersion = mcVersionSettingsSelect.value;
     const newRam = ramAllocationSettingsSelect.value;
     const newJavaArgs = javaArgumentsSettingsSelect.value;
     window.electronAPI.downloadPaperMC({ mcVersion: newMcVersion, ramAllocation: newRam, javaArgs: newJavaArgs });
+    
     addToConsole("Settings saved and applied.", "SUCCESS");
     hideModal(settingsModal, settingsModalContent);
 });
@@ -341,12 +337,10 @@ window.electronAPI.onUpdateStatus(async (message, pulse) => {
     setStatus(message, pulse);
     const lowerMessage = message.toLowerCase();
 
-    // ADAUGĂ ACESTE LINII
     if (lowerMessage.includes('starting')) {
         settingsButton.disabled = true;
         settingsButton.classList.add('btn-disabled');
     }
-    // SFÂRȘITUL MODIFICĂRII
 
     if (lowerMessage.includes('downloaded successfully') || lowerMessage.includes('configuration saved')) {
         hideDownloadLoading();
@@ -359,14 +353,14 @@ window.electronAPI.onUpdateStatus(async (message, pulse) => {
 window.electronAPI.onServerStateChange(async (isRunning) => {
     updateButtonStates(isRunning);
     if (isRunning) {
+        if (countdownInterval) clearInterval(countdownInterval);
         setStatus('Server is running.', false);
         ipInfoBarDiv.classList.add('animate-green-attention');
         ipInfoBarDiv.addEventListener('animationend', () => ipInfoBarDiv.classList.remove('animate-green-attention'), { once: true });
-        // Seteaza un text initial la pornire
         memoryUsageSpan.textContent = `— / ${allocatedRamCache !== '-' ? allocatedRamCache : '...'} GB`;
     } else {
-        // Reseteaza la oprire
         memoryUsageSpan.textContent = '— / — GB';
+        memoryUsageSpan.style.color = '';
         serverTpsSpan.textContent = '— / 20.0';
         serverTpsSpan.style.color = '';
         allocatedRamCache = '-'; 
@@ -381,14 +375,21 @@ window.electronAPI.onUpdatePerformanceStats(({ tps, memoryGB, allocatedRamGB }) 
     
     if (typeof memoryGB !== 'undefined') {
         const memUsage = parseFloat(memoryGB);
-        if (!isNaN(memUsage) && allocatedRamCache !== '-') {
-            // Scădem 1 din valoarea memoriei înainte de a o afișa
-            const adjustedMemUsage = memUsage - 0;
-            
-            // Ne asigurăm că rezultatul nu este negativ
-            const finalMemUsage = Math.max(0, adjustedMemUsage);
+        const allocatedRam = parseFloat(allocatedRamCache);
 
+        if (!isNaN(memUsage) && !isNaN(allocatedRam) && allocatedRam > 0) {
+            const finalMemUsage = Math.max(0, memUsage);
             memoryUsageSpan.textContent = `${finalMemUsage.toFixed(2)} / ${allocatedRamCache} GB`;
+
+            const usagePercent = (finalMemUsage / allocatedRam) * 100;
+
+            if (usagePercent >= 90) {
+                memoryUsageSpan.style.color = '#ef4444';
+            } else if (usagePercent >= 70) {
+                memoryUsageSpan.style.color = '#facc15';
+            } else {
+                memoryUsageSpan.style.color = '#4ade80';
+            }
         }
     }
 
@@ -441,3 +442,34 @@ async function initializeApp() {
 }
 
 document.addEventListener('DOMContentLoaded', initializeApp);
+
+let countdownInterval = null;
+
+function startCountdown(seconds, message, callback) {
+    if (countdownInterval) clearInterval(countdownInterval);
+
+    let remaining = seconds;
+    const updateStatus = () => {
+        if (remaining > 0) {
+            setStatus(`${message} in ${remaining}s...`, true);
+            remaining--;
+        } else {
+            clearInterval(countdownInterval);
+            callback();
+        }
+    };
+
+    updateStatus();
+    countdownInterval = setInterval(updateStatus, 1000);
+}
+
+window.electronAPI.onStartCountdown((type) => {
+    if (localIsServerRunning) return;
+    
+    const message = type === 'initial' ? 'Auto-starting server' : 'Auto-restarting server';
+    startCountdown(5, message, () => {
+        if (!startButton.disabled) {
+            window.electronAPI.startServer();
+        }
+    });
+});

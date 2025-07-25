@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onServerStateChange: (callback) => ipcRenderer.on('server-state-change', (_event, ...args) => callback(...args)),
     onRequestStatusCheckForFail: (callback) => ipcRenderer.on('request-status-check-for-fail', (_event, ...args) => callback(...args)),
     onUpdatePerformanceStats: (callback) => ipcRenderer.on('update-performance-stats', (_event, ...args) => callback(...args)),
+    onStartCountdown: (callback) => ipcRenderer.on('start-countdown', (_event, ...args) => callback(...args)),
 
     // --- Renderer to Main (send) ---
     minimizeWindow: () => ipcRenderer.send('minimize-window'),

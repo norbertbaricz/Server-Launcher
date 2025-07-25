@@ -188,8 +188,13 @@ function createWindow () {
 
   mainWindow.loadFile('index.html');
   mainWindow.webContents.on('did-finish-load', () => {
-    sendServerStateChange(localIsServerRunningGlobal);
-    mainWindow.webContents.send('window-maximized', mainWindow.isMaximized());
+      sendServerStateChange(localIsServerRunningGlobal);
+      mainWindow.webContents.send('window-maximized', mainWindow.isMaximized());
+
+      const launcherSettings = readLauncherSettings();
+      if (launcherSettings.autoStartServer) {
+          mainWindow.webContents.send('start-countdown', 'initial');
+      }
   });
 
   mainWindow.on('maximize', () => mainWindow.webContents.send('window-maximized', true));
@@ -275,19 +280,15 @@ ipcMain.handle('get-icon-path', () => {
 });
 ipcMain.handle('get-settings', () => {
     const settings = readLauncherSettings();
-    const openAtLogin = settings.startWithWindows || false;
-    const openAsHidden = openAtLogin && (settings.startMinimized || false);
-    return { openAtLogin, openAsHidden };
+    return {
+        openAtLogin: settings.startWithWindows || false,
+        autoStartServer: settings.autoStartServer || false,
+    };
 });
 ipcMain.on('set-settings', (event, settings) => {
-    const { openAtLogin, openAsHidden } = settings;
-    if (process.platform === 'linux') {
-        if (openAtLogin) createDesktopFile(openAsHidden);
-        else if (fs.existsSync(getAutoStartPath())) fs.unlinkSync(getAutoStartPath());
-    } else {
-        app.setLoginItemSettings({ openAtLogin, openAsHidden });
-    }
-    writeLauncherSettings({ startWithWindows: openAtLogin, startMinimized: openAsHidden });
+    const { openAtLogin, autoStartServer } = settings;
+    app.setLoginItemSettings({ openAtLogin });
+    writeLauncherSettings({ startWithWindows: openAtLogin, autoStartServer: autoStartServer });
 });
 ipcMain.handle('get-app-version', () => version);
 ipcMain.handle('get-server-config', () => readServerConfig());
@@ -464,33 +465,53 @@ ipcMain.on('start-server', async () => {
         
     if (performanceStatsInterval) clearInterval(performanceStatsInterval);
 
-    performanceStatsInterval = setInterval(async () => {
-        if (!serverProcess || !serverProcess.pid) {
-            clearInterval(performanceStatsInterval);
-            return;
-        }
+        // Start performance monitoring interval
+        performanceStatsInterval = setInterval(async () => {
+            if (!serverProcess || !serverProcess.pid) {
+                clearInterval(performanceStatsInterval);
+                return;
+            }
 
-        try {
-            // Trimite comanda pentru TPS la fiecare 4 secunde (mai rar)
-            serverProcess.stdin.write("tps\n");
+            try {
+                // Try sending the "tps" command safely
+                if (
+                    serverProcess.stdin &&
+                    !serverProcess.killed &&
+                    typeof serverProcess.stdin.write === 'function'
+                ) {
+                    try {
+                        serverProcess.stdin.write("tps\n");
+                    } catch (writeErr) {
+                        if (writeErr.code === 'EPIPE') {
+                            console.warn("EPIPE: stdin is closed. Stopping interval.");
+                            clearInterval(performanceStatsInterval);
+                            return;
+                        } else {
+                            console.error("Error writing to stdin:", writeErr);
+                        }
+                    }
+                }
 
-            // Folosește pidusage pentru a obține statisticile procesului
-            const stats = await pidusage(serverProcess.pid);
-
-            // stats.memory este direct în Bytes, deci convertim în GB
-            const memoryGB = stats.memory / (1024 * 1024 * 1024);
-
-            // Trimite datele către interfață
-            getMainWindow()?.webContents.send('update-performance-stats', { memoryGB });
+                // Get memory stats
+                const stats = await pidusage(serverProcess.pid);
+                const memoryGB = stats.memory / (1024 * 1024 * 1024);
+                getMainWindow()?.webContents.send('update-performance-stats', { memoryGB });
 
             } catch (e) {
-                // Oprește intervalul dacă procesul nu mai există
-                if (e.message.includes('No matching pid found')) {
+                console.error("Error while updating performance stats:", e);
+                if (e.message.includes('No matching pid found') || e.code === 'EPIPE') {
                     clearInterval(performanceStatsInterval);
                 }
-                // Ignorăm alte erori minore
             }
-        }, 2000); // Verificăm la fiecare 2 secunde
+        }, 2000);
+
+        // Optional: stop interval if server exits
+        if (serverProcess) {
+            serverProcess.on('exit', () => {
+                console.log("Server process exited. Stopping performance stats interval.");
+                clearInterval(performanceStatsInterval);
+            });
+        }
 
         serverProcess.stdout.on('data', (data) => {
             const rawOutput = data.toString();
@@ -522,11 +543,24 @@ ipcMain.on('start-server', async () => {
 
         serverProcess.on('close', (code) => {
             if (performanceStatsInterval) clearInterval(performanceStatsInterval);
-            sendConsole(`Server process exited (code ${code}).`, code === 0 || serverProcess?.killedInternally ? 'INFO' : 'ERROR');
+            const killedInternally = serverProcess?.killedInternally;
             serverProcess = null;
             sendServerStateChange(false);
-            sendStatus(serverProcess?.killedInternally ? 'Server stopped.' : 'Server stopped unexpectedly.');
             setDiscordActivity();
+    
+            if (killedInternally) {
+                sendStatus('Server stopped.', false);
+                sendConsole('Server process stopped normally.', 'INFO');
+            } else {
+                sendStatus('Server stopped unexpectedly.', false);
+                sendConsole(`Server process exited unexpectedly with code ${code}.`, 'ERROR');
+                
+                const launcherSettings = readLauncherSettings();
+                if (launcherSettings.autoStartServer) {
+                    sendConsole('Attempting to auto-restart server...', 'WARN');
+                    mainWindow.webContents.send('start-countdown', 'restart');
+                }
+            }
         });
 
         serverProcess.on('error', (err) => {
@@ -551,7 +585,11 @@ ipcMain.on('stop-server', async () => {
     sendConsole('Stopping server...', 'INFO');
     sendStatus('Stopping server...', true);
     serverProcess.killedInternally = true;
-    try { serverProcess.stdin.write("stop\n"); } catch (e) {
+    try {
+        if (serverProcess.stdin.writable) {
+            serverProcess.stdin.write("stop\n");
+        }
+    } catch (e) {
         serverProcess.kill('SIGKILL');
     }
     setTimeout(() => { if (serverProcess && !serverProcess.killed) serverProcess.kill('SIGKILL'); }, 10000);
@@ -562,7 +600,7 @@ ipcMain.on('send-command', (event, command) => {
     if (trimmedCommand === 'tps' || trimmedCommand === '/tps') {
         manualTpsCheck = true;
     }
-    if (serverProcess && !serverProcess.killed) {
+    if (serverProcess && serverProcess.stdin.writable) {
         try { serverProcess.stdin.write(command + '\n'); }
         catch (error) { sendConsole(`Error writing to stdin: ${error.message}`, 'ERROR'); }
     } else { sendConsole('Cannot send command: Server not running.', 'ERROR'); }
