@@ -3,13 +3,23 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { version } = require('./package.json');
 const https = require('node:https');
-const { spawn } = require('node:child_process');
+const { spawn, execFile } = require('node:child_process');
 const os = require('node:os');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
 const RPC = require('discord-rpc');
 const pidusage = require('pidusage');
 const AnsiToHtml = require('ansi-to-html');
+
+process.on('uncaughtException', (error) => {
+  log.error('UNCAUGHT EXCEPTION:', error);
+  sendConsole(`An uncaught exception was prevented: ${error.message}`, 'ERROR');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  log.error('UNHANDLED REJECTION:', reason);
+  sendConsole(`An unhandled promise rejection was caught: ${reason}`, 'ERROR');
+});
 
 const ansiConverter = new AnsiToHtml();
 
@@ -35,6 +45,97 @@ let localIsServerRunningGlobal = false;
 let mainWindow;
 let performanceStatsInterval = null;
 let manualTpsCheck = false;
+
+// ===== JAVA CHECK & INSTALL =====
+async function checkJava() {
+    return new Promise((resolve) => {
+        const javaCheck = spawn('java', ['-version']);
+        javaCheck.on('error', () => resolve(false)); // Nu a putut rula comanda
+        javaCheck.stderr.on('data', (data) => {
+            if (data.toString().includes('version')) {
+                resolve(true); // Java este instalat
+            }
+        });
+        javaCheck.on('close', (code) => {
+            if (code !== 0) resolve(false); // Comanda a eșuat
+        });
+    });
+}
+
+async function downloadAndInstallJava() {
+    const win = getMainWindow();
+    if (!win) return;
+
+    try {
+        const arch = process.arch === 'ia32' ? 'x86' : 'x64';
+        const osName = process.platform === 'win32' ? 'windows' : (process.platform === 'darwin' ? 'mac' : 'linux');
+        
+        win.webContents.send('java-install-status', 'Finding the latest Java version...');
+        
+        const apiURL = `https://api.adoptium.net/v3/assets/latest/21/hotspot?architecture=${arch}&image_type=jdk&os=${osName}&vendor=eclipse`;
+
+        const responseText = await new Promise((resolve, reject) => {
+            https.get(apiURL, res => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => resolve(data));
+            }).on('error', err => reject(err));
+        });
+
+        const releases = JSON.parse(responseText);
+        const pkg = releases[0]?.binary?.package;
+        if (!pkg || !pkg.link) {
+            throw new Error('Could not find a valid download link for Java.');
+        }
+
+        const downloadUrl = pkg.link;
+        const fileName = path.basename(downloadUrl);
+        const tempDir = app.getPath('temp');
+        const filePath = path.join(tempDir, fileName);
+
+        win.webContents.send('java-install-status', `Downloading ${fileName}...`, 0);
+
+        const fileStream = fs.createWriteStream(filePath);
+        const totalBytes = pkg.size;
+
+        await new Promise((resolve, reject) => {
+            https.get(downloadUrl, (response) => {
+                let downloadedBytes = 0;
+                response.on('data', (chunk) => {
+                    downloadedBytes += chunk.length;
+                    const progress = Math.round((downloadedBytes / totalBytes) * 100);
+                    win.webContents.send('java-install-status', `Downloading... ${progress}%`, progress);
+                });
+                response.pipe(fileStream);
+                fileStream.on('finish', () => fileStream.close(resolve));
+                fileStream.on('error', reject);
+            }).on('error', reject);
+        });
+
+        win.webContents.send('java-install-status', 'Download complete. Installing...');
+
+        if (osName === 'windows') {
+            await new Promise((resolve, reject) => {
+                execFile('msiexec', ['/i', filePath, '/qn'], (error) => {
+                    if (error) {
+                        return reject(error);
+                    }
+                    resolve();
+                });
+            });
+             win.webContents.send('java-install-status', 'Installation complete! Please restart the launcher.');
+        } else {
+            // Pentru Mac & Linux, deschidem fișierul și lăsăm utilizatorul să instaleze
+            shell.openPath(filePath);
+            win.webContents.send('java-install-status', 'Installation file opened. Please complete the installation and then restart the launcher.');
+        }
+
+    } catch (error) {
+        log.error('Java install error:', error);
+        win.webContents.send('java-install-status', `Error: ${error.message}. Please try again or install Java manually.`);
+    }
+}
+
 
 const getAutoStartPath = () => {
     if (process.platform !== 'linux') return '';
@@ -187,13 +288,20 @@ function createWindow () {
   });
 
   mainWindow.loadFile('index.html');
-  mainWindow.webContents.on('did-finish-load', () => {
+  mainWindow.webContents.on('did-finish-load', async () => {
+      const hasJava = await checkJava();
+      if (!hasJava) {
+          mainWindow.webContents.send('java-install-required');
+          return;
+      }
+      
       sendServerStateChange(localIsServerRunningGlobal);
       mainWindow.webContents.send('window-maximized', mainWindow.isMaximized());
 
       const launcherSettings = readLauncherSettings();
       if (launcherSettings.autoStartServer) {
-          mainWindow.webContents.send('start-countdown', 'initial');
+          const delay = launcherSettings.autoStartDelay || 5;
+          mainWindow.webContents.send('start-countdown', 'initial', delay);
       }
   });
 
@@ -278,18 +386,29 @@ ipcMain.handle('get-icon-path', () => {
     if (!fs.existsSync(iconPath)) iconPath = path.join(__dirname, 'build', 'icon.ico');
     return fs.existsSync(iconPath) ? iconPath : null;
 });
+
 ipcMain.handle('get-settings', () => {
     const settings = readLauncherSettings();
     return {
         openAtLogin: settings.startWithWindows || false,
         autoStartServer: settings.autoStartServer || false,
+        autoStartDelay: settings.autoStartDelay || 5,
     };
 });
 ipcMain.on('set-settings', (event, settings) => {
-    const { openAtLogin, autoStartServer } = settings;
+    const { openAtLogin, autoStartServer, autoStartDelay } = settings;
     app.setLoginItemSettings({ openAtLogin });
-    writeLauncherSettings({ startWithWindows: openAtLogin, autoStartServer: autoStartServer });
+    writeLauncherSettings({ startWithWindows: openAtLogin, autoStartServer: autoStartServer, autoStartDelay: autoStartDelay });
 });
+
+ipcMain.on('start-java-install', () => {
+    downloadAndInstallJava();
+});
+ipcMain.on('restart-app', () => {
+    app.relaunch();
+    app.quit();
+});
+
 ipcMain.handle('get-app-version', () => version);
 ipcMain.handle('get-server-config', () => readServerConfig());
 ipcMain.handle('get-server-properties', () => {
@@ -462,56 +581,25 @@ ipcMain.on('start-server', async () => {
         serverProcess = spawn('java', javaArgs, { cwd: serverFilesDir, stdio: ['pipe', 'pipe', 'pipe'] });
         serverProcess.killedInternally = false;
         let serverIsFullyStarted = false;
-        
-    if (performanceStatsInterval) clearInterval(performanceStatsInterval);
 
-        // Start performance monitoring interval
+        if (performanceStatsInterval) clearInterval(performanceStatsInterval);
+
         performanceStatsInterval = setInterval(async () => {
-            if (!serverProcess || !serverProcess.pid) {
+            if (!serverProcess || serverProcess.killed) {
                 clearInterval(performanceStatsInterval);
                 return;
             }
-
             try {
-                // Try sending the "tps" command safely
-                if (
-                    serverProcess.stdin &&
-                    !serverProcess.killed &&
-                    typeof serverProcess.stdin.write === 'function'
-                ) {
-                    try {
-                        serverProcess.stdin.write("tps\n");
-                    } catch (writeErr) {
-                        if (writeErr.code === 'EPIPE') {
-                            console.warn("EPIPE: stdin is closed. Stopping interval.");
-                            clearInterval(performanceStatsInterval);
-                            return;
-                        } else {
-                            console.error("Error writing to stdin:", writeErr);
-                        }
-                    }
-                }
-
-                // Get memory stats
                 const stats = await pidusage(serverProcess.pid);
                 const memoryGB = stats.memory / (1024 * 1024 * 1024);
                 getMainWindow()?.webContents.send('update-performance-stats', { memoryGB });
-
-            } catch (e) {
-                console.error("Error while updating performance stats:", e);
-                if (e.message.includes('No matching pid found') || e.code === 'EPIPE') {
-                    clearInterval(performanceStatsInterval);
+                if (serverProcess && serverProcess.stdin && serverProcess.stdin.writable) {
+                    serverProcess.stdin.write("tps\n");
                 }
+            } catch (e) {
+                clearInterval(performanceStatsInterval);
             }
         }, 2000);
-
-        // Optional: stop interval if server exits
-        if (serverProcess) {
-            serverProcess.on('exit', () => {
-                console.log("Server process exited. Stopping performance stats interval.");
-                clearInterval(performanceStatsInterval);
-            });
-        }
 
         serverProcess.stdout.on('data', (data) => {
             const rawOutput = data.toString();
@@ -542,7 +630,7 @@ ipcMain.on('start-server', async () => {
         });
 
         serverProcess.on('close', (code) => {
-            if (performanceStatsInterval) clearInterval(performanceStatsInterval);
+            if (performanceStatsInterval) clearInterval(performanceStatsInterval); 
             const killedInternally = serverProcess?.killedInternally;
             serverProcess = null;
             sendServerStateChange(false);
@@ -558,13 +646,14 @@ ipcMain.on('start-server', async () => {
                 const launcherSettings = readLauncherSettings();
                 if (launcherSettings.autoStartServer) {
                     sendConsole('Attempting to auto-restart server...', 'WARN');
-                    mainWindow.webContents.send('start-countdown', 'restart');
+                    const delay = launcherSettings.autoStartDelay || 5;
+                    mainWindow.webContents.send('start-countdown', 'restart', delay);
                 }
             }
         });
 
         serverProcess.on('error', (err) => {
-            if (performanceStatsInterval) clearInterval(performanceStatsInterval);
+            if (performanceStatsInterval) clearInterval(performanceStatsInterval); 
             sendConsole(`Failed to start process: ${err.message}`, 'ERROR');
             sendStatus(err.message.includes('ENOENT') ? 'Java not found!' : 'Server start failed.');
             serverProcess = null;

@@ -40,6 +40,19 @@ const startWithWindowsCheckbox = document.getElementById('start-with-windows-che
 const saveSettingsButton = document.getElementById('save-settings-button');
 const closeSettingsButton = document.getElementById('close-settings-button');
 const serverPropertiesContainer = document.getElementById('server-properties-container');
+const autoStartServerCheckbox = document.getElementById('auto-start-server-checkbox');
+const autoStartDelayContainer = document.getElementById('auto-start-delay-container');
+const autoStartDelaySlider = document.getElementById('auto-start-delay-slider');
+const autoStartDelayValue = document.getElementById('auto-start-delay-value');
+
+// Modal Java Install
+const javaInstallModal = document.getElementById('java-install-modal');
+const javaInstallModalContent = document.getElementById('java-install-modal-content');
+const javaInstallMessage = document.getElementById('java-install-message');
+const javaInstallButton = document.getElementById('java-install-button');
+const javaRestartButton = document.getElementById('java-restart-button');
+const javaInstallProgressBarContainer = document.getElementById('java-install-progress-bar-container');
+const javaInstallProgressBar = document.getElementById('java-install-progress-bar');
 
 // Title Bar
 const minimizeBtn = document.getElementById('minimize-btn');
@@ -52,6 +65,8 @@ let currentServerConfig = {};
 let isModalAnimating = false;
 let availableMcVersionsCache = [];
 let allocatedRamCache = '-';
+let autoStartIsActive = false; 
+let countdownInterval = null;
 
 function addToConsole(message, type = 'INFO') {
     const p = document.createElement('p');
@@ -82,7 +97,7 @@ function getStatusColor(text) {
     if (lowerText.includes("running")) return '#22c55e';
     if (lowerText.includes("failed") || lowerText.includes("error")) return '#ef4444';
     if (lowerText.includes("successfully") || lowerText.includes("saved") || lowerText.includes("ready")) return '#4ade80';
-    if (lowerText.includes("stopped") || lowerText.includes("initialized")) return '#9ca3af';
+    if (lowerText.includes("stopped") || lowerText.includes("initialized") || lowerText.includes("cancelled")) return '#9ca3af';
     return '#3b82f6';
 }
 
@@ -113,17 +128,21 @@ function hideDownloadLoading() {
 function updateButtonStates(isRunning) {
     localIsServerRunning = isRunning;
     const setupComplete = setupModal.classList.contains('hidden');
-    startButton.disabled = isRunning || !setupComplete;
+    
+    startButton.disabled = isRunning || !setupComplete || autoStartIsActive;
+    
     stopButton.disabled = !isRunning;
     sendCommandButton.disabled = !isRunning;
     commandInput.disabled = !isRunning;
     openFolderButtonMain.disabled = !setupComplete;
     settingsButton.disabled = isRunning || !setupComplete;
+
     startButton.classList.toggle('btn-disabled', startButton.disabled);
     stopButton.classList.toggle('btn-disabled', stopButton.disabled);
     sendCommandButton.classList.toggle('btn-disabled', sendCommandButton.disabled);
     openFolderButtonMain.classList.toggle('btn-disabled', openFolderButtonMain.disabled);
     settingsButton.classList.toggle('btn-disabled', settingsButton.disabled);
+    
     statusAndOpenFolderArea.classList.toggle('hidden', !setupComplete);
     statusAndOpenFolderArea.classList.toggle('flex', setupComplete);
     setupActivePlaceholderTop.classList.toggle('hidden', setupComplete);
@@ -201,15 +220,14 @@ async function refreshUISetupState() {
         showModal(setupModal, setupModalContent);
         await populateMcVersionSelect(mcVersionModalSelect, currentServerConfig.version);
         ramAllocationModalSelect.value = currentServerConfig.ram || 'auto';
-        updateButtonStates(localIsServerRunning);
     } else {
         hideModal(setupModal, setupModalContent, () => {
-            if (!localIsServerRunning) {
+            if (!localIsServerRunning && !autoStartIsActive) {
                 setStatus("Server ready.", false);
             }
-            updateButtonStates(localIsServerRunning);
         });
     }
+    updateButtonStates(localIsServerRunning);
     await fetchAndDisplayIPs();
 }
 
@@ -276,7 +294,12 @@ settingsButton.addEventListener('click', async () => {
     if (settingsButton.disabled) return;
     const launcherSettings = await window.electronAPI.getSettings();
     startWithWindowsCheckbox.checked = launcherSettings.openAtLogin;
-    document.getElementById('auto-start-server-checkbox').checked = launcherSettings.autoStartServer;
+    autoStartServerCheckbox.checked = launcherSettings.autoStartServer;
+    
+    const delay = launcherSettings.autoStartDelay || 5;
+    autoStartDelaySlider.value = delay;
+    autoStartDelayValue.textContent = `${delay}s`;
+    autoStartDelayContainer.classList.toggle('hidden', !launcherSettings.autoStartServer);
     
     const serverConfig = await window.electronAPI.getServerConfig();
     await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version);
@@ -291,7 +314,8 @@ closeSettingsButton.addEventListener('click', () => hideModal(settingsModal, set
 saveSettingsButton.addEventListener('click', () => {
     const newLauncherSettings = { 
         openAtLogin: startWithWindowsCheckbox.checked, 
-        autoStartServer: document.getElementById('auto-start-server-checkbox').checked 
+        autoStartServer: autoStartServerCheckbox.checked,
+        autoStartDelay: parseInt(autoStartDelaySlider.value, 10)
     };
     window.electronAPI.setSettings(newLauncherSettings);
     
@@ -310,8 +334,24 @@ saveSettingsButton.addEventListener('click', () => {
     hideModal(settingsModal, settingsModalContent);
 });
 
-startButton.addEventListener('click', () => { if (!startButton.disabled) window.electronAPI.startServer(); });
-stopButton.addEventListener('click', () => { if (!stopButton.disabled) window.electronAPI.stopServer(); });
+startButton.addEventListener('click', () => { 
+    if (!startButton.disabled) {
+        window.electronAPI.startServer(); 
+    }
+});
+
+stopButton.addEventListener('click', () => { 
+    if (!stopButton.disabled) {
+        if (countdownInterval) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+        }
+        autoStartIsActive = false;
+        setStatus("Auto-start cancelled.", false);
+        updateButtonStates(localIsServerRunning);
+        window.electronAPI.stopServer(); 
+    }
+});
 
 sendCommandButton.addEventListener('click', () => {
     const command = commandInput.value.trim();
@@ -320,6 +360,14 @@ sendCommandButton.addEventListener('click', () => {
         window.electronAPI.sendCommand(command);
         commandInput.value = '';
     }
+});
+
+autoStartServerCheckbox.addEventListener('change', () => {
+    autoStartDelayContainer.classList.toggle('hidden', !autoStartServerCheckbox.checked);
+});
+
+autoStartDelaySlider.addEventListener('input', () => {
+    autoStartDelayValue.textContent = `${autoStartDelaySlider.value}s`;
 });
 
 commandInput.addEventListener('keypress', (event) => { if (event.key === 'Enter') sendCommandButton.click(); });
@@ -333,6 +381,7 @@ window.electronAPI.onWindowMaximized((isMaximized) => {
 });
 
 window.electronAPI.onUpdateConsole((message, type) => addToConsole(message, type));
+
 window.electronAPI.onUpdateStatus(async (message, pulse) => {
     setStatus(message, pulse);
     const lowerMessage = message.toLowerCase();
@@ -351,20 +400,24 @@ window.electronAPI.onUpdateStatus(async (message, pulse) => {
 });
 
 window.electronAPI.onServerStateChange(async (isRunning) => {
-    updateButtonStates(isRunning);
     if (isRunning) {
+        autoStartIsActive = false;
         if (countdownInterval) clearInterval(countdownInterval);
         setStatus('Server is running.', false);
         ipInfoBarDiv.classList.add('animate-green-attention');
         ipInfoBarDiv.addEventListener('animationend', () => ipInfoBarDiv.classList.remove('animate-green-attention'), { once: true });
         memoryUsageSpan.textContent = `— / ${allocatedRamCache !== '-' ? allocatedRamCache : '...'} GB`;
     } else {
+        if (!autoStartIsActive) {
+            setStatus("Server stopped.", false);
+        }
         memoryUsageSpan.textContent = '— / — GB';
         memoryUsageSpan.style.color = '';
         serverTpsSpan.textContent = '— / 20.0';
         serverTpsSpan.style.color = '';
         allocatedRamCache = '-'; 
     }
+    updateButtonStates(isRunning);
     await refreshUISetupState();
 });
 
@@ -443,19 +496,27 @@ async function initializeApp() {
 
 document.addEventListener('DOMContentLoaded', initializeApp);
 
-let countdownInterval = null;
-
 function startCountdown(seconds, message, callback) {
     if (countdownInterval) clearInterval(countdownInterval);
 
     let remaining = seconds;
     const updateStatus = () => {
+        if (!autoStartIsActive) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+            updateButtonStates(localIsServerRunning);
+            return;
+        }
+
         if (remaining > 0) {
             setStatus(`${message} in ${remaining}s...`, true);
             remaining--;
         } else {
             clearInterval(countdownInterval);
-            callback();
+            countdownInterval = null;
+            if (autoStartIsActive) {
+                callback();
+            }
         }
     };
 
@@ -463,13 +524,58 @@ function startCountdown(seconds, message, callback) {
     countdownInterval = setInterval(updateStatus, 1000);
 }
 
-window.electronAPI.onStartCountdown((type) => {
+window.electronAPI.onStartCountdown((type, delay) => {
     if (localIsServerRunning) return;
     
+    autoStartIsActive = true;
+    updateButtonStates(localIsServerRunning);
+
     const message = type === 'initial' ? 'Auto-starting server' : 'Auto-restarting server';
-    startCountdown(5, message, () => {
-        if (!startButton.disabled) {
+    startCountdown(delay, message, () => {
+        if (autoStartIsActive && !localIsServerRunning) {
             window.electronAPI.startServer();
+        } else {
+            autoStartIsActive = false;
+            updateButtonStates(localIsServerRunning);
         }
     });
+});
+
+// ===== JAVA INSTALL LISTENERS =====
+window.electronAPI.onJavaInstallRequired(() => {
+    showModal(javaInstallModal, javaInstallModalContent);
+});
+
+javaInstallButton.addEventListener('click', () => {
+    window.electronAPI.startJavaInstall();
+});
+
+javaRestartButton.addEventListener('click', () => {
+    window.electronAPI.restartApp();
+});
+
+window.electronAPI.onJavaInstallStatus((status, progress) => {
+    javaInstallMessage.textContent = status;
+
+    if (progress !== undefined) {
+        javaInstallProgressBarContainer.classList.remove('hidden');
+        javaInstallProgressBar.style.width = `${progress}%`;
+    }
+
+    if (status.toLowerCase().includes('downloading')) {
+        javaInstallButton.disabled = true;
+        javaInstallButton.classList.add('btn-disabled');
+    }
+
+    if (status.toLowerCase().includes('installation complete')) {
+        javaInstallButton.classList.add('hidden');
+        javaRestartButton.classList.remove('hidden');
+        javaInstallProgressBarContainer.classList.add('hidden');
+    }
+
+     if (status.toLowerCase().includes('error') || status.toLowerCase().includes('failed')) {
+        javaInstallButton.disabled = false;
+        javaInstallButton.classList.remove('btn-disabled');
+        javaInstallProgressBarContainer.classList.add('hidden');
+    }
 });
