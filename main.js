@@ -67,56 +67,70 @@ async function downloadAndInstallJava() {
     if (!win) return;
 
     try {
-        const arch = process.arch === 'ia32' ? 'x86' : 'x64';
-        const osName = process.platform === 'win32' ? 'windows' : (process.platform === 'darwin' ? 'mac' : 'linux');
-        
-        win.webContents.send('java-install-status', 'Finding the latest Java version...');
-        
-        const apiURL = `https://api.adoptium.net/v3/assets/latest/21/hotspot?architecture=${arch}&image_type=jdk&os=${osName}&vendor=eclipse`;
+        win.webContents.send('java-install-status', 'Finding the correct Java version for your system...');
 
-        const responseText = await new Promise((resolve, reject) => {
-            https.get(apiURL, res => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => resolve(data));
-            }).on('error', err => reject(err));
-        });
+        const arch = process.arch; // Va fi 'x64' sau 'ia32'
+        const osName = process.platform;
 
-        const releases = JSON.parse(responseText);
-        const installerRelease = releases.find(r => r.binary.package.name.endsWith('.msi'));
-        
-        if (!installerRelease || !installerRelease.binary?.package?.link) {
-            throw new Error('Could not find a valid .msi installer for Java.');
+        if (osName !== 'win32') {
+            throw new Error('Automated Java installation is currently supported only on Windows.');
         }
 
-        const pkg = installerRelease.binary.package;
-        const downloadUrl = pkg.link;
+        // Linkuri directe către Oracle JDK 21 MSI Installers
+        const downloadLinks = {
+            'x64': 'https://download.oracle.com/java/21/latest/jdk-21_windows-x64_bin.msi',
+            'ia32': 'https://download.oracle.com/java/21/latest/jdk-21_windows-x86_bin.msi' 
+        };
+
+        const downloadUrl = downloadLinks[arch];
+        if (!downloadUrl) {
+            throw new Error(`Unsupported architecture: ${arch}. Please install Java manually.`);
+        }
+
         const fileName = path.basename(downloadUrl);
         const tempDir = app.getPath('temp');
         const filePath = path.join(tempDir, fileName);
 
+        // Obținem dimensiunea fișierului pentru bara de progres
+        const headResponse = await new Promise((resolve, reject) => {
+            https.request(downloadUrl, { method: 'HEAD', headers: { 'User-Agent': 'Mozilla/5.0' } }, resolve).on('error', reject).end();
+        });
+        const totalBytes = parseInt(headResponse.headers['content-length'], 10);
+
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+
         win.webContents.send('java-install-status', `Downloading ${fileName}...`, 0);
 
-        const fileStream = fs.createWriteStream(filePath);
-        const totalBytes = pkg.size;
-
         await new Promise((resolve, reject) => {
-            https.get(downloadUrl, (response) => {
-                let downloadedBytes = 0;
-                response.on('data', (chunk) => {
+            const fileStream = fs.createWriteStream(filePath);
+            let downloadedBytes = 0;
+
+            const request = https.get(downloadUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, response => {
+                response.on('data', chunk => {
                     downloadedBytes += chunk.length;
-                    const progress = Math.round((downloadedBytes / totalBytes) * 100);
+                    const progress = totalBytes ? Math.round((downloadedBytes / totalBytes) * 100) : 0;
                     win.webContents.send('java-install-status', `Downloading... ${progress}%`, progress);
                 });
+
                 response.pipe(fileStream);
+
                 fileStream.on('finish', () => fileStream.close(resolve));
-                fileStream.on('error', reject);
-            }).on('error', reject);
+            });
+
+            request.on('error', err => fs.unlink(filePath, () => reject(err)));
+            fileStream.on('error', err => fs.unlink(filePath, () => reject(err)));
         });
+        
+        const actualSize = fs.statSync(filePath).size;
+        if (actualSize !== totalBytes) {
+            throw new Error('Downloaded file is incomplete or corrupted.');
+        }
 
-        win.webContents.send('java-install-status', 'Download complete. Please follow the installation prompts.');
+        win.webContents.send('java-install-status', 'Download complete. Launching installer...');
 
-        shell.openPath(filePath).then((errorMessage) => {
+        shell.openPath(filePath).then(errorMessage => {
             if (errorMessage) {
                 throw new Error(`Failed to open installer: ${errorMessage}`);
             }
@@ -125,10 +139,12 @@ async function downloadAndInstallJava() {
 
     } catch (error) {
         log.error('Java install error:', error);
-        win.webContents.send('java-install-status', `Error: ${error.message}. Please try again or install Java manually.`);
+        win.webContents.send(
+            'java-install-status',
+            `Error: ${error.message}. Please try again or install Java manually.`
+        );
     }
 }
-
 
 const getAutoStartPath = () => {
     if (process.platform !== 'linux') return '';
@@ -468,6 +484,7 @@ ipcMain.on('open-server-folder', () => {
     if (!fs.existsSync(serverFilesDir)) sendConsole(`Error: Server directory ${serverFilesDir} does not exist.`, 'WARN');
     shell.openPath(serverFilesDir).catch(err => sendConsole(`Failed to open folder: ${err.message}`, 'ERROR'));
 });
+
 ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArgs }) => {
     sendConsole(`Configuring: Version ${mcVersion}, RAM ${ramAllocation}`, 'INFO');
     const currentConfig = readServerConfig();
@@ -480,8 +497,17 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
     if (fs.existsSync(path.join(serverFilesDir, paperJarName)) && currentConfig.version === mcVersion) {
         sendStatus('Configuration saved!', false);
         getMainWindow()?.webContents.send('setup-finished');
+        
+        // Adăugăm o pauză și aici, pentru consistență
+        setTimeout(async () => {
+            const hasJava = await checkJava();
+            if (!hasJava && app.isPackaged) {
+                getMainWindow()?.webContents.send('java-install-required');
+            }
+        }, 2000); // Așteaptă 2 secunde
         return;
     }
+    
     sendStatus(`Downloading PaperMC ${mcVersion}...`, true);
     try {
         const buildsApiUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds`;
@@ -504,9 +530,22 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
                 fileStream.on('finish', () => fileStream.close(resolve));
             }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
         });
+        
         sendStatus('PaperMC downloaded successfully!', false);
         sendConsole(`${paperJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
         getMainWindow()?.webContents.send('setup-finished');
+        
+        // MODIFICARE: Adăugăm o pauză de 2 secunde înainte de a verifica Java
+        setTimeout(async () => {
+            const hasJava = await checkJava();
+            if (!hasJava && app.isPackaged) {
+                const win = getMainWindow();
+                if (win && !win.isDestroyed()) {
+                    win.webContents.send('java-install-required');
+                }
+            }
+        }, 2000); // Așteaptă 2 secunde
+
     } catch (error) {
         sendStatus('Download failed.', false);
         sendConsole(`ERROR: ${error.message}`, 'ERROR');
