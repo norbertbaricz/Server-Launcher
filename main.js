@@ -11,6 +11,8 @@ const RPC = require('discord-rpc');
 const pidusage = require('pidusage');
 const AnsiToHtml = require('ansi-to-html');
 
+let javaExecutablePath = 'java'; // Valoare implicită, folosește PATH
+
 process.on('uncaughtException', (error) => {
   log.error('UNCAUGHT EXCEPTION:', error);
   sendConsole(`An uncaught exception was prevented: ${error.message}`, 'ERROR');
@@ -51,11 +53,13 @@ async function checkJava() {
     return new Promise((resolve) => {
         // 1. Verificare standard folosind PATH
         const javaCheck = spawn('java', ['-version']);
-        let foundInPath = false;
+        let found = false;
 
         const onData = (data) => {
             if (data.toString().includes('version')) {
-                foundInPath = true;
+                found = true;
+                javaExecutablePath = 'java'; // S-a găsit în PATH, e suficient
+                log.info('Java found in system PATH.');
                 resolve(true);
             }
         };
@@ -63,7 +67,7 @@ async function checkJava() {
         javaCheck.stderr.on('data', onData);
 
         javaCheck.on('close', () => {
-            if (foundInPath) return;
+            if (found) return;
 
             // 2. Căutare în locații comune dacă verificarea din PATH eșuează
             if (process.platform === 'win32') {
@@ -87,15 +91,16 @@ async function checkJava() {
                 };
 
                 for (const searchPath of searchPaths) {
-                    const javaExe = findJavaExe(searchPath);
-                    if (javaExe) {
-                        // Verificăm dacă executabilul găsit este valid
-                        execFile(javaExe, ['-version'], (error, stdout, stderr) => {
+                    const foundExePath = findJavaExe(searchPath);
+                    if (foundExePath) {
+                        execFile(foundExePath, ['-version'], (error, stdout, stderr) => {
                             if (!error && stderr.includes('version')) {
+                                javaExecutablePath = foundExePath; // Salvăm calea exactă
+                                log.info(`Java found manually at: ${javaExecutablePath}`);
                                 resolve(true);
                             }
                         });
-                        return; // Oprim căutarea odată ce am găsit o versiune validă
+                        return; // Oprim căutarea
                     }
                 }
             }
@@ -104,10 +109,7 @@ async function checkJava() {
             resolve(false);
         });
 
-        // Gestionare erori (ex: 'java' nu este o comandă recunoscută)
-        javaCheck.on('error', () => {
-            // Nu face nimic, lasă 'close' event să continue căutarea manuală
-        });
+        javaCheck.on('error', () => { /* Ignorăm eroarea, 'close' se va ocupa */ });
     });
 }
 
@@ -662,7 +664,7 @@ ipcMain.on('start-server', async () => {
         const allocatedRamGB = parseRamToGB(ramToUseForJava);
         getMainWindow()?.webContents.send('update-performance-stats', { allocatedRamGB });
 
-        serverProcess = spawn('java', javaArgs, { cwd: serverFilesDir, stdio: ['pipe', 'pipe', 'pipe'] });
+        serverProcess = spawn(javaExecutablePath, javaArgs, { cwd: serverFilesDir, stdio: ['pipe', 'pipe', 'pipe'] });
         serverProcess.killedInternally = false;
         let serverIsFullyStarted = false;
 
