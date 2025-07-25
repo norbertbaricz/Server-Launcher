@@ -220,15 +220,16 @@ async function refreshUISetupState() {
         showModal(setupModal, setupModalContent);
         await populateMcVersionSelect(mcVersionModalSelect, currentServerConfig.version);
         ramAllocationModalSelect.value = currentServerConfig.ram || 'auto';
+        updateButtonStates(localIsServerRunning);
     } else {
-        hideModal(setupModal, setupModalContent, () => {
+        hideModal(setupModal, setupModalContent, async () => {
             if (!localIsServerRunning && !autoStartIsActive) {
                 setStatus("Server ready.", false);
             }
+            updateButtonStates(localIsServerRunning);
+            await fetchAndDisplayIPs();
         });
     }
-    updateButtonStates(localIsServerRunning);
-    await fetchAndDisplayIPs();
 }
 
 async function populateServerProperties() {
@@ -420,7 +421,9 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         allocatedRamCache = '-'; 
     }
     updateButtonStates(isRunning);
-    await refreshUISetupState();
+    if (!isRunning) { // Doar reîmprospătează dacă serverul nu pornește deja
+        await refreshUISetupState();
+    }
 });
 
 window.electronAPI.onUpdatePerformanceStats(({ tps, memoryGB, allocatedRamGB }) => {

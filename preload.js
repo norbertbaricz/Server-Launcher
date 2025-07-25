@@ -11,7 +11,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onStartCountdown: (callback) => ipcRenderer.on('start-countdown', (_event, ...args) => callback(...args)),
     onJavaInstallRequired: (callback) => ipcRenderer.on('java-install-required', (_event, ...args) => callback(...args)),
     onJavaInstallStatus: (callback) => ipcRenderer.on('java-install-status', (_event, ...args) => callback(...args)),
-    onSetupFinished: (callback) => ipcRenderer.on('setup-finished', (_event, ...args) => callback(...args)), // Eveniment nou
+    // Această linie este esențială pentru a repara bug-ul
+    onSetupFinished: (callback) => ipcRenderer.on('setup-finished', (_event, ...args) => callback(...args)),
 
 
     // --- Renderer to Main (send) ---

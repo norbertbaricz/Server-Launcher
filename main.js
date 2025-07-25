@@ -479,7 +479,7 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
 
     if (fs.existsSync(path.join(serverFilesDir, paperJarName)) && currentConfig.version === mcVersion) {
         sendStatus('Configuration saved!', false);
-        getMainWindow()?.webContents.send('setup-finished'); // Anunță finalizarea
+        getMainWindow()?.webContents.send('setup-finished');
         return;
     }
     sendStatus(`Downloading PaperMC ${mcVersion}...`, true);
@@ -506,10 +506,11 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
         });
         sendStatus('PaperMC downloaded successfully!', false);
         sendConsole(`${paperJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
-        getMainWindow()?.webContents.send('setup-finished'); // Anunță finalizarea
+        getMainWindow()?.webContents.send('setup-finished');
     } catch (error) {
         sendStatus('Download failed.', false);
         sendConsole(`ERROR: ${error.message}`, 'ERROR');
+        getMainWindow()?.webContents.send('setup-finished');
     }
 });
 
