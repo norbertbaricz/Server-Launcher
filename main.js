@@ -49,15 +49,64 @@ let manualTpsCheck = false;
 // ===== JAVA CHECK & INSTALL =====
 async function checkJava() {
     return new Promise((resolve) => {
+        // 1. Verificare standard folosind PATH
         const javaCheck = spawn('java', ['-version']);
-        javaCheck.on('error', () => resolve(false));
-        javaCheck.stderr.on('data', (data) => {
+        let foundInPath = false;
+
+        const onData = (data) => {
             if (data.toString().includes('version')) {
+                foundInPath = true;
                 resolve(true);
             }
+        };
+
+        javaCheck.stderr.on('data', onData);
+
+        javaCheck.on('close', () => {
+            if (foundInPath) return;
+
+            // 2. Căutare în locații comune dacă verificarea din PATH eșuează
+            if (process.platform === 'win32') {
+                const searchPaths = [
+                    process.env['ProgramFiles'],
+                    process.env['ProgramFiles(x86)']
+                ].filter(Boolean).map(p => path.join(p, 'Java'));
+
+                const findJavaExe = (dir) => {
+                    if (!fs.existsSync(dir)) return null;
+                    const entries = fs.readdirSync(dir, { withFileTypes: true });
+                    for (const entry of entries) {
+                        if (entry.isDirectory() && entry.name.startsWith('jdk')) {
+                            const exePath = path.join(dir, entry.name, 'bin', 'java.exe');
+                            if (fs.existsSync(exePath)) {
+                                return exePath;
+                            }
+                        }
+                    }
+                    return null;
+                };
+
+                for (const searchPath of searchPaths) {
+                    const javaExe = findJavaExe(searchPath);
+                    if (javaExe) {
+                        // Verificăm dacă executabilul găsit este valid
+                        execFile(javaExe, ['-version'], (error, stdout, stderr) => {
+                            if (!error && stderr.includes('version')) {
+                                resolve(true);
+                            }
+                        });
+                        return; // Oprim căutarea odată ce am găsit o versiune validă
+                    }
+                }
+            }
+
+            // Dacă nu se găsește nicăieri
+            resolve(false);
         });
-        javaCheck.on('close', (code) => {
-            if (code !== 0) resolve(false);
+
+        // Gestionare erori (ex: 'java' nu este o comandă recunoscută)
+        javaCheck.on('error', () => {
+            // Nu face nimic, lasă 'close' event să continue căutarea manuală
         });
     });
 }
