@@ -594,14 +594,33 @@ ipcMain.on('open-server-folder', () => {
 ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArgs }) => {
     sendConsole(`Configuring: Version ${mcVersion}, RAM ${ramAllocation}`, 'INFO');
     const currentConfig = readServerConfig();
+    const oldVersion = currentConfig.version; // Salvăm versiunea veche pentru comparație
     currentConfig.version = mcVersion;
     currentConfig.javaArgs = javaArgs || 'Default';
-    if (ramAllocation?.toLowerCase() !== 'auto') currentConfig.ram = ramAllocation;
-    else delete currentConfig.ram;
+    if (ramAllocation?.toLowerCase() !== 'auto') {
+        currentConfig.ram = ramAllocation;
+    } else {
+        delete currentConfig.ram;
+    }
     writeServerConfig(currentConfig);
 
-    if (fs.existsSync(path.join(serverFilesDir, paperJarName)) && currentConfig.version === mcVersion) {
-        sendStatus('Configuration saved!', false);
+    const paperJarPath = path.join(serverFilesDir, paperJarName);
+
+    // Verificăm dacă fișierul există și dacă versiunea este diferită
+    if (fs.existsSync(paperJarPath) && oldVersion !== mcVersion) {
+        sendConsole(`Removing old paper.jar for version ${oldVersion}...`, 'INFO');
+        try {
+            fs.unlinkSync(paperJarPath);
+            sendConsole('Old paper.jar removed successfully.', 'SUCCESS');
+        } catch (error) {
+            sendConsole(`Error removing old paper.jar: ${error.message}`, 'ERROR');
+            sendStatus('Error updating version.', false);
+            getMainWindow()?.webContents.send('setup-finished');
+            return;
+        }
+    } else if (fs.existsSync(paperJarPath) && oldVersion === mcVersion) {
+        // Dacă versiunea este aceeași, doar salvăm configurația și informăm utilizatorul
+        sendStatus('Configuration saved! Version is already up to date.', false);
         getMainWindow()?.webContents.send('setup-finished');
         
         setTimeout(async () => {

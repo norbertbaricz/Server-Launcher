@@ -67,6 +67,7 @@ let availableMcVersionsCache = [];
 let allocatedRamCache = '-';
 let autoStartIsActive = false; 
 let countdownInterval = null;
+let isDownloadingFromServer = false;
 
 function addToConsole(message, type = 'INFO') {
     const p = document.createElement('p');
@@ -129,7 +130,7 @@ function updateButtonStates(isRunning) {
     localIsServerRunning = isRunning;
     const setupComplete = setupModal.classList.contains('hidden');
     
-    startButton.disabled = isRunning || !setupComplete || autoStartIsActive;
+    startButton.disabled = isRunning || !setupComplete || autoStartIsActive || isDownloadingFromServer;
     
     stopButton.disabled = !isRunning;
     sendCommandButton.disabled = !isRunning;
@@ -387,6 +388,11 @@ window.electronAPI.onUpdateStatus(async (message, pulse) => {
     setStatus(message, pulse);
     const lowerMessage = message.toLowerCase();
 
+    if (lowerMessage.includes('downloading')) {
+        isDownloadingFromServer = true;
+        updateButtonStates(localIsServerRunning);
+    }
+
     if (lowerMessage.includes('starting')) {
         settingsButton.disabled = true;
         settingsButton.classList.add('btn-disabled');
@@ -398,6 +404,7 @@ window.electronAPI.onUpdateStatus(async (message, pulse) => {
 });
 
 window.electronAPI.onSetupFinished(async () => {
+    isDownloadingFromServer = false;
     hideDownloadLoading();
     await refreshUISetupState();
 });
