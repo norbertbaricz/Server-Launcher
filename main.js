@@ -48,7 +48,6 @@ let mainWindow;
 let performanceStatsInterval = null;
 let manualTpsCheck = false;
 
-// ===== JAVA CHECK & INSTALL =====
 async function checkJava() {
     return new Promise((resolve) => {
         // 1. Verificare standard folosind PATH
@@ -56,10 +55,11 @@ async function checkJava() {
         let found = false;
 
         const onData = (data) => {
-            if (data.toString().includes('version')) {
+            const output = data.toString();
+            if (output.includes('version') && output.includes('21.')) {
                 found = true;
-                javaExecutablePath = 'java'; // S-a găsit în PATH, e suficient
-                log.info('Java found in system PATH.');
+                javaExecutablePath = 'java';
+                log.info('Java 21 found in system PATH.');
                 resolve(true);
             }
         };
@@ -69,18 +69,19 @@ async function checkJava() {
         javaCheck.on('close', () => {
             if (found) return;
 
-            // 2. Căutare în locații comune dacă verificarea din PATH eșuează
+            // 2. Căutare în locații comune, inclusiv Adoptium
             if (process.platform === 'win32') {
                 const searchPaths = [
                     process.env['ProgramFiles'],
-                    process.env['ProgramFiles(x86)']
+                    process.env['ProgramFiles(x86)'],
+                    path.join(process.env['ProgramFiles'], 'Eclipse Adoptium') // Adoptium default path
                 ].filter(Boolean).map(p => path.join(p, 'Java'));
 
                 const findJavaExe = (dir) => {
                     if (!fs.existsSync(dir)) return null;
                     const entries = fs.readdirSync(dir, { withFileTypes: true });
                     for (const entry of entries) {
-                        if (entry.isDirectory() && entry.name.startsWith('jdk')) {
+                        if (entry.isDirectory() && entry.name.startsWith('jdk-21')) {
                             const exePath = path.join(dir, entry.name, 'bin', 'java.exe');
                             if (fs.existsSync(exePath)) {
                                 return exePath;
@@ -94,13 +95,15 @@ async function checkJava() {
                     const foundExePath = findJavaExe(searchPath);
                     if (foundExePath) {
                         execFile(foundExePath, ['-version'], (error, stdout, stderr) => {
-                            if (!error && stderr.includes('version')) {
-                                javaExecutablePath = foundExePath; // Salvăm calea exactă
-                                log.info(`Java found manually at: ${javaExecutablePath}`);
+                            if (!error && stderr.includes('version') && stderr.includes('21.')) {
+                                javaExecutablePath = foundExePath;
+                                log.info(`Java 21 found manually at: ${javaExecutablePath}`);
                                 resolve(true);
+                            } else {
+                                resolve(false);
                             }
                         });
-                        return; // Oprim căutarea
+                        return;
                     }
                 }
             }
@@ -118,35 +121,39 @@ async function downloadAndInstallJava() {
     if (!win) return;
 
     try {
-        win.webContents.send('java-install-status', 'Finding the correct Java version for your system...');
+        win.webContents.send('java-install-status', 'Finding the latest Java version for your system...');
 
-        const arch = process.arch; // Va fi 'x64' sau 'ia32'
-        const osName = process.platform;
-
-        if (osName !== 'win32') {
+        if (process.platform !== 'win32') {
             throw new Error('Automated Java installation is currently supported only on Windows.');
         }
 
-        // Linkuri directe către Oracle JDK 21 MSI Installers
-        const downloadLinks = {
-            'x64': 'https://download.oracle.com/java/21/latest/jdk-21_windows-x64_bin.msi',
-            'ia32': 'https://download.oracle.com/java/21/latest/jdk-21_windows-x86_bin.msi' 
-        };
+        const arch = process.arch === 'ia32' ? 'x86' : 'x64';
+        
+        const apiUrl = `https://api.adoptium.net/v3/assets/latest/21/hotspot?vendor=eclipse&os=windows&architecture=${arch}&image_type=jdk`;
+        
+        const apiResponse = await new Promise((resolve, reject) => {
+            https.get(apiUrl, { headers: { 'User-Agent': 'Server-Launcher-Electron' } }, (res) => {
+                if (res.statusCode !== 200) {
+                    res.resume();
+                    return reject(new Error(`Failed to query Adoptium API (Status: ${res.statusCode})`));
+                }
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => resolve(JSON.parse(data)));
+            }).on('error', reject);
+        });
 
-        const downloadUrl = downloadLinks[arch];
-        if (!downloadUrl) {
-            throw new Error(`Unsupported architecture: ${arch}. Please install Java manually.`);
+        const installerPackage = apiResponse.find(p => p.binary.installer?.name?.endsWith('.msi'));
+        if (!installerPackage) {
+            throw new Error(`Could not find a valid MSI installer for your system (${arch}). Please install Java manually.`);
         }
-
-        const fileName = path.basename(downloadUrl);
+        
+        let downloadUrl = installerPackage.binary.installer.link;
+        const totalBytes = installerPackage.binary.installer.size;
+        const fileName = installerPackage.binary.installer.name;
+        
         const tempDir = app.getPath('temp');
         const filePath = path.join(tempDir, fileName);
-
-        // Obținem dimensiunea fișierului pentru bara de progres
-        const headResponse = await new Promise((resolve, reject) => {
-            https.request(downloadUrl, { method: 'HEAD', headers: { 'User-Agent': 'Mozilla/5.0' } }, resolve).on('error', reject).end();
-        });
-        const totalBytes = parseInt(headResponse.headers['content-length'], 10);
 
         if (fs.existsSync(filePath)) {
             fs.unlinkSync(filePath);
@@ -158,7 +165,23 @@ async function downloadAndInstallJava() {
             const fileStream = fs.createWriteStream(filePath);
             let downloadedBytes = 0;
 
-            const request = https.get(downloadUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, response => {
+            const followRedirect = (url, callback) => {
+                https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
+                    if (response.statusCode === 302 || response.statusCode === 301) {
+                        const redirectUrl = response.headers.location;
+                        if (!redirectUrl) {
+                            return reject(new Error('Redirect failed: No Location header'));
+                        }
+                        followRedirect(redirectUrl, callback);
+                    } else if (response.statusCode !== 200) {
+                        return reject(new Error(`Download failed with status code ${response.statusCode}`));
+                    } else {
+                        callback(response);
+                    }
+                }).on('error', err => reject(err));
+            };
+
+            followRedirect(downloadUrl, (response) => {
                 response.on('data', chunk => {
                     downloadedBytes += chunk.length;
                     const progress = totalBytes ? Math.round((downloadedBytes / totalBytes) * 100) : 0;
@@ -170,13 +193,13 @@ async function downloadAndInstallJava() {
                 fileStream.on('finish', () => fileStream.close(resolve));
             });
 
-            request.on('error', err => fs.unlink(filePath, () => reject(err)));
             fileStream.on('error', err => fs.unlink(filePath, () => reject(err)));
         });
         
         const actualSize = fs.statSync(filePath).size;
         if (actualSize !== totalBytes) {
-            throw new Error('Downloaded file is incomplete or corrupted.');
+            fs.unlinkSync(filePath);
+            throw new Error('Downloaded file is incomplete or corrupted. Please try again.');
         }
 
         win.webContents.send('java-install-status', 'Download complete. Launching installer...');
@@ -196,7 +219,6 @@ async function downloadAndInstallJava() {
         );
     }
 }
-
 const getAutoStartPath = () => {
     if (process.platform !== 'linux') return '';
     const appName = app.getName();
