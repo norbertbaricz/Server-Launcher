@@ -548,6 +548,19 @@ window.electronAPI.onStartCountdown((type, delay) => {
 
 // ===== JAVA INSTALL LISTENERS =====
 window.electronAPI.onJavaInstallRequired(() => {
+    // Resetează starea modală la fiecare deschidere
+    javaInstallMessage.textContent = 'Java is not detected on your system. It is required to run the server.';
+    javaInstallButton.classList.remove('hidden');
+    javaInstallButton.disabled = false;
+    javaInstallButton.classList.remove('btn-disabled');
+    javaRestartButton.classList.add('hidden');
+    javaInstallProgressBarContainer.classList.add('hidden');
+    
+    const existingSpinner = javaInstallModalContent.querySelector('.fa-spinner');
+    if (existingSpinner) {
+        existingSpinner.remove();
+    }
+
     showModal(javaInstallModal, javaInstallModalContent);
 });
 
@@ -561,26 +574,29 @@ javaRestartButton.addEventListener('click', () => {
 
 window.electronAPI.onJavaInstallStatus((status, progress) => {
     javaInstallMessage.textContent = status;
+    const lowerStatus = status.toLowerCase();
 
-    if (progress !== undefined) {
+    // Resetează starea butoanelor și a indicatorului de progres
+    javaInstallButton.classList.add('hidden');
+    javaRestartButton.classList.add('hidden');
+    javaInstallProgressBarContainer.classList.add('hidden');
+    
+    const existingSpinner = javaInstallModalContent.querySelector('.fa-spinner');
+    if (existingSpinner) {
+        existingSpinner.remove();
+    }
+
+    if (lowerStatus.includes('downloading')) {
         javaInstallProgressBarContainer.classList.remove('hidden');
-        javaInstallProgressBar.style.width = `${progress}%`;
-    }
-
-    if (status.toLowerCase().includes('downloading')) {
-        javaInstallButton.disabled = true;
-        javaInstallButton.classList.add('btn-disabled');
-    }
-
-    if (status.toLowerCase().includes('installation complete')) {
-        javaInstallButton.classList.add('hidden');
-        javaRestartButton.classList.remove('hidden');
-        javaInstallProgressBarContainer.classList.add('hidden');
-    }
-
-     if (status.toLowerCase().includes('error') || status.toLowerCase().includes('failed')) {
+        javaInstallProgressBar.style.width = `${progress || 0}%`;
+    } else if (lowerStatus.includes('installer has been launched')) {
+        const spinner = document.createElement('i');
+        spinner.className = 'fas fa-spinner fa-spin text-2xl text-blue-400 mt-4';
+        javaInstallModalContent.appendChild(spinner);
+    } else if (lowerStatus.includes('error') || lowerStatus.includes('failed') || lowerStatus.includes('timed out')) {
+        javaInstallButton.classList.remove('hidden'); // Permite reîncercarea
         javaInstallButton.disabled = false;
         javaInstallButton.classList.remove('btn-disabled');
-        javaInstallProgressBarContainer.classList.add('hidden');
+        javaRestartButton.classList.remove('hidden'); // Oferă opțiunea de repornire manuală
     }
 });

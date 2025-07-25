@@ -3,7 +3,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { version } = require('./package.json');
 const https = require('node:https');
-const { spawn, execFile } = require('node:child_process');
+const { spawn, execFile, exec } = require('node:child_process');
 const os = require('node:os');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
@@ -50,71 +50,142 @@ let manualTpsCheck = false;
 
 async function checkJava() {
     return new Promise((resolve) => {
-        // 1. Verificare standard folosind PATH
-        const javaCheck = spawn('java', ['-version']);
-        let found = false;
-
-        const onData = (data) => {
-            const output = data.toString();
-            if (output.includes('version') && output.includes('21.')) {
-                found = true;
-                javaExecutablePath = 'java';
-                log.info('Java 21 found in system PATH.');
-                resolve(true);
-            }
+        const verifyJavaVersion = (javaPath, callback) => {
+            const command = `"${javaPath}" -version`;
+            exec(command, (error, stdout, stderr) => {
+                const output = stderr || stdout;
+                if (!error && output.includes('version "21.')) {
+                    log.info(`Java 21 verified at: ${javaPath}`);
+                    javaExecutablePath = javaPath;
+                    callback(true);
+                } else {
+                    callback(false);
+                }
+            });
         };
 
-        javaCheck.stderr.on('data', onData);
-
-        javaCheck.on('close', () => {
-            if (found) return;
-
-            // 2. Căutare în locații comune, inclusiv Adoptium
-            if (process.platform === 'win32') {
-                const searchPaths = [
-                    process.env['ProgramFiles'],
-                    process.env['ProgramFiles(x86)'],
-                    path.join(process.env['ProgramFiles'], 'Eclipse Adoptium') // Adoptium default path
-                ].filter(Boolean).map(p => path.join(p, 'Java'));
-
-                const findJavaExe = (dir) => {
-                    if (!fs.existsSync(dir)) return null;
-                    const entries = fs.readdirSync(dir, { withFileTypes: true });
-                    for (const entry of entries) {
-                        if (entry.isDirectory() && entry.name.startsWith('jdk-21')) {
-                            const exePath = path.join(dir, entry.name, 'bin', 'java.exe');
-                            if (fs.existsSync(exePath)) {
-                                return exePath;
-                            }
-                        }
-                    }
-                    return null;
-                };
-
-                for (const searchPath of searchPaths) {
-                    const foundExePath = findJavaExe(searchPath);
-                    if (foundExePath) {
-                        execFile(foundExePath, ['-version'], (error, stdout, stderr) => {
-                            if (!error && stderr.includes('version') && stderr.includes('21.')) {
-                                javaExecutablePath = foundExePath;
-                                log.info(`Java 21 found manually at: ${javaExecutablePath}`);
-                                resolve(true);
-                            } else {
-                                resolve(false);
-                            }
-                        });
-                        return;
-                    }
-                }
+        const checkRegistry = (onComplete) => {
+            if (process.platform !== 'win32') {
+                return onComplete(null);
             }
 
-            // Dacă nu se găsește nicăieri
-            resolve(false);
-        });
+            const keysToQuery = [
+                'HKEY_LOCAL_MACHINE\\SOFTWARE\\Eclipse Adoptium\\JDK',
+                'HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\JDK',
+                'HKEY_LOCAL_MACHINE\\SOFTWARE\\Amazon Corretto\\JDK'
+            ];
+            let keysProcessed = 0;
+            let foundPath = null;
 
-        javaCheck.on('error', () => { /* Ignorăm eroarea, 'close' se va ocupa */ });
+            const processKey = (key) => {
+                const query = `reg query "${key}" /s /f "21." /k`;
+                exec(query, (error, stdout) => {
+                    if (!foundPath && !error && stdout) {
+                        const lines = stdout.trim().split(/[\r\n]+/).filter(Boolean);
+                        const jdkKey = lines.find(line => line.trim().startsWith('HKEY_'));
+
+                        if (jdkKey) {
+                            const homeQuery = `reg query "${jdkKey.trim()}" /v JavaHome`;
+                            exec(homeQuery, (homeError, homeStdout) => {
+                                if (!homeError && homeStdout) {
+                                    const match = homeStdout.match(/JavaHome\s+REG_SZ\s+(.*)/);
+                                    if (match && match[1]) {
+                                        const javaHome = match[1].trim();
+                                        const javaExe = path.join(javaHome, 'bin', 'java.exe');
+                                        if (fs.existsSync(javaExe)) {
+                                            foundPath = javaExe;
+                                        }
+                                    }
+                                }
+                                finish();
+                            });
+                            return;
+                        }
+                    }
+                    finish();
+                });
+            };
+
+            const finish = () => {
+                keysProcessed++;
+                if (foundPath || keysProcessed === keysToQuery.length) {
+                    onComplete(foundPath);
+                }
+            };
+
+            keysToQuery.forEach(processKey);
+        };
+
+        const checkPath = () => {
+            exec('java -version', (error, stdout, stderr) => {
+                const output = stderr || stdout;
+                if (!error && output.includes('version "21.')) {
+                    log.info('Java 21 found in system PATH.');
+                    javaExecutablePath = 'java';
+                    resolve(true);
+                } else {
+                    log.warn('Java not found via registry or PATH. All checks failed.');
+                    resolve(false);
+                }
+            });
+        };
+
+        log.info('Checking for Java 21...');
+        checkRegistry(registryPath => {
+            if (registryPath) {
+                log.info(`Found potential Java path in registry: ${registryPath}`);
+                verifyJavaVersion(registryPath, (isValid) => {
+                    if (isValid) {
+                        resolve(true);
+                    } else {
+                        log.warn('Registry path was not a valid Java 21 installation. Checking PATH.');
+                        checkPath();
+                    }
+                });
+            } else {
+                log.info('Java not found in registry. Checking system PATH.');
+                checkPath();
+            }
+        });
     });
 }
+
+
+let javaInstallPollInterval = null;
+
+const pollForJavaInstallation = (win) => {
+    if (javaInstallPollInterval) {
+        clearInterval(javaInstallPollInterval);
+    }
+
+    let pollCount = 0;
+    const maxPolls = 120; // Timeout de 10 minute (120 * 5 secunde)
+
+    javaInstallPollInterval = setInterval(async () => {
+        pollCount++;
+        const hasJava = await checkJava();
+
+        if (hasJava) {
+            clearInterval(javaInstallPollInterval);
+            javaInstallPollInterval = null;
+            win.webContents.send('java-install-status', 'Java 21 detected! Restarting the launcher...');
+            log.info('Java installation successful, restarting app.');
+            
+            setTimeout(() => {
+                app.relaunch();
+                app.quit();
+            }, 2000);
+            return;
+        }
+
+        if (pollCount > maxPolls) {
+            clearInterval(javaInstallPollInterval);
+            javaInstallPollInterval = null;
+            win.webContents.send('java-install-status', 'Java installation check timed out. Please restart the launcher manually.');
+            log.warn('Polling for Java installation timed out.');
+        }
+    }, 5000); // Verifică la fiecare 5 secunde
+};
 
 async function downloadAndInstallJava() {
     const win = getMainWindow();
@@ -148,7 +219,7 @@ async function downloadAndInstallJava() {
             throw new Error(`Could not find a valid MSI installer for your system (${arch}). Please install Java manually.`);
         }
         
-        let downloadUrl = installerPackage.binary.installer.link;
+        const downloadUrl = installerPackage.binary.installer.link;
         const totalBytes = installerPackage.binary.installer.size;
         const fileName = installerPackage.binary.installer.name;
         
@@ -196,19 +267,15 @@ async function downloadAndInstallJava() {
             fileStream.on('error', err => fs.unlink(filePath, () => reject(err)));
         });
         
-        const actualSize = fs.statSync(filePath).size;
-        if (actualSize !== totalBytes) {
-            fs.unlinkSync(filePath);
-            throw new Error('Downloaded file is incomplete or corrupted. Please try again.');
-        }
-
         win.webContents.send('java-install-status', 'Download complete. Launching installer...');
 
         shell.openPath(filePath).then(errorMessage => {
             if (errorMessage) {
                 throw new Error(`Failed to open installer: ${errorMessage}`);
             }
-            win.webContents.send('java-install-status', 'Installation complete! Please restart the launcher.');
+            win.webContents.send('java-install-status', 'The Java installer has been launched. Please follow its instructions. The launcher will automatically restart when installation is complete.');
+            log.info('Java installer launched. Starting to poll for installation completion.');
+            pollForJavaInstallation(win);
         });
 
     } catch (error) {
@@ -217,6 +284,7 @@ async function downloadAndInstallJava() {
             'java-install-status',
             `Error: ${error.message}. Please try again or install Java manually.`
         );
+        if (javaInstallPollInterval) clearInterval(javaInstallPollInterval);
     }
 }
 const getAutoStartPath = () => {
@@ -444,16 +512,19 @@ autoUpdater.on('update-downloaded', (info) => {
 });
 
 app.on('window-all-closed', () => {
-  if (serverProcess && typeof serverProcess.kill === 'function' && !serverProcess.killed) {
-    serverProcess.killedInternally = true;
-    serverProcess.kill('SIGKILL');
-  }
-  if (rpc) {
-      rpc.destroy().catch(err => {
-        if (!err.message.includes('Could not connect')) sendConsole(`Discord RPC destroy error: ${err.message}`, 'ERROR');
-      });
-  }
-  if (process.platform !== 'darwin') app.quit();
+    if (javaInstallPollInterval) {
+        clearInterval(javaInstallPollInterval);
+    }
+    if (serverProcess && typeof serverProcess.kill === 'function' && !serverProcess.killed) {
+        serverProcess.killedInternally = true;
+        serverProcess.kill('SIGKILL');
+    }
+    if (rpc) {
+        rpc.destroy().catch(err => {
+            if (!err.message.includes('Could not connect')) sendConsole(`Discord RPC destroy error: ${err.message}`, 'ERROR');
+        });
+    }
+    if (process.platform !== 'darwin') app.quit();
 });
 
 ipcMain.on('minimize-window', () => getMainWindow()?.minimize());
@@ -571,13 +642,12 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
         sendStatus('Configuration saved!', false);
         getMainWindow()?.webContents.send('setup-finished');
         
-        // Adăugăm o pauză și aici, pentru consistență
         setTimeout(async () => {
             const hasJava = await checkJava();
             if (!hasJava && app.isPackaged) {
                 getMainWindow()?.webContents.send('java-install-required');
             }
-        }, 2000); // Așteaptă 2 secunde
+        }, 2000);
         return;
     }
     
@@ -608,7 +678,6 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
         sendConsole(`${paperJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
         getMainWindow()?.webContents.send('setup-finished');
         
-        // MODIFICARE: Adăugăm o pauză de 2 secunde înainte de a verifica Java
         setTimeout(async () => {
             const hasJava = await checkJava();
             if (!hasJava && app.isPackaged) {
@@ -617,7 +686,7 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
                     win.webContents.send('java-install-required');
                 }
             }
-        }, 2000); // Așteaptă 2 secunde
+        }, 2000);
 
     } catch (error) {
         sendStatus('Download failed.', false);
