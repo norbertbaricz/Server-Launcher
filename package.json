@@ -1,6 +1,6 @@
 {
   "name": "server-launcher",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "A Minecraft server launcher built with Electron and Node.js",
   "main": "main.js",
   "scripts": {
@@ -25,9 +25,8 @@
     "ansi-to-html": "^0.7.2",
     "discord-rpc": "^4.0.1",
     "electron-log": "^5.4.1",
-    "electron-updater": "^6.1.1",
-    "pidusage": "^4.0.1",
-    "systeminformation": "^5.22.11"
+    "electron-updater": "^6.3.1",
+    "pidusage": "^4.0.1"
   },
   "build": {
     "appId": "com.skypixel.serverlauncher",
@@ -94,7 +93,7 @@
         "deb",
         "tar.gz"
       ],
-      "icon": "build/icon.ico",
+      "icon": "build/icon.png",
       "category": "Game"
     },
     "mac": {

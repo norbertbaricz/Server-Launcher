@@ -23,7 +23,12 @@ process.on('unhandledRejection', (reason, promise) => {
   sendConsole(`An unhandled promise rejection was caught: ${reason}`, 'ERROR');
 });
 
-const ansiConverter = new AnsiToHtml();
+const ansiConverter = new AnsiToHtml({
+  newline: true,      // Convertește \n în <br> pentru afișare corectă în HTML
+  escapeXML: true,    // Previne probleme de securitate prin escaparea caracterelor <, >, &
+  fg: '#E5E9F0',      // Culoare default pentru text, pentru a se potrivi cu tema UI
+  bg: '#1F2937'       // Culoare default pentru fundal, pentru a se potrivi cu tema consolei
+});
 
 autoUpdater.logger = log;
 autoUpdater.logger.transports.file.level = 'info';
@@ -252,30 +257,6 @@ async function downloadAndInstallJava() {
         );
     }
 }
-const getAutoStartPath = () => {
-    if (process.platform !== 'linux') return '';
-    const appName = app.getName();
-    return path.join(app.getPath('home'), '.config', 'autostart', `${appName}.desktop`);
-};
-
-const createDesktopFile = (startMinimized) => {
-    const appName = app.getName();
-    const appPath = app.getPath('exe');
-    const execPath = `"${appPath}"${startMinimized ? ' --hidden' : ''}`;
-    const desktopFileContent = `[Desktop Entry]
-    Type=Application
-    Name=${appName}
-    Exec=${execPath}
-    Icon=${path.join(__dirname, 'build', 'icon.ico')}
-    Comment=Minecraft Server Launcher
-    X-GNOME-Autostart-enabled=true
-    `;
-    const autoStartDir = path.dirname(getAutoStartPath());
-    if (!fs.existsSync(autoStartDir)) {
-        fs.mkdirSync(autoStartDir, { recursive: true });
-    }
-    fs.writeFileSync(getAutoStartPath(), desktopFileContent);
-};
 
 function getMainWindow() { return mainWindow; }
 function sendStatus(message, pulse = false) {
