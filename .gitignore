@@ -4,3 +4,5 @@
 /.env
 /MinecraftServer
 /dist_electron
+/cert.pem
+/key.pem
