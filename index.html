@@ -32,18 +32,21 @@
     <div id="main-content-area" class="flex-grow flex flex-col space-y-3 p-4 overflow-y-auto">
 
         <div class="bg-gray-800 p-4 rounded-lg shadow-xl animate-fadeIn" style="animation-delay: 0.1s;">
-            <div id="status-and-open-folder-area" class="hidden flex items-stretch justify-between">
-                 <div id="status-bar-content" class="bg-gray-700 p-3 rounded-l-md flex-grow min-w-0 flex items-center">
-                    <i class="fas fa-info-circle text-gray-400 mr-2"></i>
-                    <span class="text-sm font-medium text-gray-400">Status:</span>
-                    <span id="status-message" class="text-sm text-yellow-400 ml-2 truncate">Initializing...</span>
-                </div>
-                <button id="open-folder-button-main" class="btn-primary font-semibold px-4 flex items-center justify-center rounded-none">
+            <div id="status-and-open-folder-area" class="hidden flex items-center justify-between gap-x-3">
+                <div id="status-bar-content" class="bg-gray-700 p-3 rounded-md flex-grow min-w-0 flex items-center">
+                <i class="fas fa-info-circle text-gray-400 mr-2"></i>
+                <span class="text-sm font-medium text-gray-400">Status:</span>
+                <span id="status-message" class="text-sm text-yellow-400 ml-2 truncate">Initializing...</span>
+            </div>
+
+            <div class="flex items-stretch gap-x-2">
+                <button id="open-folder-button-main" class="btn-primary font-semibold px-4 flex items-center justify-center rounded-md">
                     <i class="fas fa-folder-open mr-2"></i>Open Folder
                 </button>
-                <button id="settings-button" class="btn-secondary font-semibold px-4 flex items-center justify-center rounded-r-md rounded-l-none" style="border-left: 1px solid #374151;">
+                <button id="settings-button" class="btn-secondary font-semibold px-4 flex items-center justify-center rounded-md">
                     <i class="fas fa-cog mr-2"></i>Settings
                 </button>
+            </div>
             </div>
 
             <div id="setup-active-placeholder-top" class="hidden text-center text-gray-400 py-8">

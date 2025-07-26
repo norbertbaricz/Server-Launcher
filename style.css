@@ -79,10 +79,10 @@ body {
     background-color: #4a5568 !important;
     border-color: #4a5568 !important;
     color: #a0aec0 !important;
-}
-.btn-disabled:hover {
     transform: translateY(0) !important;
+    box-shadow: none !important;
 }
+
 .btn-disabled .fas {
     color: #a0aec0 !important;
 }
@@ -95,48 +95,67 @@ body {
     animation: fadeIn 0.5s ease-out forwards;
 }
 
+/* Animatii modale fluide */
 @keyframes fadeInModalBg { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeOutModalBg { from { opacity: 1; } to { opacity: 0; } }
 
 @keyframes fadeInModalContent {
-    from { opacity: 0; transform: scale(0.95) translateY(20px); }
+    from { opacity: 0; transform: scale(0.95) translateY(15px); }
     to { opacity: 1; transform: scale(1) translateY(0); }
 }
 @keyframes fadeOutModalContent {
     from { opacity: 1; transform: scale(1) translateY(0); }
-    to { opacity: 0; transform: scale(0.95) translateY(20px); }
+    to { opacity: 0; transform: scale(0.95) translateY(15px); }
 }
 
+/* Animatie de pulsare optimizata */
 @keyframes statusBarPulseBlue {
-    0%, 100% { box-shadow: 0 0 8px rgba(59, 130, 246, 0.3), inset 0 0 5px rgba(59, 130, 246, 0.2); }
-    50% { box-shadow: 0 0 16px rgba(59, 130, 246, 0.7), inset 0 0 10px rgba(59, 130, 246, 0.5); }
+    0%, 100% { box-shadow: 0 0 7px rgba(59, 130, 246, 0.25), inset 0 0 4px rgba(59, 130, 246, 0.15); }
+    50% { box-shadow: 0 0 14px rgba(59, 130, 246, 0.6), inset 0 0 8px rgba(59, 130, 246, 0.4); }
 }
 #status-bar-content.status-bar-pulse {
-    animation: statusBarPulseBlue 2s infinite ease-in-out;
+    animation: statusBarPulseBlue 2.2s infinite ease-in-out;
 }
 
+/* Animatie de atentionare optimizata */
 @keyframes greenAttentionPulse {
-    0% { box-shadow: 0 0 5px rgba(74, 222, 128, 0.2); border-color: rgba(74, 222, 128, 0.3); }
-    50% { box-shadow: 0 0 20px rgba(74, 222, 128, 0.8), inset 0 0 10px rgba(74, 222, 128, 0.4); border-color: #4ade80; }
-    100% { box-shadow: 0 0 5px rgba(74, 222, 128, 0.2); border-color: rgba(74, 222, 128, 0.3); }
+    0%, 100% { box-shadow: 0 0 4px rgba(74, 222, 128, 0.15); border-color: rgba(74, 222, 128, 0.25); }
+    50% { box-shadow: 0 0 18px rgba(74, 222, 128, 0.7), inset 0 0 9px rgba(74, 222, 128, 0.35); border-color: #4ade80; }
 }
 #ip-info-bar.animate-green-attention {
-    animation: greenAttentionPulse 2.0s ease-in-out 3;
+    animation: greenAttentionPulse 2s ease-in-out 3;
     border: 1px solid transparent;
 }
 
+/* Tranzitii optimizate pentru butoane */
+.btn-primary, .btn-secondary, .btn-danger, #start-button {
+    transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out, box-shadow 0.2s ease, border-color 0.2s ease-in-out;
+    will-change: transform, background-color, box-shadow; /* Optimizare pentru performanta */
+}
+
+.btn-primary:hover:not(.btn-disabled), 
+.btn-secondary:hover:not(.btn-disabled), 
+.btn-danger:hover:not(.btn-disabled), 
+#start-button:hover:not(.btn-disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+.btn-primary:active:not(.btn-disabled), 
+.btn-secondary:active:not(.btn-disabled), 
+.btn-danger:active:not(.btn-disabled), 
+#start-button:active:not(.btn-disabled) {
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+/* Stiluri de baza pentru butoane (culori, etc.) */
 .btn-primary {
     background-color: #3b82f6;
     color: white;
-    transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
 }
 .btn-primary:hover:not(.btn-disabled) {
     background-color: #2563eb;
-    transform: translateY(-1px);
-
-}
-.btn-primary:active:not(.btn-disabled) {
-    transform: translateY(0px);
 }
 .btn-primary .fas {
     color: white;
@@ -145,16 +164,10 @@ body {
 .btn-secondary {
     background-color: #4a5568;
     color: #e2e8f0;
-    border: 1px solid #718096;
-    transition: background-color 0.2s ease-in-out, border-color 0.2s ease-in-out, transform 0.1s ease-in-out;
 }
 .btn-secondary:hover:not(.btn-disabled) {
     background-color: #718096;
     border-color: #a0aec0;
-    transform: translateY(-1px);
-}
-.btn-secondary:active:not(.btn-disabled) {
-    transform: translateY(0px);
 }
 .btn-secondary .fas {
     color: #e2e8f0;
@@ -166,10 +179,6 @@ body {
 }
 #start-button:hover:not(.btn-disabled) {
     background-color: #16a34a;
-    transform: translateY(-1px);
-}
-#start-button:active:not(.btn-disabled) {
-    transform: translateY(0px);
 }
 #start-button .fas {
     color: white !important;
@@ -178,14 +187,9 @@ body {
 .btn-danger {
     background-color: #ef4444;
     color: white;
-    transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
 }
 .btn-danger:hover:not(.btn-disabled) {
     background-color: #dc2626;
-    transform: translateY(-1px);
-}
-.btn-danger:active:not(.btn-disabled) {
-    transform: translateY(0px);
 }
 .btn-danger .fas {
     color: white;
@@ -226,13 +230,18 @@ input:focus, select:focus, textarea:focus {
     padding-bottom: 0.75rem;
 }
 
+/* Animatie de incarcare (spinner) */
 @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+    from { 
+        transform: rotate(0deg); 
+    }
+    to { 
+        transform: rotate(360deg); 
+    }
 }
 
 .spinner {
-    animation: spin 1s linear infinite;
+    animation: spin 1.2s linear infinite;
 }
 
 .switch {
