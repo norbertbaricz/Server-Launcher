@@ -133,6 +133,7 @@ body {
 .btn-primary:hover:not(.btn-disabled) {
     background-color: #2563eb;
     transform: translateY(-1px);
+
 }
 .btn-primary:active:not(.btn-disabled) {
     transform: translateY(0px);
