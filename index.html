@@ -52,8 +52,8 @@
         </div>
 
         <div class="flex-grow bg-gray-800 p-4 rounded-lg shadow-xl flex flex-col min-h-[25vh] animate-fadeIn" style="animation-delay: 0.2s;">
-            <h2 class="text-lg font-semibold mb-2 text-gray-100">Server Console</h2>
-            <div id="console-output" class="console-output flex-grow bg-black text-sm p-3 rounded-md overflow-y-auto font-mono leading-normal whitespace-pre-wrap">
+            <!-- <h2 class="text-lg font-semibold mb-2 text-gray-100">Server Console</h2> -->
+            <div id="console-output" class="console-output flex flex-col justify-end flex-grow bg-gray-900 text-sm p-3 rounded-md overflow-y-auto font-mono leading-normal whitespace-pre-wrap">
             </div>
         </div>
 
@@ -134,15 +134,15 @@
             <div id="modal-setup-form-controls" class="space-y-5">
                 <div>
                     <label for="mc-version-modal" class="block text-sm font-medium text-gray-300 mb-1">Minecraft Version:</label>
-                    <select id="mc-version-modal" name="mc-version-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500">
+                    <select id="mc-version-modal" name="mc-version-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
                         <option value="" disabled selected>Loading versions...</option>
                     </select>
                 </div>
                 <div>
                     <label for="ram-allocation-modal" class="block text-sm font-medium text-gray-300 mb-1">RAM Allocation:</label>
-                    <select id="ram-allocation-modal" name="ram-allocation-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500">
+                    <select id="ram-allocation-modal" name="ram-allocation-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
                         <option value="auto" selected>Auto (Detect System)</option>
-                        <option value="512M">512MB (Very Small/Test)</option>
+                        <option value="512M">512MB (Very Small)</option>
                         <option value="1024M">1GB (Minimum)</option>
                         <option value="1536M">1.5GB</option>
                         <option value="2048M">2GB (Recommended Small)</option>
@@ -174,29 +174,29 @@
                     <h3 class="text-lg font-medium text-blue-400 mb-3">Server Configuration</h3>
                     <div>
                         <label for="mc-version-settings" class="block text-sm font-medium text-gray-300 mb-1">Minecraft Version:</label>
-                        <select id="mc-version-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500">
+                    <select id="mc-version-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
                             <option value="" disabled>Loading...</option>
                         </select>
                     </div>
                     <div class="mt-4">
                         <label for="ram-allocation-settings" class="block text-sm font-medium text-gray-300 mb-1">RAM Allocation:</label>
-                        <select id="ram-allocation-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500">
-                            <option value="auto">Auto (Detect System)</option>
-                            <option value="512M">512MB</option>
-                            <option value="1024M">1GB</option>
+                    <select id="ram-allocation-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
+                            <option value="auto" selected>Auto (Detect System)</option>
+                            <option value="512M">512MB (Very Small)</option>
+                            <option value="1024M">1GB (Minimum)</option>
                             <option value="1536M">1.5GB</option>
-                            <option value="2048M">2GB</option>
+                            <option value="2048M">2GB (Recommended Small)</option>
                             <option value="3072M">3GB</option>
-                            <option value="4096M">4GB</option>
+                            <option value="4096M">4GB (Recommended Medium)</option>
                             <option value="6144M">6GB</option>
-                            <option value="8192M">8GB</option>
+                            <option value="8192M">8GB (Recommended Large)</option>
                             <option value="12288M">12GB</option>
-                            <option value="16384M">16GB</option>
+                            <option value="16384M">16GB (Very Large)</option>
                         </select>
                     </div>
                     <div class="mt-4">
                         <label for="java-arguments-settings" class="block text-sm font-medium text-gray-300 mb-1">Java Arguments:</label>
-                        <select id="java-arguments-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500">
+                    <select id="java-arguments-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
                             <option value="Default">Default</option>
                             <option value="Performance">Performance</option>
                         </select>

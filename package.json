@@ -1,7 +1,7 @@
 {
   "name": "server-launcher",
   "version": "1.0.8",
-  "description": "A Minecraft server launcher built with Electron and Node.js",
+  "description": "A simple and powerful launcher to create, manage, and run your own Minecraft server directly from your computer. Get started in minutes!",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -85,7 +85,9 @@
       "installerIcon": "build/icon.ico",
       "uninstallerIcon": "build/icon.ico",
       "uninstallDisplayName": "${productName} Uninstaller",
-      "license": "LICENSE.txt"
+      "license": "LICENSE.txt",
+      "installerSidebar": "build/sidebar.bmp",
+      "uninstallerSidebar": "build/sidebar.bmp"
     },
     "linux": {
       "target": [
