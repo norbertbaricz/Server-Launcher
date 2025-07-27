@@ -131,7 +131,9 @@ body {
     0%, 100% { box-shadow: 0 0 4px rgba(74, 222, 128, 0.15); border-color: rgba(74, 222, 128, 0.25); }
     50% { box-shadow: 0 0 18px rgba(74, 222, 128, 0.7), inset 0 0 9px rgba(74, 222, 128, 0.35); border-color: #4ade80; }
 }
-#ip-info-bar.animate-green-attention {
+#local-ip-widget.animate-green-attention,
+#public-ip-widget.animate-green-attention,
+#server-version-widget.animate-green-attention {
     animation: greenAttentionPulse 2s ease-in-out 3;
     border: 1px solid transparent;
 }

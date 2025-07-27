@@ -12,6 +12,9 @@ const startButton = document.getElementById('start-button');
 const stopButton = document.getElementById('stop-button');
 const memoryUsageSpan = document.getElementById('memory-usage');
 const serverTpsSpan = document.getElementById('server-tps');
+const localIpWidget = document.getElementById('local-ip-widget');
+const publicIpWidget = document.getElementById('public-ip-widget');
+const serverVersionWidget = document.getElementById('server-version-widget');
 
 // Butoane de acțiune
 const openFolderButtonMain = document.getElementById('open-folder-button-main');
@@ -424,8 +427,21 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         autoStartIsActive = false;
         if (countdownInterval) clearInterval(countdownInterval);
         setStatus('Server is running.', false);
-        ipInfoBarDiv.classList.add('animate-green-attention');
-        ipInfoBarDiv.addEventListener('animationend', () => ipInfoBarDiv.classList.remove('animate-green-attention'), { once: true });
+        
+        // Aplică animația doar pe widget-urile de IP și versiune
+        localIpWidget.classList.add('animate-green-attention');
+        publicIpWidget.classList.add('animate-green-attention');
+        serverVersionWidget.classList.add('animate-green-attention');
+
+        // Elimină clasa de animație după ce se termină
+        const removeAnimation = (widget) => {
+            widget.classList.remove('animate-green-attention');
+        };
+        
+        localIpWidget.addEventListener('animationend', () => removeAnimation(localIpWidget), { once: true });
+        publicIpWidget.addEventListener('animationend', () => removeAnimation(publicIpWidget), { once: true });
+        serverVersionWidget.addEventListener('animationend', () => removeAnimation(serverVersionWidget), { once: true });
+
         memoryUsageSpan.textContent = `— / ${allocatedRamCache !== '-' ? allocatedRamCache : '...'} GB`;
     } else {
         if (!autoStartIsActive) {
