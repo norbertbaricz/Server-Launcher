@@ -78,17 +78,29 @@ function addToConsole(message, type = 'INFO') {
     p.classList.add('console-message');
 
     if (type === 'SERVER_LOG_HTML') {
-        p.innerHTML = `${message}`;
+        let coloredMessage = message;
+
+        // 1. Colorează timestamp-ul (ex: [12:34:56]) cu mov
+        coloredMessage = coloredMessage.replace(/(\[\d{2}:\d{2}:\d{2}\])/g, '<span style="color: #c792ea;">$1</span>');
+
+        // 2. Colorează nivelul de log (INFO, WARN, ERROR) direct în mesajul de la server
+        coloredMessage = coloredMessage.replace(/\b(INFO)\b/g, '<span style="color: #82aaff; font-weight: bold;">$1</span>'); // INFO -> Albastru
+        coloredMessage = coloredMessage.replace(/\b(WARN)\b/g, '<span style="color: #ffb372; font-weight: bold;">$1</span>'); // WARN -> Portocaliu
+        coloredMessage = coloredMessage.replace(/\b(ERROR)\b/g, '<span style="color: #ff757f; font-weight: bold;">$1</span>'); // ERROR -> Roșu
+
+        p.innerHTML = coloredMessage;
         consoleOutput.appendChild(p);
         consoleOutput.scrollTop = consoleOutput.scrollHeight;
         return;
     }
     
-    let typeColor = '#9ca3af'; let typeText = type.toUpperCase();
-    if (type === 'ERROR' || type === 'SERVER_ERROR') { typeColor = '#f87171'; typeText = type === 'SERVER_ERROR' ? 'STDERR' : 'ERROR'; }
-    else if (type === 'WARN') { typeColor = '#facc15'; }
-    else if (type === 'SUCCESS') { typeColor = '#4ade80'; }
-    else if (type === 'CMD') { typeColor = '#60a5fa'; }
+    // Această parte este pentru log-urile proprii ale launcher-ului
+    let typeColor = '#82aaff'; // Albastru deschis pentru INFO
+    let typeText = type.toUpperCase();
+    if (type === 'ERROR' || type === 'SERVER_ERROR') { typeColor = '#ff757f'; typeText = type === 'SERVER_ERROR' ? 'STDERR' : 'ERROR'; } // Roșu deschis pentru ERROR
+    else if (type === 'WARN') { typeColor = '#ffb372'; } // Portocaliu pentru WARN
+    else if (type === 'SUCCESS') { typeColor = '#4ade80'; } // Verde pentru SUCCESS
+    else if (type === 'CMD') { typeColor = '#60a5fa'; } // Albastru pentru comenzi
 
     const sanitizedMessage = String(message).replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const typePrefix = `<span style="color: ${typeColor}; font-weight: bold;">[${typeText}]</span> `;
@@ -624,7 +636,7 @@ window.electronAPI.onJavaInstallStatus((status, progress) => {
     const existingSpinner = javaInstallModalContent.querySelector('.fa-spinner');
     if (existingSpinner) {
         existingSpinner.remove();
-    }
+    }addToConsole
 
     if (lowerStatus.includes('downloading')) {
         javaInstallProgressBarContainer.classList.remove('hidden');
