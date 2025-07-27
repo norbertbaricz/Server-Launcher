@@ -11,7 +11,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onStartCountdown: (callback) => ipcRenderer.on('start-countdown', (_event, ...args) => callback(...args)),
     onJavaInstallRequired: (callback) => ipcRenderer.on('java-install-required', (_event, ...args) => callback(...args)),
     onJavaInstallStatus: (callback) => ipcRenderer.on('java-install-status', (_event, ...args) => callback(...args)),
-    // Această linie este esențială pentru a repara bug-ul
     onSetupFinished: (callback) => ipcRenderer.on('setup-finished', (_event, ...args) => callback(...args)),
 
 
@@ -19,6 +18,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     minimizeWindow: () => ipcRenderer.send('minimize-window'),
     maximizeWindow: () => ipcRenderer.send('maximize-window'),
     closeWindow: () => ipcRenderer.send('close-window'),
+    appReadyToShow: () => ipcRenderer.send('app-ready-to-show'), // Adăugat pentru loading screen
     setSettings: (settings) => ipcRenderer.send('set-settings', settings),
     openServerFolder: () => ipcRenderer.send('open-server-folder'),
     downloadPaperMC: (options) => ipcRenderer.send('download-papermc', options),

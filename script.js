@@ -1,4 +1,5 @@
 // Selectoare DOM Standard
+const loadingScreen = document.getElementById('loading-screen');
 const statusMessageSpan = document.getElementById('status-message');
 const localIpAddressSpan = document.getElementById('local-ip-address');
 const publicIpAddressSpan = document.getElementById('public-ip-address');
@@ -301,7 +302,12 @@ settingsButton.addEventListener('click', async () => {
     const delay = launcherSettings.autoStartDelay || 5;
     autoStartDelaySlider.value = delay;
     autoStartDelayValue.textContent = `${delay}s`;
-    autoStartDelayContainer.classList.toggle('hidden', !launcherSettings.autoStartServer);
+    
+    if (launcherSettings.autoStartServer) {
+        autoStartDelayContainer.classList.add('visible');
+    } else {
+        autoStartDelayContainer.classList.remove('visible');
+    }
     
     const serverConfig = await window.electronAPI.getServerConfig();
     await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version);
@@ -365,7 +371,11 @@ sendCommandButton.addEventListener('click', () => {
 });
 
 autoStartServerCheckbox.addEventListener('change', () => {
-    autoStartDelayContainer.classList.toggle('hidden', !autoStartServerCheckbox.checked);
+    if (autoStartServerCheckbox.checked) {
+        autoStartDelayContainer.classList.add('visible');
+    } else {
+        autoStartDelayContainer.classList.remove('visible');
+    }
 });
 
 autoStartDelaySlider.addEventListener('input', () => {
@@ -504,6 +514,13 @@ async function initializeApp() {
     document.getElementById('app-title-version').textContent = titleText;
     await refreshUISetupState();
     addToConsole("Launcher initialized.", "INFO");
+
+    // Ascunde ecranul de încărcare și afișează fereastra
+    loadingScreen.classList.add('hidden');
+    // Așteaptă finalizarea animației înainte de a afișa fereastra pentru a preveni flicker-ul
+    setTimeout(() => {
+        window.electronAPI.appReadyToShow();
+    }, 500); // Durata trebuie să corespundă cu tranziția CSS
 }
 
 document.addEventListener('DOMContentLoaded', initializeApp);

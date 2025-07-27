@@ -363,18 +363,13 @@ async function getPublicIP() {
 }
 
 function createWindow () {
-  const launcherSettings = readLauncherSettings();
-  const loginSettings = app.getLoginItemSettings();
-  const startMinimizedSetting = launcherSettings.startWithWindows && launcherSettings.startMinimized;
-  const wasOpenedAsHidden = startMinimizedSetting && (loginSettings.wasOpenedAtLogin || process.argv.includes('--hidden'));
-
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
     resizable: true,
     fullscreenable: true,
     frame: false,
-    show: !wasOpenedAsHidden,
+    show: false, // Fereastra este creată ascunsă
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -444,7 +439,7 @@ autoUpdater.on('checking-for-update', () => sendConsole('Updater: Checking for u
 autoUpdater.on('update-available', (info) => sendConsole(`Updater: Update available! Version: ${info.version}`, 'SUCCESS'));
 autoUpdater.on('update-not-available', (info) => sendConsole('Updater: No new updates available.', 'INFO'));
 autoUpdater.on('error', (err) => sendConsole('Updater: Error during update. ' + err.message, 'ERROR'));
-autoUpdater.on('download-progress', (p) => sendStatus(`Download speed: ${Math.round(p.bytesPerSecond / 1024)} KB/s - Downloaded ${Math.round(p.percent)}%`, true));
+autoUpdater.on('download-progress', (p) => setStatus(`Download speed: ${Math.round(p.bytesPerSecond / 1024)} KB/s - Downloaded ${Math.round(p.percent)}%`, true));
 autoUpdater.on('update-downloaded', (info) => {
   sendConsole(`Updater: Update downloaded (${info.version}). It will be installed on restart.`, 'SUCCESS');
   dialog.showMessageBox({
@@ -481,6 +476,11 @@ ipcMain.handle('get-icon-path', () => {
     let iconPath = path.join(process.resourcesPath, 'icon.ico');
     if (!fs.existsSync(iconPath)) iconPath = path.join(__dirname, 'build', 'icon.ico');
     return fs.existsSync(iconPath) ? iconPath : null;
+});
+
+// Noul eveniment pentru a afișa fereastra
+ipcMain.on('app-ready-to-show', () => {
+    mainWindow.show();
 });
 
 ipcMain.handle('get-settings', () => {

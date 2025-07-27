@@ -8,6 +8,15 @@ body {
     flex-direction: column;
 }
 
+#loading-screen {
+    transition: opacity 0.5s ease-out;
+}
+
+#loading-screen.hidden {
+    opacity: 0;
+    pointer-events: none; /* Face ecranul de încărcare non-interactiv când este ascuns */
+}
+
 #title-bar {
   -webkit-app-region: drag;
   -webkit-user-select: none;
@@ -286,4 +295,23 @@ input:checked + .switch-track .switch-thumb {
     overflow: hidden;
     clip: rect(0,0,0,0);
     border: 0;
+}
+
+#auto-start-delay-container {
+    transition: all 0.3s ease-in-out;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    margin-top: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    border: 1px solid transparent;
+}
+
+#auto-start-delay-container.visible {
+    max-height: 100px;
+    opacity: 1;
+    margin-top: 0.75rem;
+    padding: 0.75rem;
+    border-color: #4a5568;
 }
