@@ -168,7 +168,7 @@ function updateButtonStates(isRunning) {
     if (currentServerConfig && currentServerConfig.version) {
         serverVersionSpan.textContent = currentServerConfig.version;
     } else {
-        serverVersionSpan.textContent = '-';
+        serverVersionSpan.textContent = '0.0.0';
     }
 }
 
@@ -459,9 +459,9 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         if (!autoStartIsActive) {
             setStatus("Server stopped.", false);
         }
-        memoryUsageSpan.textContent = '— / — GB';
+        memoryUsageSpan.textContent = '0 / 0 GB';
         memoryUsageSpan.style.color = '';
-        serverTpsSpan.textContent = '— / 20.0';
+        serverTpsSpan.textContent = '0 / 20.0';
         serverTpsSpan.style.color = '';
         allocatedRamCache = '-'; 
     }

@@ -27,10 +27,11 @@
         
         <div id="title-bar-buttons">
             <button id="minimize-btn" class="title-bar-btn" aria-label="Minimize">
-                <i class="fas fa-window-minimize"></i>
+                ---
             </button>
             <button id="maximize-btn" class="title-bar-btn" aria-label="Maximize">
-                <i class="far fa-square"></i> </button>
+                <i class="far fa-square"></i> 
+            </button>
             <button id="close-btn" class="title-bar-btn" aria-label="Close">
                 <i class="fas fa-times"></i>
             </button>
@@ -244,11 +245,13 @@
                         </div>
                     </label>
                     <div id="auto-start-delay-container" class="bg-gray-700 rounded-md">
-                        <label for="auto-start-delay-slider" class="flex justify-between text-sm font-medium text-gray-300 mb-2">
-                            <span>Auto-start Delay</span>
-                            <span id="auto-start-delay-value">5s</span>
-                        </label>
-                        <input id="auto-start-delay-slider" type="range" min="5" max="60" value="5" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                        <div class="p-3">
+                            <label for="auto-start-delay-slider" class="flex justify-between text-sm font-medium text-gray-300 mb-2">
+                                <span>Auto-start Delay</span>
+                                <span id="auto-start-delay-value">5s</span>
+                            </label>
+                            <input id="auto-start-delay-slider" type="range" min="5" max="60" value="5" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                        </div>
                     </div>
                 </div>
 

@@ -300,13 +300,11 @@ input:checked + .switch-track .switch-thumb {
 }
 
 #auto-start-delay-container {
-    transition: all 0.3s ease-in-out;
+    transition: max-height 0.4s ease-in-out, opacity 0.3s ease-in-out, margin-top 0.4s ease-in-out;
     max-height: 0;
     opacity: 0;
     overflow: hidden;
     margin-top: 0;
-    padding-top: 0;
-    padding-bottom: 0;
     border: 1px solid transparent;
 }
 
@@ -314,6 +312,9 @@ input:checked + .switch-track .switch-thumb {
     max-height: 100px;
     opacity: 1;
     margin-top: 0.75rem;
-    padding: 0.75rem;
     border-color: #4a5568;
+}
+
+#settings-modal-content {
+    max-height: 90vh; /* Aici a fost corectată eroarea */
 }
