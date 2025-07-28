@@ -15,6 +15,14 @@
             background-color: #0a0a0a;
             color: #e5e7eb;
         }
+        /* --- NOU: Ascundere scrollbar --- */
+        body::-webkit-scrollbar {
+            display: none;
+        }
+        body {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
         .bg-grid {
             background-image:
                 linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
@@ -46,7 +54,6 @@
             position: relative;
             overflow: hidden;
         }
-        /* --- NOU: Efect de lumină la hover pe carduri --- */
         .feature-card::before {
             content: '';
             position: absolute;
@@ -99,7 +106,6 @@
             opacity: 1;
             transform: translateY(0);
         }
-        /* --- NOU: Animație pentru meniul de navigare --- */
         @keyframes slideDown {
             from {
                 opacity: 0;
@@ -113,7 +119,6 @@
         header {
             animation: slideDown 0.7s ease-out forwards;
         }
-        /* --- NOU: Animație pentru meniul de limbi --- */
         #lang-menu {
             transition: opacity 0.2s ease, transform 0.2s ease;
             transform-origin: top right;
@@ -122,6 +127,10 @@
             opacity: 0;
             transform: scale(0.95);
             pointer-events: none;
+        }
+        /* --- NOU: Stiluri pentru meniul mobil --- */
+        #mobile-menu {
+            transition: opacity 0.3s ease-in-out;
         }
     </style>
     <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
@@ -137,13 +146,14 @@
                 <img src="https://raw.githubusercontent.com/norbertbaricz/server-launcher/main/build/icon.png" alt="Icon" class="h-8 w-8">
                 <span class="text-xl font-bold text-white">Server-Launcher</span>
             </div>
+            <!-- Meniu Desktop -->
             <nav class="hidden md:flex items-center gap-6 text-gray-300">
                 <a href="#features" class="hover:text-blue-400 transition-colors" data-translate="nav_features"></a>
                 <a href="#tutorial" class="hover:text-blue-400 transition-colors" data-translate="nav_tutorial"></a>
                 <a href="#download" class="hover:text-blue-400 transition-colors" data-translate="nav_download"></a>
             </nav>
-            <div class="flex items-center gap-4">
-                 <a href="https://github.com/norbertbaricz/server-launcher" target="_blank" class="hidden md:inline-block bg-gray-800 hover:bg-gray-700 text-white font-semibold py-2 px-4 border border-gray-700 rounded-lg transition-transform hover:scale-105">
+            <div class="hidden md:flex items-center gap-4">
+                 <a href="https://github.com/norbertbaricz/server-launcher" target="_blank" class="bg-gray-800 hover:bg-gray-700 text-white font-semibold py-2 px-4 border border-gray-700 rounded-lg transition-transform hover:scale-105">
                     <i class="fab fa-github mr-2"></i> GitHub
                 </a>
                 <div class="relative">
@@ -157,8 +167,35 @@
                     </div>
                 </div>
             </div>
+            <!-- Buton Meniu Mobil -->
+            <div class="md:hidden flex items-center">
+                 <button id="mobile-menu-button" class="text-2xl text-gray-300 hover:text-blue-400">
+                    <i class="fas fa-bars"></i>
+                </button>
+            </div>
         </div>
     </header>
+
+    <!-- Meniu Mobil (Overlay) -->
+    <div id="mobile-menu" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm z-40 flex flex-col items-center justify-center">
+        <button id="close-mobile-menu" class="absolute top-6 right-6 text-3xl text-gray-400 hover:text-white">&times;</button>
+        <nav class="flex flex-col items-center gap-8 text-2xl text-gray-200">
+            <a href="#features" class="hover:text-blue-400 transition-colors mobile-menu-link" data-translate="nav_features"></a>
+            <a href="#tutorial" class="hover:text-blue-400 transition-colors mobile-menu-link" data-translate="nav_tutorial"></a>
+            <a href="#download" class="hover:text-blue-400 transition-colors mobile-menu-link" data-translate="nav_download"></a>
+            <hr class="w-24 border-gray-600 my-4">
+            <div class="relative">
+                <button id="mobile-lang-toggle" class="text-xl text-gray-400 hover:text-blue-400 transition-colors flex items-center gap-2">
+                    <i class="fas fa-globe"></i> <span data-translate="language">Language</span>
+                </button>
+                 <div id="mobile-lang-menu" class="absolute left-1/2 -translate-x-1/2 mt-2 w-32 bg-gray-800 rounded-md shadow-lg py-1 hidden border border-gray-700">
+                    <a href="#" class="block px-4 py-2 text-sm text-center text-gray-300 hover:bg-gray-700" data-lang="en">English</a>
+                    <a href="#" class="block px-4 py-2 text-sm text-center text-gray-300 hover:bg-gray-700" data-lang="ro">Română</a>
+                    <a href="#" class="block px-4 py-2 text-sm text-center text-gray-300 hover:bg-gray-700" data-lang="hu">Magyar</a>
+                </div>
+            </div>
+        </nav>
+    </div>
 
     <main class="container mx-auto px-6 pt-32">
         <section class="text-center py-20" data-aos="fade-up">
@@ -280,6 +317,7 @@
                 nav_features: "Features",
                 nav_tutorial: "Tutorial",
                 nav_download: "Download",
+                language: "Language",
                 hero_title: "Create Your Own Minecraft Server. Simple and Fast.",
                 hero_subtitle: "An intuitive desktop app to manage and run your own Minecraft server. Built with Electron, this launcher radically simplifies the process of setting up, starting, stopping, and interacting with a PaperMC server.",
                 hero_button: "Download Now",
@@ -315,6 +353,7 @@
                 nav_features: "Funcționalități",
                 nav_tutorial: "Tutorial",
                 nav_download: "Download",
+                language: "Limbă",
                 hero_title: "Creează-ți Propriul Server de Minecraft. Simplu și Rapid.",
                 hero_subtitle: "O aplicație desktop intuitivă pentru a gestiona și rula propriul server de Minecraft. Construit cu Electron, acest launcher simplifică radical procesul de configurare, pornire, oprire și interacțiune cu un server PaperMC.",
                 hero_button: "Descarcă Acum",
@@ -350,6 +389,7 @@
                 nav_features: "Funkciók",
                 nav_tutorial: "Útmutató",
                 nav_download: "Letöltés",
+                language: "Nyelv",
                 hero_title: "Hozd létre saját Minecraft szervered. Egyszerűen és gyorsan.",
                 hero_subtitle: "Egy intuitív asztali alkalmazás a saját Minecraft szervered kezeléséhez és futtatásához. Az Electron segítségével készült launcher radikálisan leegyszerűsíti a PaperMC szerver beállítását, elindítását, leállítását és a vele való interakciót.",
                 hero_button: "Letöltés Most",
@@ -386,6 +426,8 @@
         // --- LANGUAGE SWITCHER ---
         const langToggle = document.getElementById('lang-toggle');
         const langMenu = document.getElementById('lang-menu');
+        const mobileLangToggle = document.getElementById('mobile-lang-toggle');
+        const mobileLangMenu = document.getElementById('mobile-lang-menu');
 
         const setLanguage = (lang) => {
             document.documentElement.lang = lang;
@@ -398,24 +440,41 @@
             });
             localStorage.setItem('language', lang);
             langMenu.classList.add('hidden');
+            mobileLangMenu.classList.add('hidden');
         };
 
-        langToggle.addEventListener('click', (e) => {
-            e.stopPropagation();
-            langMenu.classList.toggle('hidden');
+        [langToggle, mobileLangToggle].forEach(toggle => {
+            toggle.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const menu = toggle.id === 'lang-toggle' ? langMenu : mobileLangMenu;
+                menu.classList.toggle('hidden');
+            });
         });
-
+        
         document.addEventListener('click', () => {
-            if (!langMenu.classList.contains('hidden')) {
-                langMenu.classList.add('hidden');
-            }
+            if (!langMenu.classList.contains('hidden')) langMenu.classList.add('hidden');
+            if (!mobileLangMenu.classList.contains('hidden')) mobileLangMenu.classList.add('hidden');
         });
 
-        langMenu.addEventListener('click', (e) => {
-            if (e.target.tagName === 'A') {
-                const lang = e.target.getAttribute('data-lang');
-                setLanguage(lang);
-            }
+        [langMenu, mobileLangMenu].forEach(menu => {
+            menu.addEventListener('click', (e) => {
+                if (e.target.tagName === 'A') {
+                    const lang = e.target.getAttribute('data-lang');
+                    setLanguage(lang);
+                }
+            });
+        });
+        
+        // --- MOBILE MENU ---
+        const mobileMenuButton = document.getElementById('mobile-menu-button');
+        const mobileMenu = document.getElementById('mobile-menu');
+        const closeMobileMenuButton = document.getElementById('close-mobile-menu');
+        const mobileMenuLinks = document.querySelectorAll('.mobile-menu-link');
+
+        mobileMenuButton.addEventListener('click', () => mobileMenu.classList.remove('hidden'));
+        closeMobileMenuButton.addEventListener('click', () => mobileMenu.classList.add('hidden'));
+        mobileMenuLinks.forEach(link => {
+            link.addEventListener('click', () => mobileMenu.classList.add('hidden'));
         });
 
         // --- INITIALIZATION ---
@@ -438,7 +497,7 @@
             });
         }
 
-        // --- NOU: Efect de lumină la hover pe carduri ---
+        // Efect de lumină la hover pe carduri
         document.querySelectorAll('.feature-card').forEach(card => {
             card.addEventListener('mousemove', e => {
                 const rect = card.getBoundingClientRect();
