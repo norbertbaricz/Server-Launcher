@@ -1,276 +1,464 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Server Launcher</title>
+    <title>Server-Launcher for Minecraft</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0a0a0a;
+            color: #e5e7eb;
+        }
+        .bg-grid {
+            background-image:
+                linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+        .glow-effect {
+            position: absolute;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(29, 78, 216, 0.2) 0%, rgba(29, 78, 216, 0) 60%);
+            pointer-events: none;
+            z-index: -1;
+        }
+        .btn-primary {
+            transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
+        }
+        .btn-primary:hover {
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 0 25px rgba(59, 130, 246, 0.5);
+        }
+        .feature-card {
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.02);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        /* --- NOU: Efect de lumină la hover pe carduri --- */
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(800px circle at var(--mouse-x) var(--mouse-y), rgba(59, 130, 246, 0.15), transparent 40%);
+            opacity: 0;
+            transition: opacity 0.5s;
+        }
+        .feature-card:hover::before {
+            opacity: 1;
+        }
+        .feature-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(59, 130, 246, 0.5);
+            background: rgba(29, 78, 216, 0.1);
+        }
+        .code-block {
+            position: relative;
+            background-color: #1f2937;
+            border: 1px solid #374151;
+        }
+        .copy-btn {
+            position: absolute;
+            top: 0.75rem;
+            right: 0.75rem;
+            background-color: #374151;
+            color: #d1d5db;
+            border: none;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            opacity: 0.5;
+            transition: all 0.2s ease;
+        }
+        .code-block:hover .copy-btn {
+            opacity: 1;
+        }
+        .copy-btn:hover {
+            background-color: #4b5563;
+        }
+        [data-aos] {
+            opacity: 0;
+            transform: translateY(20px);
+            transition-property: opacity, transform;
+        }
+        [data-aos].aos-animate {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        /* --- NOU: Animație pentru meniul de navigare --- */
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-100%);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        header {
+            animation: slideDown 0.7s ease-out forwards;
+        }
+        /* --- NOU: Animație pentru meniul de limbi --- */
+        #lang-menu {
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            transform-origin: top right;
+        }
+        #lang-menu.hidden {
+            opacity: 0;
+            transform: scale(0.95);
+            pointer-events: none;
+        }
+    </style>
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
 </head>
-<body class="bg-gray-900 text-gray-200 flex flex-col h-screen">
+<body class="bg-grid">
 
-    <div id="loading-screen" class="fixed inset-0 bg-gray-900 flex items-center justify-center z-[100]">
-        <div class="text-center">
-            <i class="fas fa-spinner fa-spin text-4xl text-blue-400"></i>
-            <p class="mt-4 text-lg text-gray-300">Loading Launcher...</p>
-        </div>
-    </div>
+    <div id="glow1" class="glow-effect"></div>
+    <div id="glow2" class="glow-effect"></div>
 
-    <div id="title-bar">
-        <div class="flex items-center">
-            <img id="app-icon" src="" alt="App Icon" class="w-4 h-4 mr-3">
-            <span id="app-title-version">Server Launcher</span>
-        </div>
-        
-        <div id="title-bar-buttons">
-            <button id="minimize-btn" class="title-bar-btn" aria-label="Minimize">
-                ---
-            </button>
-            <button id="maximize-btn" class="title-bar-btn" aria-label="Maximize">
-                <i class="far fa-square"></i> 
-            </button>
-            <button id="close-btn" class="title-bar-btn" aria-label="Close">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-    </div>
-
-    <div id="main-content-area" class="flex-grow flex flex-col space-y-3 p-4 overflow-y-auto">
-
-        <div class="bg-gray-800 p-4 rounded-lg shadow-xl animate-fadeIn" style="animation-delay: 0.1s;">
-            <div id="status-and-open-folder-area" class="hidden flex items-center justify-between gap-x-3">
-                <div id="status-bar-content" class="bg-gray-700 p-3 rounded-md flex-grow min-w-0 flex items-center">
-                <i class="fas fa-info-circle text-gray-400 mr-2"></i>
-                <span class="text-sm font-medium text-gray-400">Status:</span>
-                <span id="status-message" class="text-sm text-yellow-400 ml-2 truncate">Initializing...</span>
+    <header class="fixed top-0 left-0 right-0 bg-black/30 backdrop-blur-md z-50 border-b border-white/10">
+        <div class="container mx-auto px-6 py-4 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <img src="https://raw.githubusercontent.com/norbertbaricz/server-launcher/main/build/icon.png" alt="Icon" class="h-8 w-8">
+                <span class="text-xl font-bold text-white">Server-Launcher</span>
             </div>
-
-            <div class="flex items-stretch gap-x-2">
-                <button id="plugins-folder-button" class="btn-primary font-semibold px-4 py-3 flex items-center justify-center rounded-md">
-                    <i class="fas fa-puzzle-piece mr-2"></i>Plugins
-                </button>
-                <button id="settings-button" class="btn-secondary font-semibold px-4 py-3 flex items-center justify-center rounded-md">
-                    <i class="fas fa-cog mr-2"></i>Settings
-                </button>
-            </div>
-            </div>
-
-            <div id="setup-active-placeholder-top" class="hidden text-center text-gray-400 py-8">
-                Please complete server configuration in the popup.
-            </div>
-        </div>
-
-        <div class="flex-grow bg-gray-800 p-4 rounded-lg shadow-xl flex flex-col min-h-[25vh] animate-fadeIn" style="animation-delay: 0.2s;">
-            <div id="console-output" class="console-output flex flex-col flex-grow bg-gray-900 text-sm p-3 rounded-md overflow-y-auto font-mono leading-normal whitespace-pre-wrap">
-            </div>
-        </div>
-
-        <div id="ip-info-bar" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 animate-fadeIn" style="animation-delay: 0.25s;">
-            <div id="local-ip-widget" class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
-                <i class="fas fa-network-wired text-blue-400 text-xl w-6 text-center"></i>
-                <div>
-                    <p class="text-xs text-gray-400 font-medium">Local IP</p>
-                    <p id="local-ip-address" class="text-sm font-semibold text-gray-200 truncate">Fetching...</p>
-                </div>
-            </div>
-
-            <div id="public-ip-widget" class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
-                <i class="fas fa-globe text-blue-400 text-xl w-6 text-center"></i>
-                <div>
-                    <p class="text-xs text-gray-400 font-medium">Public IP</p>
-                    <p id="public-ip-address" class="text-sm font-semibold text-gray-200 truncate">Fetching...</p>
-                </div>
-            </div>
-
-            <div id="server-version-widget" class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
-                <i class="fas fa-tag text-blue-400 text-xl w-6 text-center"></i>
-                <div>
-                    <p class="text-xs text-gray-400 font-medium">Version</p>
-                    <p id="server-version" class="text-sm font-semibold text-gray-200 truncate">N/A</p>
-                </div>
-            </div>
-
-            <div class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
-                <i class="fas fa-memory text-blue-400 text-xl w-6 text-center"></i>
-                <div>
-                    <p class="text-xs text-gray-400 font-medium">Memory</p>
-                    <p id="memory-usage" class="text-sm font-semibold text-gray-200 truncate">N/A</p>
-                </div>
-            </div>
-
-            <div class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
-                <i class="fas fa-tachometer-alt text-blue-400 text-xl w-6 text-center"></i>
-                <div>
-                    <p class="text-xs text-gray-400 font-medium">TPS</p>
-                    <p id="server-tps" class="text-sm font-semibold text-gray-200 truncate">N/A</p>
-                </div>
-            </div>
-        </div>
-
-        <div id="bottom-action-bar" class="bg-gray-800 p-3 rounded-lg shadow-xl animate-fadeIn" style="animation-delay: 0.3s;">
-            <div class="flex flex-col space-y-3 sm:space-y-0 sm:flex-row sm:space-x-2 items-stretch">
-                <input type="text" id="command-input" placeholder="Enter server command..." class="flex-grow bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5">
-                <button id="send-command-button" class="btn-primary font-semibold py-2.5 px-4 rounded-md shadow-md flex items-center justify-center w-full sm:w-auto">
-                    <i class="fas fa-paper-plane mr-2"></i>Send
-                </button>
-                <button id="start-button" class="btn-primary font-semibold py-2.5 px-5 rounded-md shadow-md flex items-center justify-center w-full sm:w-auto" style="background-color: #16a34a; color:white;">
-                    <i class="fas fa-play mr-2" style="color:white;"></i>Start Server
-                </button>
-                <button id="stop-button" class="btn-danger font-semibold py-2.5 px-5 rounded-md shadow-md flex items-center justify-center btn-disabled w-full sm:w-auto">
-                    <i class="fas fa-stop mr-2"></i>Stop Server
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <div id="java-install-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
-        <div id="java-install-modal-content" class="modal-content bg-gray-800 p-6 md:p-8 rounded-lg shadow-2xl w-11/12 md:w-3/4 lg:w-1/2 xl:w-1/3">
-            <h2 class="text-xl md:text-2xl font-semibold text-blue-400 mb-5 text-center">Java (JDK) Required</h2>
-            <p id="java-install-message" class="text-gray-300 mb-6 text-center text-sm">
-                Java is not detected on your system. It is required to run the server.
-            </p>
-            <div id="java-install-progress-bar-container" class="w-full bg-gray-700 rounded-full h-2.5 mb-4 hidden">
-                <div id="java-install-progress-bar" class="bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
-            </div>
-            <div id="java-install-controls">
-                <button id="java-install-button" class="w-full btn-primary font-semibold py-3 px-4 rounded-md shadow-md flex items-center justify-center text-base">
-                    <i class="fas fa-download mr-2"></i>
-                    <span>Download & Install Java</span>
-                </button>
-                <button id="java-restart-button" class="w-full btn-primary font-semibold py-3 px-4 rounded-md shadow-md flex items-center justify-center text-base hidden mt-4">
-                    <i class="fas fa-power-off mr-2"></i>
-                    <span>Restart Launcher</span>
-                </button>
-            </div>
-        </div>
-    </div>
-
-
-    <div id="setup-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
-        <div id="setup-modal-content" class="modal-content bg-gray-800 p-6 md:p-8 rounded-lg shadow-2xl w-11/12 md:w-3/4 lg:w-1/2 xl:w-1/3">
-            <h2 class="text-xl md:text-2xl font-semibold text-blue-400 mb-5 text-center">Server Setup Required</h2>
-            <p class="text-gray-300 mb-6 text-center text-sm">
-                Server files (paper.jar) or configuration (config.json) are missing.
-                Please select options and click "Download / Configure".
-            </p>
-            <div id="modal-setup-form-controls" class="space-y-5">
-                <div>
-                    <label for="mc-version-modal" class="block text-sm font-medium text-gray-300 mb-1">Minecraft Version:</label>
-                    <select id="mc-version-modal" name="mc-version-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
-                        <option value="" disabled selected>Loading versions...</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="ram-allocation-modal" class="block text-sm font-medium text-gray-300 mb-1">RAM Allocation:</label>
-                    <select id="ram-allocation-modal" name="ram-allocation-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
-                        <option value="auto" selected>Auto (Detect System)</option>
-                        <option value="512M">512MB (Very Small)</option>
-                        <option value="1024M">1GB (Minimum)</option>
-                        <option value="1536M">1.5GB</option>
-                        <option value="2048M">2GB (Recommended Small)</option>
-                        <option value="3072M">3GB</option>
-                        <option value="4096M">4GB (Recommended Medium)</option>
-                        <option value="6144M">6GB</option>
-                        <option value="8192M">8GB (Recommended Large)</option>
-                        <option value="12288M">12GB</option>
-                        <option value="16384M">16GB (Very Large)</option>
-                    </select>
-                </div>
-                <div class="pt-2">
-                    <button id="download-button-modal" class="w-full btn-primary font-semibold py-3 px-4 rounded-md shadow-md flex items-center justify-center text-base">
-                        <i class="fas fa-download mr-2"></i>
-                        <span id="download-button-text">Download / Configure Server</span>
+            <nav class="hidden md:flex items-center gap-6 text-gray-300">
+                <a href="#features" class="hover:text-blue-400 transition-colors" data-translate="nav_features"></a>
+                <a href="#tutorial" class="hover:text-blue-400 transition-colors" data-translate="nav_tutorial"></a>
+                <a href="#download" class="hover:text-blue-400 transition-colors" data-translate="nav_download"></a>
+            </nav>
+            <div class="flex items-center gap-4">
+                 <a href="https://github.com/norbertbaricz/server-launcher" target="_blank" class="hidden md:inline-block bg-gray-800 hover:bg-gray-700 text-white font-semibold py-2 px-4 border border-gray-700 rounded-lg transition-transform hover:scale-105">
+                    <i class="fab fa-github mr-2"></i> GitHub
+                </a>
+                <div class="relative">
+                    <button id="lang-toggle" class="text-xl text-gray-400 hover:text-blue-400 transition-colors">
+                        <i class="fas fa-globe"></i>
                     </button>
+                    <div id="lang-menu" class="absolute right-0 mt-2 w-32 bg-gray-800 rounded-md shadow-lg py-1 hidden border border-gray-700">
+                        <a href="#" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700" data-lang="en">English</a>
+                        <a href="#" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700" data-lang="ro">Română</a>
+                        <a href="#" class="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-700" data-lang="hu">Magyar</a>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
+    </header>
 
-    <div id="settings-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
-        <div id="settings-modal-content" class="modal-content bg-gray-800 p-6 md:p-8 rounded-lg shadow-2xl w-11/12 md:w-3/4 lg:w-7/12 xl:w-1/2 flex flex-col max-h-[95vh]">
-            <h2 class="text-xl md:text-2xl font-semibold text-gray-200 mb-6 text-center flex-shrink-0">Settings</h2>
-            
-            <div class="flex-grow overflow-y-auto pr-4 -mr-4 space-y-5">
-                
-                <div>
-                    <h3 class="text-lg font-medium text-blue-400 mb-3">Server Configuration</h3>
-                    <div>
-                        <label for="mc-version-settings" class="block text-sm font-medium text-gray-300 mb-1">Minecraft Version:</label>
-                    <select id="mc-version-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
-                            <option value="" disabled>Loading...</option>
-                        </select>
-                    </div>
-                    <div class="mt-4">
-                        <label for="ram-allocation-settings" class="block text-sm font-medium text-gray-300 mb-1">RAM Allocation:</label>
-                    <select id="ram-allocation-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
-                            <option value="auto" selected>Auto (Detect System)</option>
-                            <option value="512M">512MB (Very Small)</option>
-                            <option value="1024M">1GB (Minimum)</option>
-                            <option value="1536M">1.5GB</option>
-                            <option value="2048M">2GB (Recommended Small)</option>
-                            <option value="3072M">3GB</option>
-                            <option value="4096M">4GB (Recommended Medium)</option>
-                            <option value="6144M">6GB</option>
-                            <option value="8192M">8GB (Recommended Large)</option>
-                            <option value="12288M">12GB</option>
-                            <option value="16384M">16GB (Very Large)</option>
-                        </select>
-                    </div>
-                    <div class="mt-4">
-                        <label for="java-arguments-settings" class="block text-sm font-medium text-gray-300 mb-1">Java Arguments:</label>
-                    <select id="java-arguments-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
-                            <option value="Default">Default (Standard JVM arguments)</option>
-                            <option value="Performance">Performance (Includes Aikar's flags for optimization)</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div class="border-t border-gray-700 pt-5">
-                     <h3 class="text-lg font-medium text-blue-400 mb-3">Launcher Settings</h3>
-                    <label for="start-with-windows-checkbox" class="flex items-center justify-between p-3 bg-gray-700 rounded-md cursor-pointer hover:bg-gray-600 transition-colors">
-                        <span class="text-gray-300">Start with Windows</span>
-                        <div class="switch">
-                            <input type="checkbox" id="start-with-windows-checkbox" class="sr-only">
-                            <div class="switch-track"><div class="switch-thumb"></div></div>
-                        </div>
-                    </label>
-                    <label for="auto-start-server-checkbox" class="flex items-center justify-between p-3 bg-gray-700 rounded-md cursor-pointer hover:bg-gray-600 transition-colors mt-3">
-                        <span class="text-gray-300">Automatically start server</span>
-                        <div class="switch">
-                            <input type="checkbox" id="auto-start-server-checkbox" class="sr-only">
-                            <div class="switch-track"><div class="switch-thumb"></div></div>
-                        </div>
-                    </label>
-                    <div id="auto-start-delay-container" class="bg-gray-700 rounded-md">
-                        <div class="p-3">
-                            <label for="auto-start-delay-slider" class="flex justify-between text-sm font-medium text-gray-300 mb-2">
-                                <span>Auto-start Delay</span>
-                                <span id="auto-start-delay-value">5s</span>
-                            </label>
-                            <input id="auto-start-delay-slider" type="range" min="5" max="60" value="5" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
-                        </div>
-                    </div>
-                </div>
-
-                <div class="border-t border-gray-700 pt-5">
-                    <h3 class="text-lg font-medium text-blue-400 mb-3">Server Properties</h3>
-                    <div id="server-properties-container" class="space-y-3">
-                        <p class="text-gray-400 text-center">Run the server once to generate and edit server.properties.</p>
-                    </div>
-                </div>
-
+    <main class="container mx-auto px-6 pt-32">
+        <section class="text-center py-20" data-aos="fade-up">
+            <h1 class="text-5xl md:text-7xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 mb-4" data-translate="hero_title"></h1>
+            <p class="max-w-3xl mx-auto text-lg text-gray-400 mb-8" data-translate="hero_subtitle"></p>
+            <div class="flex justify-center gap-4 mb-12">
+                <a href="#download" class="btn-primary bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-8 rounded-full text-lg">
+                    <i class="fas fa-download mr-2"></i> <span data-translate="hero_button"></span>
+                </a>
             </div>
-
-            <div class="flex justify-end space-x-3 mt-8 flex-shrink-0">
-                <button id="close-settings-button" class="btn-secondary font-semibold py-2 px-5 rounded-md shadow-md">Close</button>
-                <button id="save-settings-button" class="btn-primary font-semibold py-2 px-5 rounded-md shadow-md">Save & Apply</button>
+            <div class="relative max-w-5xl mx-auto" data-aos="fade-up" data-aos-delay="200">
+                <div class="absolute -inset-2 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl blur-xl opacity-20"></div>
+                <img src="https://raw.githubusercontent.com/norbertbaricz/server-launcher/main/build/screenshot.png" alt="Server Launcher Screenshot" class="relative rounded-xl shadow-2xl border border-white/10 w-full">
             </div>
+        </section>
+
+        <section id="features" class="py-24">
+            <h2 class="text-4xl font-bold text-center mb-12" data-aos="fade-up" data-translate="features_title"></h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                <div class="feature-card p-6 rounded-xl" data-aos="fade-up">
+                    <div class="text-3xl text-blue-400 mb-4"><i class="fas fa-rocket"></i></div>
+                    <h3 class="text-xl font-semibold mb-2" data-translate="feature1_title"></h3>
+                    <p class="text-gray-400" data-translate="feature1_desc"></p>
+                </div>
+                <div class="feature-card p-6 rounded-xl" data-aos="fade-up" data-aos-delay="100">
+                    <div class="text-3xl text-blue-400 mb-4"><i class="fas fa-tags"></i></div>
+                    <h3 class="text-xl font-semibold mb-2" data-translate="feature2_title"></h3>
+                    <p class="text-gray-400" data-translate="feature2_desc"></p>
+                </div>
+                <div class="feature-card p-6 rounded-xl" data-aos="fade-up" data-aos-delay="200">
+                    <div class="text-3xl text-blue-400 mb-4"><i class="fas fa-memory"></i></div>
+                    <h3 class="text-xl font-semibold mb-2" data-translate="feature3_title"></h3>
+                    <p class="text-gray-400" data-translate="feature3_desc"></p>
+                </div>
+                <div class="feature-card p-6 rounded-xl" data-aos="fade-up">
+                    <div class="text-3xl text-blue-400 mb-4"><i class="fas fa-terminal"></i></div>
+                    <h3 class="text-xl font-semibold mb-2" data-translate="feature4_title"></h3>
+                    <p class="text-gray-400" data-translate="feature4_desc"></p>
+                </div>
+                <div class="feature-card p-6 rounded-xl" data-aos="fade-up" data-aos-delay="100">
+                    <div class="text-3xl text-blue-400 mb-4"><i class="fas fa-keyboard"></i></div>
+                    <h3 class="text-xl font-semibold mb-2" data-translate="feature5_title"></h3>
+                    <p class="text-gray-400" data-translate="feature5_desc"></p>
+                </div>
+                <div class="feature-card p-6 rounded-xl" data-aos="fade-up" data-aos-delay="200">
+                    <div class="text-3xl text-blue-400 mb-4"><i class="fas fa-globe"></i></div>
+                    <h3 class="text-xl font-semibold mb-2" data-translate="feature6_title"></h3>
+                    <p class="text-gray-400" data-translate="feature6_desc"></p>
+                </div>
+            </div>
+        </section>
+
+        <section id="tutorial" class="py-24">
+            <h2 class="text-4xl font-bold text-center mb-12" data-aos="fade-up" data-translate="tutorial_title"></h2>
+            <div class="max-w-4xl mx-auto space-y-12">
+                <div class="flex flex-col md:flex-row items-center gap-8" data-aos="fade-up">
+                    <div class="text-5xl font-black text-blue-500/30 w-24 text-center">01</div>
+                    <div class="flex-1">
+                        <h3 class="text-2xl font-semibold mb-2" data-translate="step1_title"></h3>
+                        <p class="text-gray-400" data-translate="step1_desc"></p>
+                    </div>
+                </div>
+                <div class="flex flex-col md:flex-row items-center gap-8" data-aos="fade-up">
+                    <div class="text-5xl font-black text-blue-500/30 w-24 text-center">02</div>
+                    <div class="flex-1">
+                        <h3 class="text-2xl font-semibold mb-2" data-translate="step2_title"></h3>
+                        <p class="text-gray-400" data-translate="step2_desc"></p>
+                    </div>
+                </div>
+                <div class="flex flex-col md:flex-row items-center gap-8" data-aos="fade-up">
+                    <div class="text-5xl font-black text-blue-500/30 w-24 text-center">03</div>
+                    <div class="flex-1">
+                        <h3 class="text-2xl font-semibold mb-2" data-translate="step3_title"></h3>
+                        <p class="text-gray-400" data-translate="step3_desc"></p>
+                    </div>
+                </div>
+                <div class="flex flex-col md:flex-row items-center gap-8" data-aos="fade-up">
+                    <div class="text-5xl font-black text-blue-500/30 w-24 text-center">04</div>
+                    <div class="flex-1">
+                        <h3 class="text-2xl font-semibold mb-2" data-translate="step4_title"></h3>
+                        <p class="text-gray-400 mb-4" data-translate="step4_desc"></p>
+                        <div class="code-block rounded-lg p-4 font-mono text-sm text-gray-300">
+                            <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
+                            <pre><code data-translate="step4_code"></code></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="download" class="py-24 text-center" data-aos="fade-up">
+            <h2 class="text-4xl font-bold mb-4" data-translate="download_title"></h2>
+            <p class="text-gray-400 mb-8" data-translate="download_subtitle"></p>
+            <div class="flex flex-col md:flex-row justify-center items-center gap-6">
+                <a href="https://github.com/norbertbaricz/server-launcher/releases" target="_blank" class="w-full md:w-auto bg-gray-800 hover:bg-blue-600 text-white font-bold py-4 px-8 rounded-lg transition-all duration-300 flex items-center justify-center gap-3 text-lg border-2 border-gray-700 hover:border-blue-500 transform hover:scale-105">
+                    <i class="fab fa-windows text-2xl"></i> <span>Windows</span>
+                </a>
+                <a href="https://github.com/norbertbaricz/server-launcher/releases" target="_blank" class="w-full md:w-auto bg-gray-800 hover:bg-gray-200 hover:text-black text-white font-bold py-4 px-8 rounded-lg transition-all duration-300 flex items-center justify-center gap-3 text-lg border-2 border-gray-700 hover:border-gray-200 transform hover:scale-105">
+                    <i class="fab fa-apple text-2xl"></i> <span>macOS</span>
+                </a>
+                <a href="https://github.com/norbertbaricz/server-launcher/releases" target="_blank" class="w-full md:w-auto bg-gray-800 hover:bg-yellow-500 text-white font-bold py-4 px-8 rounded-lg transition-all duration-300 flex items-center justify-center gap-3 text-lg border-2 border-gray-700 hover:border-yellow-400 transform hover:scale-105">
+                    <i class="fab fa-linux text-2xl"></i> <span>Linux</span>
+                </a>
+            </div>
+        </section>
+    </main>
+
+    <footer class="border-t border-white/10 mt-20">
+        <div class="container mx-auto px-6 py-6 text-center text-gray-500">
+            <p data-translate="footer_copy"></p>
+            <p data-translate="footer_built"></p>
         </div>
-    </div>
+    </footer>
 
-    <script src="script.js"></script>
+    <script>
+        // --- TRANSLation DATA ---
+        const translations = {
+            en: {
+                nav_features: "Features",
+                nav_tutorial: "Tutorial",
+                nav_download: "Download",
+                hero_title: "Create Your Own Minecraft Server. Simple and Fast.",
+                hero_subtitle: "An intuitive desktop app to manage and run your own Minecraft server. Built with Electron, this launcher radically simplifies the process of setting up, starting, stopping, and interacting with a PaperMC server.",
+                hero_button: "Download Now",
+                features_title: "Key Features",
+                feature1_title: "Simplified Setup",
+                feature1_desc: "Automatically downloads the PaperMC server files on first launch.",
+                feature2_title: "Version Selector",
+                feature2_desc: "Easily choose your preferred Minecraft version from an updated list.",
+                feature3_title: "Smart RAM Allocation",
+                feature3_desc: "Configure RAM dedicated to the server, with an 'auto' option for simplicity.",
+                feature4_title: "Integrated Console",
+                feature4_desc: "View the server console output live directly inside the app.",
+                feature5_title: "Command Input",
+                feature5_desc: "Send commands to the server without needing a separate terminal.",
+                feature6_title: "IP Info",
+                feature6_desc: "Quickly display your local and public IP addresses to share with friends.",
+                tutorial_title: "Usage Guide",
+                step1_title: "First Launch (Setup)",
+                step1_desc: "On first launch, a setup window will appear. Select your preferred Minecraft version and RAM allocation, then click 'Download / Configure'. The app will download the required .jar file and create the configuration.",
+                step2_title: "Starting the Server",
+                step2_desc: "After configuration, the main interface will be available. Click 'Start Server'. The launcher will automatically accept the EULA and start the server. The status will update, and activity will appear in the console.",
+                step3_title: "Server Management",
+                step3_desc: "Use the text field at the bottom to enter commands and click 'Send'. To safely shut down the server, use the 'Stop Server' button. You can access the server files anytime through the Settings menu.",
+                step4_title: "Installation (For Developers)",
+                step4_desc: "If you want to run the project from the source, make sure you have <a href='https://nodejs.org/' target='_blank' class='text-blue-400 hover:underline'>Node.js</a> and Java installed. Then, run the following commands in a terminal:",
+                step4_code: `<span class="text-gray-500"># Clone the repository</span>\ngit clone https://github.com/norbertbaricz/server-launcher.git\ncd server-launcher\n\n<span class="text-gray-500"># Install dependencies</span>\nnpm install\n\n<span class="text-gray-500"># Run the app</span>\nnpm start`,
+                download_title: "Download Server-Launcher",
+                download_subtitle: "Choose your operating system and start your adventure!",
+                footer_copy: "&copy; 2024 Skypixel. Project licensed under ISC License.",
+                footer_built: "Built with <i class='fas fa-heart text-red-500'></i> using Electron, PaperMC, and Tailwind CSS."
+            },
+            ro: {
+                nav_features: "Funcționalități",
+                nav_tutorial: "Tutorial",
+                nav_download: "Download",
+                hero_title: "Creează-ți Propriul Server de Minecraft. Simplu și Rapid.",
+                hero_subtitle: "O aplicație desktop intuitivă pentru a gestiona și rula propriul server de Minecraft. Construit cu Electron, acest launcher simplifică radical procesul de configurare, pornire, oprire și interacțiune cu un server PaperMC.",
+                hero_button: "Descarcă Acum",
+                features_title: "Funcționalități Cheie",
+                feature1_title: "Configurare Simplificată",
+                feature1_desc: "Descarcă automat fișierele serverului PaperMC la prima lansare.",
+                feature2_title: "Selector de Versiuni",
+                feature2_desc: "Alege cu ușurință versiunea preferată de Minecraft dintr-o listă actualizată.",
+                feature3_title: "Alocare Inteligentă RAM",
+                feature3_desc: "Configurează memoria RAM dedicată serverului, cu o opțiune 'auto' pentru simplitate.",
+                feature4_title: "Consolă Integrată",
+                feature4_desc: "Vezi output-ul consolei serverului live, direct în aplicație.",
+                feature5_title: "Input Comenzi",
+                feature5_desc: "Trimite comenzi către server fără a necesita un terminal separat.",
+                feature6_title: "Informații IP",
+                feature6_desc: "Afișează rapid adresele tale IP locale și publice pentru a le partaja cu prietenii.",
+                tutorial_title: "Ghid de Utilizare",
+                step1_title: "Prima Lansare (Configurare)",
+                step1_desc: "La prima deschidere, va apărea o fereastră de configurare. Selectează versiunea de Minecraft și alocarea RAM preferată, apoi apasă pe 'Download / Configure'. Aplicația va descărca fișierul .jar necesar și va crea configurația.",
+                step2_title: "Pornirea Serverului",
+                step2_desc: "După configurare, interfața principală va fi disponibilă. Apasă pe 'Start Server'. Launcher-ul va accepta automat EULA și va porni serverul. Starea se va actualiza, iar activitatea va apărea în consolă.",
+                step3_title: "Managementul Serverului",
+                step3_desc: "Folosește câmpul de text din partea de jos pentru a introduce comenzi și apasă 'Send'. Pentru a opri serverul în siguranță, folosește butonul 'Stop Server'. Poți accesa fișierele serverului oricând prin meniul de Setări.",
+                step4_title: "Instalare (Pentru Dezvoltatori)",
+                step4_desc: "Dacă dorești să rulezi proiectul din sursă, asigură-te că ai <a href='https://nodejs.org/' target='_blank' class='text-blue-400 hover:underline'>Node.js</a> și Java instalate. Apoi, rulează următoarele comenzi într-un terminal:",
+                step4_code: `<span class="text-gray-500"># Clonează repository-ul</span>\ngit clone https://github.com/norbertbaricz/server-launcher.git\ncd server-launcher\n\n<span class="text-gray-500"># Instalează dependențele</span>\nnpm install\n\n<span class="text-gray-500"># Rulează aplicația</span>\nnpm start`,
+                download_title: "Descarcă Server-Launcher",
+                download_subtitle: "Alege sistemul tău de operare și începe-ți aventura!",
+                footer_copy: "&copy; 2024 Skypixel. Proiect licențiat sub ISC License.",
+                footer_built: "Construit cu <i class='fas fa-heart text-red-500'></i> folosind Electron, PaperMC și Tailwind CSS."
+            },
+            hu: {
+                nav_features: "Funkciók",
+                nav_tutorial: "Útmutató",
+                nav_download: "Letöltés",
+                hero_title: "Hozd létre saját Minecraft szervered. Egyszerűen és gyorsan.",
+                hero_subtitle: "Egy intuitív asztali alkalmazás a saját Minecraft szervered kezeléséhez és futtatásához. Az Electron segítségével készült launcher radikálisan leegyszerűsíti a PaperMC szerver beállítását, elindítását, leállítását és a vele való interakciót.",
+                hero_button: "Letöltés Most",
+                features_title: "Főbb Jellemzők",
+                feature1_title: "Egyszerűsített Beállítás",
+                feature1_desc: "Az első indításkor automatikusan letölti a PaperMC szerverfájlokat.",
+                feature2_title: "Verzióválasztó",
+                feature2_desc: "Könnyedén válaszd ki a preferált Minecraft verziót egy frissített listából.",
+                feature3_title: "Intelligens RAM kiosztás",
+                feature3_desc: "Konfiguráld a szervernek szánt RAM-ot, 'auto' opcióval az egyszerűség kedvéért.",
+                feature4_title: "Integrált Konzol",
+                feature4_desc: "Nézd a szerverkonzol kimenetét élőben, közvetlenül az alkalmazásban.",
+                feature5_title: "Parancsbevitel",
+                feature5_desc: "Küldj parancsokat a szervernek külön terminál nélkül.",
+                feature6_title: "IP Információ",
+                feature6_desc: "Gyorsan jelenítsd meg a helyi és nyilvános IP-címedet, hogy megoszthasd a barátaiddal.",
+                tutorial_title: "Használati Útmutató",
+                step1_title: "Első Indítás (Beállítás)",
+                step1_desc: "Az első indításkor egy beállítási ablak jelenik meg. Válaszd ki a preferált Minecraft verziót és RAM kiosztást, majd kattints a 'Download / Configure' gombra. Az alkalmazás letölti a szükséges .jar fájlt és létrehozza a konfigurációt.",
+                step2_title: "A Szerver Elindítása",
+                step2_desc: "A konfiguráció után a fő felület elérhetővé válik. Kattints a 'Start Server' gombra. A launcher automatikusan elfogadja az EULA-t és elindítja a szervert. Az állapot frissül, és a tevékenység megjelenik a konzolon.",
+                step3_title: "Szerverkezelés",
+                step3_desc: "Használd az alul található szövegmezőt parancsok beírásához és kattints a 'Send' gombra. A szerver biztonságos leállításához használd a 'Stop Server' gombot. A szerverfájlokat bármikor elérheted a Beállítások menüből.",
+                step4_title: "Telepítés (Fejlesztőknek)",
+                step4_desc: "Ha a projektet forrásból szeretnéd futtatni, győződj meg róla, hogy telepítve van a <a href='https://nodejs.org/' target='_blank' class='text-blue-400 hover:underline'>Node.js</a> és a Java. Ezután futtasd a következő parancsokat egy terminálban:",
+                step4_code: `<span class="text-gray-500"># Klónozd a tárolót</span>\ngit clone https://github.com/norbertbaricz/server-launcher.git\ncd server-launcher\n\n<span class="text-gray-500"># Telepítsd a függőségeket</span>\nnpm install\n\n<span class="text-gray-500"># Futtasd az alkalmazást</span>\nnpm start`,
+                download_title: "Server-Launcher Letöltése",
+                download_subtitle: "Válaszd ki az operációs rendszered és kezdd el a kalandot!",
+                footer_copy: "&copy; 2024 Skypixel. A projekt ISC licenc alatt áll.",
+                footer_built: "Készült <i class='fas fa-heart text-red-500'></i>-vel, Electron, PaperMC és Tailwind CSS felhasználásával."
+            }
+        };
+
+        // --- LANGUAGE SWITCHER ---
+        const langToggle = document.getElementById('lang-toggle');
+        const langMenu = document.getElementById('lang-menu');
+
+        const setLanguage = (lang) => {
+            document.documentElement.lang = lang;
+            const translation = translations[lang];
+            document.querySelectorAll('[data-translate]').forEach(el => {
+                const key = el.getAttribute('data-translate');
+                if (translation[key]) {
+                    el.innerHTML = translation[key];
+                }
+            });
+            localStorage.setItem('language', lang);
+            langMenu.classList.add('hidden');
+        };
+
+        langToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            langMenu.classList.toggle('hidden');
+        });
+
+        document.addEventListener('click', () => {
+            if (!langMenu.classList.contains('hidden')) {
+                langMenu.classList.add('hidden');
+            }
+        });
+
+        langMenu.addEventListener('click', (e) => {
+            if (e.target.tagName === 'A') {
+                const lang = e.target.getAttribute('data-lang');
+                setLanguage(lang);
+            }
+        });
+
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            AOS.init({ duration: 800, once: true, offset: 50 });
+            const savedLang = localStorage.getItem('language') || 'en';
+            setLanguage(savedLang);
+        });
+
+        // Functie pentru copierea codului
+        function copyCode(button) {
+            const codeBlock = button.nextElementSibling;
+            const text = codeBlock.innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                const originalIcon = button.innerHTML;
+                button.innerHTML = '<i class="fas fa-check text-green-400"></i> Copiat!';
+                setTimeout(() => {
+                    button.innerHTML = originalIcon;
+                }, 2000);
+            });
+        }
+
+        // --- NOU: Efect de lumină la hover pe carduri ---
+        document.querySelectorAll('.feature-card').forEach(card => {
+            card.addEventListener('mousemove', e => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                card.style.setProperty('--mouse-x', `${x}px`);
+                card.style.setProperty('--mouse-y', `${y}px`);
+            });
+        });
+
+        // Efect de lumina care urmareste cursorul
+        const glow1 = document.getElementById('glow1');
+        const glow2 = document.getElementById('glow2');
+        window.addEventListener('mousemove', (e) => {
+            glow1.style.transform = `translate(${e.clientX - 250}px, ${e.clientY - 250}px)`;
+            setTimeout(() => {
+                glow2.style.transform = `translate(${e.clientX - 250}px, ${e.clientY - 250}px)`;
+                glow2.style.background = 'radial-gradient(circle, rgba(168, 85, 247, 0.1) 0%, rgba(168, 85, 247, 0) 60%)';
+            }, 100);
+        });
+    </script>
 </body>
 </html>
