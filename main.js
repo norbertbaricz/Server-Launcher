@@ -810,17 +810,7 @@ ipcMain.on('start-server', async () => {
                 if (localIsServerRunningGlobal) {
                     log.error('Lost connection to server process (pidusage failed).', e);
                     sendConsole('Lost connection to the server process.', 'ERROR');
-                    sendStatus('Server stopped unexpectedly.', false, 'serverStoppedUnexpectedly');
                     sendServerStateChange(false);
-                    setDiscordActivity();
-                    serverProcess = null;
-
-                    const launcherSettings = readLauncherSettings();
-                    if (launcherSettings.autoStartServer) {
-                        sendConsole('Attempting to auto-restart server...', 'WARN');
-                        const delay = launcherSettings.autoStartDelay || 5;
-                        mainWindow.webContents.send('start-countdown', 'restart', delay);
-                    }
                 }
             }
         }, 2000);
@@ -853,27 +843,35 @@ ipcMain.on('start-server', async () => {
         });
 
         serverProcess.on('close', (code) => {
-            if (performanceStatsInterval) clearInterval(performanceStatsInterval); 
+            if (performanceStatsInterval) clearInterval(performanceStatsInterval);
             const killedInternally = serverProcess?.killedInternally;
             serverProcess = null;
+        
+            // First, update the state to "stopped"
             sendServerStateChange(false);
             setDiscordActivity();
-    
+        
+            // Now, decide whether to restart or just show a message
             if (killedInternally) {
+                // Manual stop
                 sendConsole('Server process stopped normally.', 'INFO');
+                sendStatus('Server stopped.', false, 'serverStopped');
             } else {
-                sendStatus('Server stopped unexpectedly.', false, 'serverStoppedUnexpectedly');
-                sendConsole(`Server process exited unexpectedly with code ${code}.`, 'ERROR');
-                
+                // Unexpected stop
                 const launcherSettings = readLauncherSettings();
                 if (launcherSettings.autoStartServer) {
-                    sendConsole('Attempting to auto-restart server...', 'WARN');
+                    // Auto-restart is enabled
+                    sendConsole('Server stopped unexpectedly. Attempting to auto-restart...', 'WARN');
                     const delay = launcherSettings.autoStartDelay || 5;
                     mainWindow.webContents.send('start-countdown', 'restart', delay);
+                } else {
+                    // Auto-restart is disabled
+                    sendStatus('Server stopped unexpectedly.', false, 'serverStoppedUnexpectedly');
+                    sendConsole(`Server process exited unexpectedly with code ${code}.`, 'ERROR');
                 }
             }
         });
-
+        
         serverProcess.on('error', (err) => {
             if (performanceStatsInterval) clearInterval(performanceStatsInterval); 
             sendConsole(`Failed to start process: ${err.message}`, 'ERROR');

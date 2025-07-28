@@ -450,13 +450,13 @@ startButton.addEventListener('click', () => {
 
 stopButton.addEventListener('click', () => { 
     if (!stopButton.disabled) {
+        autoStartIsActive = false; // Prevent auto-restart on manual stop
         if (countdownInterval) {
             clearInterval(countdownInterval);
             countdownInterval = null;
         }
-        autoStartIsActive = false;
         setStatus(currentTranslations['autoStartCancelled'] || "Auto-start cancelled.", false, 'autoStartCancelled');
-        updateButtonStates(localIsServerRunning);
+        updateButtonStates(localIsServerRunning); // Update button state immediately
         window.electronAPI.stopServer(); 
     }
 });
@@ -537,7 +537,10 @@ window.electronAPI.onSetupFinished(async () => {
 window.electronAPI.onServerStateChange(async (isRunning) => {
     if (isRunning) {
         autoStartIsActive = false;
-        if (countdownInterval) clearInterval(countdownInterval);
+        if (countdownInterval) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+        }
         setStatus(currentTranslations['serverRunning'] || 'Server is running.', false, 'serverRunning');
         await fetchAndDisplayIPs(true);
         
@@ -555,6 +558,7 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
 
         memoryUsageSpan.textContent = `— / ${allocatedRamCache !== '-' ? allocatedRamCache : '...'} GB`;
     } else {
+        // If a countdown isn't active, then we can set the status to stopped.
         if (!autoStartIsActive) {
             setStatus(currentTranslations['serverStopped'] || "Server stopped.", false, 'serverStopped');
         }
