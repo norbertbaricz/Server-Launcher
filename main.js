@@ -13,6 +13,7 @@ const AnsiToHtml = require('ansi-to-html');
 const find = require('find-process');
 
 let javaExecutablePath = 'java';
+const MINIMUM_JAVA_VERSION = 21;
 
 process.on('uncaughtException', (error) => {
   log.error('UNCAUGHT EXCEPTION:', error);
@@ -75,11 +76,14 @@ async function killStrayServerProcess() {
 async function checkJava() {
     return new Promise((resolve) => {
         const verifyJavaVersion = (javaPath, callback) => {
-            const command = `"${javaPath}" -version`;
-            exec(command, (error, stdout, stderr) => {
+            exec(`"${javaPath}" -version`, (error, stdout, stderr) => {
                 const output = stderr || stdout;
-                if (!error && output.includes('version "21.')) {
-                    log.info(`Java 21 verified at: ${javaPath}`);
+                if (error) {
+                    return callback(false);
+                }
+                const versionMatch = output.match(/version "(\d+)/);
+                if (versionMatch && parseInt(versionMatch[1], 10) >= MINIMUM_JAVA_VERSION) {
+                    log.info(`Java >= ${MINIMUM_JAVA_VERSION} verified at: ${javaPath}`);
                     javaExecutablePath = javaPath;
                     callback(true);
                 } else {
@@ -92,87 +96,82 @@ async function checkJava() {
             if (process.platform !== 'win32') {
                 return onComplete(null);
             }
-
             const keysToQuery = [
                 'HKEY_LOCAL_MACHINE\\SOFTWARE\\Eclipse Adoptium\\JDK',
                 'HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\JDK',
                 'HKEY_LOCAL_MACHINE\\SOFTWARE\\Amazon Corretto\\JDK'
             ];
+            let foundValidPath = null;
             let keysProcessed = 0;
-            let foundPath = null;
 
-            const processKey = (key) => {
-                const query = `reg query "${key}" /s /f "21." /k`;
-                exec(query, (error, stdout) => {
-                    if (!foundPath && !error && stdout) {
-                        const lines = stdout.trim().split(/[\r\n]+/).filter(Boolean);
-                        const jdkKey = lines.find(line => line.trim().startsWith('HKEY_'));
+            keysToQuery.forEach(key => {
+                exec(`reg query "${key}" /s`, (error, stdout) => {
+                    if (!error && stdout) {
+                        const lines = stdout.trim().split(/[\r\n]+/).filter(line => line.trim().startsWith('HKEY_'));
+                        let checkedSubKeys = 0;
+                        if (lines.length === 0) {
+                           keysProcessed++;
+                           if (keysProcessed === keysToQuery.length && !foundValidPath) onComplete(null);
+                           return;
+                        }
 
-                        if (jdkKey) {
-                            const homeQuery = `reg query "${jdkKey.trim()}" /v JavaHome`;
-                            exec(homeQuery, (homeError, homeStdout) => {
+                        lines.forEach(line => {
+                            if (foundValidPath) return;
+                            exec(`reg query "${line.trim()}" /v JavaHome`, (homeError, homeStdout) => {
+                                checkedSubKeys++;
                                 if (!homeError && homeStdout) {
                                     const match = homeStdout.match(/JavaHome\s+REG_SZ\s+(.*)/);
                                     if (match && match[1]) {
-                                        const javaHome = match[1].trim();
-                                        const javaExe = path.join(javaHome, 'bin', 'java.exe');
+                                        const javaExe = path.join(match[1].trim(), 'bin', 'java.exe');
                                         if (fs.existsSync(javaExe)) {
-                                            foundPath = javaExe;
+                                            verifyJavaVersion(javaExe, (isValid) => {
+                                                if (isValid && !foundValidPath) {
+                                                    foundValidPath = javaExe;
+                                                    onComplete(foundValidPath);
+                                                }
+                                            });
                                         }
                                     }
                                 }
-                                finish();
+                                if (checkedSubKeys === lines.length) {
+                                    keysProcessed++;
+                                    if (keysProcessed === keysToQuery.length && !foundValidPath) onComplete(null);
+                                }
                             });
-                            return;
-                        }
+                        });
+                    } else {
+                        keysProcessed++;
+                        if (keysProcessed === keysToQuery.length && !foundValidPath) onComplete(null);
                     }
-                    finish();
                 });
-            };
-
-            const finish = () => {
-                keysProcessed++;
-                if (foundPath || keysProcessed === keysToQuery.length) {
-                    onComplete(foundPath);
-                }
-            };
-
-            keysToQuery.forEach(processKey);
+            });
         };
 
         const checkPath = () => {
-            exec('java -version', (error, stdout, stderr) => {
-                const output = stderr || stdout;
-                if (!error && output.includes('version "21.')) {
-                    log.info('Java 21 found in system PATH.');
+            verifyJavaVersion('java', (isValid) => {
+                if (isValid) {
+                    log.info(`Java >= ${MINIMUM_JAVA_VERSION} found in system PATH.`);
                     javaExecutablePath = 'java';
                     resolve(true);
                 } else {
-                    log.warn('Java not found via registry or PATH. All checks failed.');
+                    log.warn('No compatible Java version found in registry or PATH.');
                     resolve(false);
                 }
             });
         };
-
-        log.info('Checking for Java 21...');
+        
+        log.info(`Checking for Java >= ${MINIMUM_JAVA_VERSION}...`);
         checkRegistry(registryPath => {
             if (registryPath) {
-                log.info(`Found potential Java path in registry: ${registryPath}`);
-                verifyJavaVersion(registryPath, (isValid) => {
-                    if (isValid) {
-                        resolve(true);
-                    } else {
-                        log.warn('Registry path was not a valid Java 21 installation. Checking PATH.');
-                        checkPath();
-                    }
-                });
+                resolve(true);
             } else {
-                log.info('Java not found in registry. Checking system PATH.');
+                log.info('No compatible Java version found in registry. Checking system PATH.');
                 checkPath();
             }
         });
     });
 }
+
 
 async function downloadAndInstallJava() {
     const win = getMainWindow();
@@ -458,7 +457,7 @@ autoUpdater.on('checking-for-update', () => sendConsole('Updater: Checking for u
 autoUpdater.on('update-available', (info) => sendConsole(`Updater: Update available! Version: ${info.version}`, 'SUCCESS'));
 autoUpdater.on('update-not-available', (info) => sendConsole('Updater: No new updates available.', 'INFO'));
 autoUpdater.on('error', (err) => sendConsole('Updater: Error during update. ' + err.message, 'ERROR'));
-autoUpdater.on('download-progress', (p) => sendStatus(`Download speed: ${Math.round(p.bytesPerSecond / 1024)} KB/s - Downloaded ${Math.round(p.percent)}%`, true));
+autoUpdater.on('download-progress', (p) => setStatus(`Download speed: ${Math.round(p.bytesPerSecond / 1024)} KB/s - Downloaded ${Math.round(p.percent)}%`, true));
 autoUpdater.on('update-downloaded', (info) => {
   sendConsole(`Updater: Update downloaded (${info.version}). It will be installed on restart.`, 'SUCCESS');
   dialog.showMessageBox({
@@ -847,25 +846,19 @@ ipcMain.on('start-server', async () => {
             const killedInternally = serverProcess?.killedInternally;
             serverProcess = null;
         
-            // First, update the state to "stopped"
             sendServerStateChange(false);
             setDiscordActivity();
         
-            // Now, decide whether to restart or just show a message
             if (killedInternally) {
-                // Manual stop
                 sendConsole('Server process stopped normally.', 'INFO');
                 sendStatus('Server stopped.', false, 'serverStopped');
             } else {
-                // Unexpected stop
                 const launcherSettings = readLauncherSettings();
                 if (launcherSettings.autoStartServer) {
-                    // Auto-restart is enabled
                     sendConsole('Server stopped unexpectedly. Attempting to auto-restart...', 'WARN');
                     const delay = launcherSettings.autoStartDelay || 5;
                     mainWindow.webContents.send('start-countdown', 'restart', delay);
                 } else {
-                    // Auto-restart is disabled
                     sendStatus('Server stopped unexpectedly.', false, 'serverStoppedUnexpectedly');
                     sendConsole(`Server process exited unexpectedly with code ${code}.`, 'ERROR');
                 }

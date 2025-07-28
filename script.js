@@ -450,13 +450,13 @@ startButton.addEventListener('click', () => {
 
 stopButton.addEventListener('click', () => { 
     if (!stopButton.disabled) {
-        autoStartIsActive = false; // Prevent auto-restart on manual stop
+        autoStartIsActive = false;
         if (countdownInterval) {
             clearInterval(countdownInterval);
             countdownInterval = null;
         }
         setStatus(currentTranslations['autoStartCancelled'] || "Auto-start cancelled.", false, 'autoStartCancelled');
-        updateButtonStates(localIsServerRunning); // Update button state immediately
+        updateButtonStates(localIsServerRunning);
         window.electronAPI.stopServer(); 
     }
 });
@@ -558,7 +558,6 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
 
         memoryUsageSpan.textContent = `— / ${allocatedRamCache !== '-' ? allocatedRamCache : '...'} GB`;
     } else {
-        // If a countdown isn't active, then we can set the status to stopped.
         if (!autoStartIsActive) {
             setStatus(currentTranslations['serverStopped'] || "Server stopped.", false, 'serverStopped');
         }
@@ -690,7 +689,10 @@ function startCountdown(seconds, messageKey, callback) {
 
         if (remaining > 0) {
             const message = (currentTranslations[messageKey] || "Auto-starting server") + ` in ${remaining}s...`;
-            setStatus(message, true, null); // We don't use a key here as it's a dynamic message
+            statusMessageSpan.textContent = message;
+            statusMessageSpan.dataset.key = '';
+            statusBarContent.classList.add('status-bar-pulse');
+            statusMessageSpan.style.color = '#3b82f6';
             remaining--;
         } else {
             clearInterval(countdownInterval);
@@ -706,16 +708,23 @@ function startCountdown(seconds, messageKey, callback) {
 }
 
 window.electronAPI.onStartCountdown((type, delay) => {
-    if (localIsServerRunning) return;
+    addToConsole(`Received 'start-countdown' event. Type: ${type}, Delay: ${delay}`, 'INFO');
     
+    if (localIsServerRunning && type === 'initial') {
+        addToConsole('Server is already running, cancelling initial countdown.', 'WARN');
+        return;
+    }
+
     autoStartIsActive = true;
     updateButtonStates(localIsServerRunning);
 
     const messageKey = type === 'initial' ? 'autoStartingServer' : 'autoRestartingServer';
     startCountdown(delay, messageKey, () => {
         if (autoStartIsActive && !localIsServerRunning) {
+            addToConsole('Countdown finished, starting server.', 'INFO');
             window.electronAPI.startServer();
         } else {
+            addToConsole('Countdown finished, but auto-start was cancelled or server is already running.', 'WARN');
             autoStartIsActive = false;
             updateButtonStates(localIsServerRunning);
         }
