@@ -30,6 +30,8 @@ const setupModal = document.getElementById('setup-modal');
 const setupModalContent = document.getElementById('setup-modal-content');
 const mcVersionModalSelect = document.getElementById('mc-version-modal');
 const ramAllocationModalSelect = document.getElementById('ram-allocation-modal');
+const languageModalSelect = document.getElementById('language-modal-select');
+const serverTypeModalSelect = document.getElementById('server-type-modal-select');
 const downloadModalButton = document.getElementById('download-button-modal');
 const downloadModalButtonIcon = downloadModalButton.querySelector('i');
 const downloadModalButtonText = document.getElementById('download-button-text');
@@ -40,6 +42,8 @@ const settingsModalContent = document.getElementById('settings-modal-content');
 const mcVersionSettingsSelect = document.getElementById('mc-version-settings');
 const ramAllocationSettingsSelect = document.getElementById('ram-allocation-settings');
 const javaArgumentsSettingsSelect = document.getElementById('java-arguments-settings');
+const languageSettingsSelect = document.getElementById('language-settings-select');
+const serverTypeSettingsSelect = document.getElementById('server-type-settings-select');
 const startWithWindowsCheckbox = document.getElementById('start-with-windows-checkbox');
 const saveSettingsButton = document.getElementById('save-settings-button');
 const closeSettingsButton = document.getElementById('close-settings-button');
@@ -74,38 +78,58 @@ let countdownInterval = null;
 let isDownloadingFromServer = false;
 
 function addToConsole(message, type = 'INFO') {
-    const p = document.createElement('p');
-    p.classList.add('console-message');
+    const line = document.createElement('div');
+    line.classList.add('console-message');
 
     if (type === 'SERVER_LOG_HTML') {
-        let coloredMessage = message;
+        let finalHtml = message;
 
-        // 1. Colorează timestamp-ul (ex: [12:34:56]) cu mov
-        coloredMessage = coloredMessage.replace(/(\[\d{2}:\d{2}:\d{2}\])/g, '<span style="color: #c792ea;">$1</span>');
+        // **MODIFICARE 1**: Am adăugat 'g' la finalul expresiei regulate.
+        // Asta înseamnă "global", adică va căuta TOATE potrivirile în text, nu doar prima.
+        const prefixRegex = /\[(\d{2}:\d{2}:\d{2}) (INFO|WARN|ERROR)\]:/g;
 
-        // 2. Colorează nivelul de log (INFO, WARN, ERROR) direct în mesajul de la server
-        coloredMessage = coloredMessage.replace(/\b(INFO)\b/g, '<span style="color: #82aaff; font-weight: bold;">$1</span>'); // INFO -> Albastru
-        coloredMessage = coloredMessage.replace(/\b(WARN)\b/g, '<span style="color: #ffb372; font-weight: bold;">$1</span>'); // WARN -> Portocaliu
-        coloredMessage = coloredMessage.replace(/\b(ERROR)\b/g, '<span style="color: #ff757f; font-weight: bold;">$1</span>'); // ERROR -> Roșu
+        // **MODIFICARE 2**: Folosim o funcție de înlocuire care se va executa pentru fiecare potrivire găsită.
+        finalHtml = finalHtml.replace(prefixRegex, (match, timestamp, level) => {
+            let levelColor = '#82aaff'; // INFO -> Albastru
+            if (level === 'WARN') levelColor = '#ffb372'; // WARN -> Portocaliu
+            else if (level === 'ERROR') levelColor = '#ff757f'; // ERROR -> Roșu
 
-        p.innerHTML = coloredMessage;
-        consoleOutput.appendChild(p);
-        consoleOutput.scrollTop = consoleOutput.scrollHeight;
-        return;
+            // Returnează HTML-ul corect pentru fiecare potrivire în parte
+            return `<span style="color: #9ca3af;">[${timestamp} <span style="color: ${levelColor}; font-weight: bold;">${level}</span>]:</span>`;
+        });
+        
+        line.innerHTML = finalHtml;
+    } else {
+        // Log-urile interne ale launcher-ului
+        let typeColor = '#82aaff';
+        let typeText = type.toUpperCase();
+
+        if (type === 'ERROR' || type === 'SERVER_ERROR') {
+            typeColor = '#ff757f';
+            typeText = type === 'SERVER_ERROR' ? 'STDERR' : 'ERROR';
+        } else if (type === 'WARN') {
+            typeColor = '#ffb372';
+        } else if (type === 'SUCCESS') {
+            typeColor = '#4ade80';
+        } else if (type === 'CMD') {
+            typeColor = '#60a5fa';
+        }
+
+        const sanitizedMessage = String(message).replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        
+        const now = new Date();
+        const timestamp = [
+            String(now.getHours()).padStart(2, '0'),
+            String(now.getMinutes()).padStart(2, '0'),
+            String(now.getSeconds()).padStart(2, '0')
+        ].join(':');
+
+        const timestampPrefix = `<span style="color: #9ca3af;">[${timestamp}]</span> `;
+        const typePrefix = `<span style="color: ${typeColor}; font-weight: bold;">[${typeText}]</span> `;
+        line.innerHTML = `${timestampPrefix}${typePrefix}${sanitizedMessage}`;
     }
     
-    // Această parte este pentru log-urile proprii ale launcher-ului
-    let typeColor = '#82aaff'; // Albastru deschis pentru INFO
-    let typeText = type.toUpperCase();
-    if (type === 'ERROR' || type === 'SERVER_ERROR') { typeColor = '#ff757f'; typeText = type === 'SERVER_ERROR' ? 'STDERR' : 'ERROR'; } // Roșu deschis pentru ERROR
-    else if (type === 'WARN') { typeColor = '#ffb372'; } // Portocaliu pentru WARN
-    else if (type === 'SUCCESS') { typeColor = '#4ade80'; } // Verde pentru SUCCESS
-    else if (type === 'CMD') { typeColor = '#60a5fa'; } // Albastru pentru comenzi
-
-    const sanitizedMessage = String(message).replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const typePrefix = `<span style="color: ${typeColor}; font-weight: bold;">[${typeText}]</span> `;
-    p.innerHTML = `${typePrefix}${sanitizedMessage}`;
-    consoleOutput.appendChild(p);
+    consoleOutput.appendChild(line);
     consoleOutput.scrollTop = consoleOutput.scrollHeight;
 }
 
@@ -439,6 +463,7 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         autoStartIsActive = false;
         if (countdownInterval) clearInterval(countdownInterval);
         setStatus('Server is running.', false);
+        await fetchAndDisplayIPs(true); // Afișează IP-urile cu port
         
         // Aplică animația doar pe widget-urile de IP și versiune
         localIpWidget.classList.add('animate-green-attention');
@@ -459,6 +484,7 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         if (!autoStartIsActive) {
             setStatus("Server stopped.", false);
         }
+        await fetchAndDisplayIPs(false); // Afișează IP-urile fără port
         memoryUsageSpan.textContent = '0 / 0 GB';
         memoryUsageSpan.style.color = '';
         serverTpsSpan.textContent = '0 / 20.0';
@@ -511,15 +537,17 @@ window.electronAPI.onRequestStatusCheckForFail(() => {
     }
 });
 
-async function fetchAndDisplayIPs() {
+async function fetchAndDisplayIPs(showPort = false) {
     let port = '';
-    try {
-        const properties = await window.electronAPI.getServerProperties();
-        if (properties && properties['server-port']) {
-            port = `:${properties['server-port']}`;
+    if (showPort) {
+        try {
+            const properties = await window.electronAPI.getServerProperties();
+            if (properties && properties['server-port']) {
+                port = `:${properties['server-port']}`;
+            }
+        } catch (error) {
+            console.warn("Could not fetch server port for display.", error);
         }
-    } catch (error) {
-        console.warn("Could not fetch server port for display.", error);
     }
     try {
         const localIP = await window.electronAPI.getLocalIP() || '-';
@@ -530,7 +558,6 @@ async function fetchAndDisplayIPs() {
         publicIpAddressSpan.textContent = (publicIP !== '-' && publicIP !== 'Error') ? `${publicIP}${port}` : publicIP;
     } catch (error) { publicIpAddressSpan.textContent = 'Error'; }
 }
-
 async function initializeApp() {
     const iconPath = await window.electronAPI.getIconPath();
     document.getElementById('app-icon').src = iconPath;

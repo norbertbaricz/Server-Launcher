@@ -179,7 +179,21 @@
                         <option value="16384M">16GB (Very Large)</option>
                     </select>
                 </div>
-                <div class="pt-2">
+                <div>
+                    <label for="language-modal-select" class="block text-sm font-medium text-gray-300 mb-1">Language:</label>
+                    <select id="language-modal-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer" disabled>
+                        <option value="en" selected>English (Default)</option>
+                        <!-- Alte limbi vor fi adăugate aici în viitor -->
+                    </select>
+                </div>
+                <div>
+                    <label for="server-type-modal-select" class="block text-sm font-medium text-gray-300 mb-1">Server Type:</label>
+                    <select id="server-type-modal-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer" disabled>
+                        <option value="papermc" selected>PaperMC (Default)</option>
+                        <!-- Alte tipuri de server (ex. Spigot, Forge) vor fi adăugate aici în viitor -->
+                    </select>
+                </div>
+                <div class="pt-4">
                     <button id="download-button-modal" class="w-full btn-primary font-semibold py-3 px-4 rounded-md shadow-md flex items-center justify-center text-base">
                         <i class="fas fa-download mr-2"></i>
                         <span id="download-button-text">Download / Configure Server</span>
@@ -224,6 +238,20 @@
                     <select id="java-arguments-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
                             <option value="Default">Default (Standard JVM arguments)</option>
                             <option value="Performance">Performance (Includes Aikar's flags for optimization)</option>
+                        </select>
+                    </div>
+                    <div class="mt-4">
+                        <label for="language-settings-select" class="block text-sm font-medium text-gray-300 mb-1">Language:</label>
+                        <select id="language-settings-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer" disabled>
+                            <option value="en" selected>English (Default)</option>
+                            <!-- Alte limbi vor fi adăugate aici în viitor -->
+                        </select>
+                    </div>
+                    <div class="mt-4">
+                        <label for="server-type-settings-select" class="block text-sm font-medium text-gray-300 mb-1">Server Type:</label>
+                        <select id="server-type-settings-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer" disabled>
+                            <option value="papermc" selected>PaperMC (Default)</option>
+                            <!-- Alte tipuri de server (ex. Spigot, Forge) vor fi adăugate aici în viitor -->
                         </select>
                     </div>
                 </div>
