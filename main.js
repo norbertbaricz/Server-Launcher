@@ -3,7 +3,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { version } = require('./package.json');
 const https = require('node:https');
-const { spawn, execFile, exec } = require('node:child_process');
+const { spawn, exec } = require('node:child_process');
 const os = require('node:os');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
@@ -11,7 +11,7 @@ const RPC = require('discord-rpc');
 const pidusage = require('pidusage');
 const AnsiToHtml = require('ansi-to-html');
 
-let javaExecutablePath = 'java'; // Valoare implicită, folosește PATH
+let javaExecutablePath = 'java';
 
 process.on('uncaughtException', (error) => {
   log.error('UNCAUGHT EXCEPTION:', error);
@@ -24,10 +24,10 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 const ansiConverter = new AnsiToHtml({
-  newline: true,      // Convertește \n în <br> pentru afișare corectă în HTML
-  escapeXML: true,    // Previne probleme de securitate prin escaparea caracterelor <, >, &
-  fg: '#E5E9F0',      // Culoare default pentru text, pentru a se potrivi cu tema UI
-  bg: '#1F2937'       // Culoare default pentru fundal, pentru a se potrivi cu tema consolei
+  newline: true,
+  escapeXML: true,
+  fg: '#E5E9F0',
+  bg: '#1F2937'
 });
 
 autoUpdater.logger = log;
@@ -246,7 +246,7 @@ async function downloadAndInstallJava() {
             
             setTimeout(() => {
                 app.quit();
-            }, 4000); // Give user time to read the message
+            }, 4000);
         });
 
     } catch (error) {
@@ -312,7 +312,6 @@ function readJsonFile(filePath, fileNameForLog) {
 function writeJsonFile(filePath, dataObject, fileNameForLog) {
     try {
         fs.writeFileSync(filePath, JSON.stringify(dataObject, null, 2));
-        sendConsole(`${fileNameForLog} saved successfully.`, 'SUCCESS');
     } catch (error) {
         sendConsole(`Error writing ${fileNameForLog}: ${error.message}`, 'ERROR');
     }
@@ -369,7 +368,7 @@ function createWindow () {
     resizable: true,
     fullscreenable: true,
     frame: false,
-    show: false, // Fereastra este creată ascunsă
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -478,7 +477,6 @@ ipcMain.handle('get-icon-path', () => {
     return fs.existsSync(iconPath) ? iconPath : null;
 });
 
-// Noul eveniment pentru a afișa fereastra
 ipcMain.on('app-ready-to-show', () => {
     mainWindow.show();
 });
@@ -489,12 +487,15 @@ ipcMain.handle('get-settings', () => {
         openAtLogin: settings.startWithWindows || false,
         autoStartServer: settings.autoStartServer || false,
         autoStartDelay: settings.autoStartDelay || 5,
+        language: settings.language || 'en'
     };
 });
+
 ipcMain.on('set-settings', (event, settings) => {
-    const { openAtLogin, autoStartServer, autoStartDelay } = settings;
-    app.setLoginItemSettings({ openAtLogin });
-    writeLauncherSettings({ startWithWindows: openAtLogin, autoStartServer: autoStartServer, autoStartDelay: autoStartDelay });
+    const currentSettings = readLauncherSettings();
+    const newSettings = { ...currentSettings, ...settings };
+    app.setLoginItemSettings({ openAtLogin: newSettings.openAtLogin });
+    writeJsonFile(launcherSettingsFilePath, newSettings, launcherSettingsFileName);
 });
 
 ipcMain.on('start-java-install', () => {
@@ -581,10 +582,52 @@ ipcMain.on('open-plugins-folder', () => {
     shell.openPath(pluginsDir).catch(err => sendConsole(`Failed to open plugins folder: ${err.message}`, 'ERROR'));
 });
 
+ipcMain.handle('get-available-languages', () => {
+    const langDir = path.join(__dirname, 'lang');
+    const languages = [];
+    try {
+        const files = fs.readdirSync(langDir);
+        for (const file of files) {
+            if (file.endsWith('.json')) {
+                try {
+                    const filePath = path.join(langDir, file);
+                    const fileContent = fs.readFileSync(filePath, 'utf8');
+                    const langData = JSON.parse(fileContent);
+                    if (langData.languageName) {
+                        languages.push({
+                            code: path.basename(file, '.json'),
+                            name: langData.languageName
+                        });
+                    }
+                } catch (e) {
+                    log.error(`Could not parse language file ${file}:`, e);
+                }
+            }
+        }
+        return languages;
+    } catch (error) {
+        log.error('Could not read languages directory:', error);
+        return [{ code: 'en', name: 'English' }]; // Fallback
+    }
+});
+
+ipcMain.handle('get-translations', async (event, lang) => {
+  const langPath = path.join(__dirname, 'lang', `${lang}.json`);
+  try {
+    if (fs.existsSync(langPath)) {
+      const data = fs.readFileSync(langPath, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    log.error(`Could not load language file for ${lang}:`, error);
+  }
+  return null;
+});
+
 ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArgs }) => {
     sendConsole(`Configuring: Version ${mcVersion}, RAM ${ramAllocation}`, 'INFO');
     const currentConfig = readServerConfig();
-    const oldVersion = currentConfig.version; // Salvăm versiunea veche pentru comparație
+    const oldVersion = currentConfig.version;
     currentConfig.version = mcVersion;
     currentConfig.javaArgs = javaArgs || 'Default';
     if (ramAllocation?.toLowerCase() !== 'auto') {
@@ -596,7 +639,6 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
 
     const paperJarPath = path.join(serverFilesDir, paperJarName);
 
-    // Verificăm dacă fișierul există și dacă versiunea este diferită
     if (fs.existsSync(paperJarPath) && oldVersion !== mcVersion) {
         sendConsole(`Removing old paper.jar for version ${oldVersion}...`, 'INFO');
         try {
@@ -609,7 +651,6 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
             return;
         }
     } else if (fs.existsSync(paperJarPath) && oldVersion === mcVersion) {
-        // Dacă versiunea este aceeași, doar salvăm configurația și informăm utilizatorul
         sendStatus('Configuration saved! Version is already up to date.', false);
         getMainWindow()?.webContents.send('setup-finished');
         

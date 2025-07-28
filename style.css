@@ -14,7 +14,7 @@ body {
 
 #loading-screen.hidden {
     opacity: 0;
-    pointer-events: none; /* Face ecranul de încărcare non-interactiv când este ascuns */
+    pointer-events: none;
 }
 
 #title-bar {
@@ -104,7 +104,6 @@ body {
     animation: fadeIn 0.5s ease-out forwards;
 }
 
-/* Animatii modale fluide */
 @keyframes fadeInModalBg { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fadeOutModalBg { from { opacity: 1; } to { opacity: 0; } }
 
@@ -117,7 +116,6 @@ body {
     to { opacity: 0; transform: scale(0.95) translateY(15px); }
 }
 
-/* Animatie de pulsare optimizata */
 @keyframes statusBarPulseBlue {
     0%, 100% { box-shadow: 0 0 7px rgba(59, 130, 246, 0.25), inset 0 0 4px rgba(59, 130, 246, 0.15); }
     50% { box-shadow: 0 0 14px rgba(59, 130, 246, 0.6), inset 0 0 8px rgba(59, 130, 246, 0.4); }
@@ -126,7 +124,6 @@ body {
     animation: statusBarPulseBlue 2.2s infinite ease-in-out;
 }
 
-/* Animatie de atentionare optimizata */
 @keyframes greenAttentionPulse {
     0%, 100% { box-shadow: 0 0 4px rgba(74, 222, 128, 0.15); border-color: rgba(74, 222, 128, 0.25); }
     50% { box-shadow: 0 0 18px rgba(74, 222, 128, 0.7), inset 0 0 9px rgba(74, 222, 128, 0.35); border-color: #4ade80; }
@@ -138,10 +135,9 @@ body {
     border: 1px solid transparent;
 }
 
-/* Tranzitii optimizate pentru butoane */
 .btn-primary, .btn-secondary, .btn-danger, #start-button {
     transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out, box-shadow 0.2s ease, border-color 0.2s ease-in-out;
-    will-change: transform, background-color, box-shadow; /* Optimizare pentru performanta */
+    will-change: transform, background-color, box-shadow;
 }
 
 .btn-primary:hover:not(.btn-disabled), 
@@ -160,7 +156,6 @@ body {
     box-shadow: none;
 }
 
-/* Stiluri de baza pentru butoane (culori, etc.) */
 .btn-primary {
     background-color: #3b82f6;
     color: white;
@@ -236,7 +231,6 @@ input:focus, select:focus, textarea:focus {
     display: none;
 }
 
-/* Animatie de incarcare (spinner) */
 @keyframes spin {
     from { 
         transform: rotate(0deg); 
@@ -311,5 +305,11 @@ input:checked + .switch-track .switch-thumb {
 }
 
 #settings-modal-content {
-    max-height: 90vh; /* Aici a fost corectată eroarea */
+    max-height: 90vh;
+}
+
+select:disabled {
+    cursor: not-allowed;
+    background-color: #4a5568 !important;
+    opacity: 0.5;
 }

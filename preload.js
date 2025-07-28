@@ -18,7 +18,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     minimizeWindow: () => ipcRenderer.send('minimize-window'),
     maximizeWindow: () => ipcRenderer.send('maximize-window'),
     closeWindow: () => ipcRenderer.send('close-window'),
-    appReadyToShow: () => ipcRenderer.send('app-ready-to-show'), // Adăugat pentru loading screen
+    appReadyToShow: () => ipcRenderer.send('app-ready-to-show'),
     setSettings: (settings) => ipcRenderer.send('set-settings', settings),
     openPluginsFolder: () => ipcRenderer.send('open-plugins-folder'),
     downloadPaperMC: (options) => ipcRenderer.send('download-papermc', options),
@@ -40,4 +40,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getLocalIP: () => ipcRenderer.invoke('get-local-ip'),
     getPublicIP: () => ipcRenderer.invoke('get-public-ip'),
     getIconPath: () => ipcRenderer.invoke('get-icon-path'),
+    getTranslations: (lang) => ipcRenderer.invoke('get-translations', lang),
+    getAvailableLanguages: () => ipcRenderer.invoke('get-available-languages')
 });

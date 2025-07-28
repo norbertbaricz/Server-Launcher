@@ -76,6 +76,66 @@ let allocatedRamCache = '-';
 let autoStartIsActive = false; 
 let countdownInterval = null;
 let isDownloadingFromServer = false;
+let currentTranslations = {};
+let launcherSettingsCache = {};
+
+async function setLanguage(lang) {
+    try {
+        const translations = await window.electronAPI.getTranslations(lang);
+        if (!translations) {
+            if (lang !== 'en') return setLanguage('en');
+            throw new Error('Default English translations not found.');
+        }
+        currentTranslations = translations;
+        
+        document.querySelectorAll('[data-key]').forEach(element => {
+            const key = element.getAttribute('data-key');
+            if (translations[key]) {
+                element.textContent = translations[key];
+            }
+        });
+
+        document.querySelectorAll('[data-key-placeholder]').forEach(element => {
+            const key = element.getAttribute('data-key-placeholder');
+            if (translations[key]) {
+                element.placeholder = translations[key];
+            }
+        });
+
+        const currentStatusKey = statusMessageSpan.dataset.key;
+        if(currentStatusKey && translations[currentStatusKey]) {
+            statusMessageSpan.textContent = translations[currentStatusKey];
+        }
+
+    } catch (error) {
+        console.error("Language Error:", error);
+        addToConsole(`Could not apply language: ${error.message}`, 'ERROR');
+    }
+}
+
+async function populateLanguageSelects() {
+    const languages = await window.electronAPI.getAvailableLanguages();
+    
+    const createOption = (lang) => {
+        const option = document.createElement('option');
+        option.value = lang.code;
+        let langName = lang.name;
+        if (lang.code === 'en') {
+            langName += ' (Default)';
+        }
+        option.textContent = langName;
+        return option;
+    };
+
+    languageModalSelect.innerHTML = '';
+    languageSettingsSelect.innerHTML = '';
+
+    languages.forEach(lang => {
+        languageModalSelect.appendChild(createOption(lang));
+        languageSettingsSelect.appendChild(createOption(lang).cloneNode(true));
+    });
+}
+
 
 function addToConsole(message, type = 'INFO') {
     const line = document.createElement('div');
@@ -83,24 +143,16 @@ function addToConsole(message, type = 'INFO') {
 
     if (type === 'SERVER_LOG_HTML') {
         let finalHtml = message;
-
-        // **MODIFICARE 1**: Am adăugat 'g' la finalul expresiei regulate.
-        // Asta înseamnă "global", adică va căuta TOATE potrivirile în text, nu doar prima.
         const prefixRegex = /\[(\d{2}:\d{2}:\d{2}) (INFO|WARN|ERROR)\]:/g;
-
-        // **MODIFICARE 2**: Folosim o funcție de înlocuire care se va executa pentru fiecare potrivire găsită.
         finalHtml = finalHtml.replace(prefixRegex, (match, timestamp, level) => {
-            let levelColor = '#82aaff'; // INFO -> Albastru
-            if (level === 'WARN') levelColor = '#ffb372'; // WARN -> Portocaliu
-            else if (level === 'ERROR') levelColor = '#ff757f'; // ERROR -> Roșu
-
-            // Returnează HTML-ul corect pentru fiecare potrivire în parte
+            let levelColor = '#82aaff';
+            if (level === 'WARN') levelColor = '#ffb372';
+            else if (level === 'ERROR') levelColor = '#ff757f';
             return `<span style="color: #9ca3af;">[${timestamp} <span style="color: ${levelColor}; font-weight: bold;">${level}</span>]:</span>`;
         });
         
         line.innerHTML = finalHtml;
     } else {
-        // Log-urile interne ale launcher-ului
         let typeColor = '#82aaff';
         let typeText = type.toUpperCase();
 
@@ -135,15 +187,16 @@ function addToConsole(message, type = 'INFO') {
 
 function getStatusColor(text) {
     const lowerText = text.toLowerCase();
-    if (lowerText.includes("running")) return '#22c55e';
-    if (lowerText.includes("failed") || lowerText.includes("error")) return '#ef4444';
-    if (lowerText.includes("successfully") || lowerText.includes("saved") || lowerText.includes("ready")) return '#4ade80';
-    if (lowerText.includes("stopped") || lowerText.includes("initialized") || lowerText.includes("cancelled")) return '#9ca3af';
+    if (lowerText.includes("running") || lowerText.includes("rulează")) return '#22c55e';
+    if (lowerText.includes("failed") || lowerText.includes("error") || lowerText.includes("eșuat")) return '#ef4444';
+    if (lowerText.includes("successfully") || lowerText.includes("saved") || lowerText.includes("ready") || lowerText.includes("succes") || lowerText.includes("pregătit")) return '#4ade80';
+    if (lowerText.includes("stopped") || lowerText.includes("initialized") || lowerText.includes("cancelled") || lowerText.includes("oprit") || lowerText.includes("inițializat") || lowerText.includes("anulat")) return '#9ca3af';
     return '#3b82f6';
 }
 
-function setStatus(text, pulse = false) {
+function setStatus(text, pulse = false, translationKey = null) {
     statusMessageSpan.textContent = text;
+    statusMessageSpan.dataset.key = translationKey || '';
     const pulseTarget = statusBarContent;
     const statusColor = getStatusColor(text);
     pulseTarget.classList.toggle('status-bar-pulse', pulse);
@@ -155,7 +208,7 @@ function showDownloadLoading() {
     mcVersionModalSelect.disabled = true;
     ramAllocationModalSelect.disabled = true;
     downloadModalButtonIcon.className = 'fas fa-spinner spinner mr-2';
-    downloadModalButtonText.textContent = 'Downloading...';
+    downloadModalButtonText.textContent = currentTranslations['downloadingButton'] || 'Downloading...';
 }
 
 function hideDownloadLoading() {
@@ -163,7 +216,7 @@ function hideDownloadLoading() {
     mcVersionModalSelect.disabled = false;
     ramAllocationModalSelect.disabled = false;
     downloadModalButtonIcon.className = 'fas fa-download mr-2';
-    downloadModalButtonText.textContent = 'Download / Configure Server';
+    downloadModalButtonText.textContent = currentTranslations['downloadButton'] || 'Download / Configure Server';
 }
 
 function updateButtonStates(isRunning) {
@@ -192,18 +245,18 @@ function updateButtonStates(isRunning) {
     if (currentServerConfig && currentServerConfig.version) {
         serverVersionSpan.textContent = currentServerConfig.version;
     } else {
-        serverVersionSpan.textContent = '0.0.0';
+        serverVersionSpan.textContent = 'N/A';
     }
 }
 
 async function populateMcVersionSelect(selectElement, currentVersion) {
     selectElement.disabled = true;
     if (availableMcVersionsCache.length === 0) {
-        selectElement.innerHTML = '<option value="" disabled>Loading versions...</option>';
+        selectElement.innerHTML = `<option value="" disabled>${currentTranslations['loadingVersions'] || 'Loading versions...'}</option>`;
         try {
             availableMcVersionsCache = await window.electronAPI.getAvailablePaperMCVersions();
         } catch (error) {
-            selectElement.innerHTML = '<option value="" disabled selected>Error loading versions</option>';
+            selectElement.innerHTML = `<option value="" disabled selected>${currentTranslations['errorLoadingVersions'] || 'Error loading versions'}</option>`;
             return;
         }
     }
@@ -213,12 +266,12 @@ async function populateMcVersionSelect(selectElement, currentVersion) {
         availableMcVersionsCache.forEach((version, index) => {
             const option = document.createElement('option');
             option.value = version;
-            option.textContent = version + (index === 0 ? ' (Latest)' : '');
+            option.textContent = version + (index === 0 ? ` (${currentTranslations['latestVersion'] || 'Latest'})` : '');
             selectElement.appendChild(option);
         });
         selectElement.value = (currentVersion && availableMcVersionsCache.includes(currentVersion)) ? currentVersion : availableMcVersionsCache[0];
     } else {
-        selectElement.innerHTML = '<option value="" disabled selected>No versions found</option>';
+        selectElement.innerHTML = `<option value="" disabled selected>${currentTranslations['noVersionsFound'] || 'No versions found'}</option>`;
     }
     selectElement.disabled = false;
 }
@@ -265,7 +318,7 @@ async function refreshUISetupState() {
     } else {
         hideModal(setupModal, setupModalContent, async () => {
             if (!localIsServerRunning && !autoStartIsActive) {
-                setStatus("Server ready.", false);
+                setStatus(currentTranslations['serverReady'] || "Server ready.", false, 'serverReady');
             }
             updateButtonStates(localIsServerRunning);
             await fetchAndDisplayIPs();
@@ -274,12 +327,12 @@ async function refreshUISetupState() {
 }
 
 async function populateServerProperties() {
-    serverPropertiesContainer.innerHTML = '<p class="text-gray-400 text-center">Loading properties...</p>';
+    serverPropertiesContainer.innerHTML = `<p class="text-gray-400 text-center" data-key="serverPropsLoading">${currentTranslations['serverPropsLoading'] || 'Loading properties...'}</p>`;
     const properties = await window.electronAPI.getServerProperties();
     serverPropertiesContainer.innerHTML = '';
 
     if (!properties || Object.keys(properties).length === 0) {
-        serverPropertiesContainer.innerHTML = '<p class="text-gray-400 text-center">Could not load server.properties. Run the server once to generate it.</p>';
+        serverPropertiesContainer.innerHTML = `<p class="text-gray-400 text-center" data-key="serverPropsUnavailable">${currentTranslations['serverPropsUnavailable'] || 'Could not load server.properties. Run the server once to generate it.'}</p>`;
         return;
     }
 
@@ -334,20 +387,22 @@ pluginsFolderButton.addEventListener('click', () => { if(!pluginsFolderButton.di
 
 settingsButton.addEventListener('click', async () => {
     if (settingsButton.disabled) return;
-    const launcherSettings = await window.electronAPI.getSettings();
-    startWithWindowsCheckbox.checked = launcherSettings.openAtLogin;
-    autoStartServerCheckbox.checked = launcherSettings.autoStartServer;
+    launcherSettingsCache = await window.electronAPI.getSettings();
+    startWithWindowsCheckbox.checked = launcherSettingsCache.openAtLogin;
+    autoStartServerCheckbox.checked = launcherSettingsCache.autoStartServer;
     
-    const delay = launcherSettings.autoStartDelay || 5;
+    const delay = launcherSettingsCache.autoStartDelay || 5;
     autoStartDelaySlider.value = delay;
     autoStartDelayValue.textContent = `${delay}s`;
     
-    if (launcherSettings.autoStartServer) {
+    if (launcherSettingsCache.autoStartServer) {
         autoStartDelayContainer.classList.add('visible');
     } else {
         autoStartDelayContainer.classList.remove('visible');
     }
     
+    languageSettingsSelect.value = launcherSettingsCache.language || 'en';
+
     const serverConfig = await window.electronAPI.getServerConfig();
     await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version);
     ramAllocationSettingsSelect.value = serverConfig.ram || 'auto';
@@ -359,12 +414,12 @@ settingsButton.addEventListener('click', async () => {
 closeSettingsButton.addEventListener('click', () => hideModal(settingsModal, settingsModalContent));
 
 saveSettingsButton.addEventListener('click', () => {
-    const newLauncherSettings = { 
-        openAtLogin: startWithWindowsCheckbox.checked, 
-        autoStartServer: autoStartServerCheckbox.checked,
-        autoStartDelay: parseInt(autoStartDelaySlider.value, 10)
-    };
-    window.electronAPI.setSettings(newLauncherSettings);
+    launcherSettingsCache.openAtLogin = startWithWindowsCheckbox.checked;
+    launcherSettingsCache.autoStartServer = autoStartServerCheckbox.checked;
+    launcherSettingsCache.autoStartDelay = parseInt(autoStartDelaySlider.value, 10);
+    launcherSettingsCache.language = languageSettingsSelect.value;
+    
+    window.electronAPI.setSettings(launcherSettingsCache);
     
     const newProperties = {};
     serverPropertiesContainer.querySelectorAll('input, select').forEach(input => {
@@ -381,6 +436,7 @@ saveSettingsButton.addEventListener('click', () => {
     hideModal(settingsModal, settingsModalContent);
 });
 
+
 startButton.addEventListener('click', () => { 
     if (!startButton.disabled) {
         window.electronAPI.startServer(); 
@@ -394,7 +450,7 @@ stopButton.addEventListener('click', () => {
             countdownInterval = null;
         }
         autoStartIsActive = false;
-        setStatus("Auto-start cancelled.", false);
+        setStatus(currentTranslations['autoStartCancelled'] || "Auto-start cancelled.", false, 'autoStartCancelled');
         updateButtonStates(localIsServerRunning);
         window.electronAPI.stopServer(); 
     }
@@ -425,6 +481,21 @@ commandInput.addEventListener('keypress', (event) => { if (event.key === 'Enter'
 minimizeBtn.addEventListener('click', () => window.electronAPI.minimizeWindow());
 maximizeBtn.addEventListener('click', () => window.electronAPI.maximizeWindow());
 closeBtn.addEventListener('click', () => window.electronAPI.closeWindow());
+
+languageModalSelect.addEventListener('change', (event) => {
+    const newLang = event.target.value;
+    languageSettingsSelect.value = newLang;
+    setLanguage(newLang);
+    launcherSettingsCache.language = newLang;
+    window.electronAPI.setSettings({ language: newLang });
+});
+
+languageSettingsSelect.addEventListener('change', (event) => {
+    const newLang = event.target.value;
+    languageModalSelect.value = newLang;
+    setLanguage(newLang);
+});
+
 
 window.electronAPI.onWindowMaximized((isMaximized) => {
     maximizeBtnIcon.className = isMaximized ? 'far fa-window-restore' : 'far fa-square';
@@ -462,15 +533,13 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
     if (isRunning) {
         autoStartIsActive = false;
         if (countdownInterval) clearInterval(countdownInterval);
-        setStatus('Server is running.', false);
-        await fetchAndDisplayIPs(true); // Afișează IP-urile cu port
+        setStatus(currentTranslations['serverRunning'] || 'Server is running.', false, 'serverRunning');
+        await fetchAndDisplayIPs(true);
         
-        // Aplică animația doar pe widget-urile de IP și versiune
         localIpWidget.classList.add('animate-green-attention');
         publicIpWidget.classList.add('animate-green-attention');
         serverVersionWidget.classList.add('animate-green-attention');
 
-        // Elimină clasa de animație după ce se termină
         const removeAnimation = (widget) => {
             widget.classList.remove('animate-green-attention');
         };
@@ -482,9 +551,9 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         memoryUsageSpan.textContent = `— / ${allocatedRamCache !== '-' ? allocatedRamCache : '...'} GB`;
     } else {
         if (!autoStartIsActive) {
-            setStatus("Server stopped.", false);
+            setStatus(currentTranslations['serverStopped'] || "Server stopped.", false, 'serverStopped');
         }
-        await fetchAndDisplayIPs(false); // Afișează IP-urile fără port
+        await fetchAndDisplayIPs(false);
         memoryUsageSpan.textContent = '0 / 0 GB';
         memoryUsageSpan.style.color = '';
         serverTpsSpan.textContent = '0 / 20.0';
@@ -492,7 +561,7 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         allocatedRamCache = '-'; 
     }
     updateButtonStates(isRunning);
-    if (!isRunning) { // Doar reîmprospătează dacă serverul nu pornește deja
+    if (!isRunning) {
         await refreshUISetupState();
     }
 });
@@ -558,24 +627,42 @@ async function fetchAndDisplayIPs(showPort = false) {
         publicIpAddressSpan.textContent = (publicIP !== '-' && publicIP !== 'Error') ? `${publicIP}${port}` : publicIP;
     } catch (error) { publicIpAddressSpan.textContent = 'Error'; }
 }
-async function initializeApp() {
-    const iconPath = await window.electronAPI.getIconPath();
-    document.getElementById('app-icon').src = iconPath;
-    addToConsole("Launcher initializing...", "INFO");
-    setStatus("Initializing...", true);
-    const version = await window.electronAPI.getAppVersion();
-    const titleText = `Server Launcher v${version}`;
-    document.title = titleText;
-    document.getElementById('app-title-version').textContent = titleText;
-    await refreshUISetupState();
-    addToConsole("Launcher initialized.", "INFO");
 
-    // Ascunde ecranul de încărcare și afișează fereastra
-    loadingScreen.classList.add('hidden');
-    // Așteaptă finalizarea animației înainte de a afișa fereastra pentru a preveni flicker-ul
-    setTimeout(() => {
-        window.electronAPI.appReadyToShow();
-    }, 500); // Durata trebuie să corespundă cu tranziția CSS
+async function initializeApp() {
+    try {
+        const iconPath = await window.electronAPI.getIconPath();
+        document.getElementById('app-icon').src = iconPath;
+        const version = await window.electronAPI.getAppVersion();
+        const titleText = `Server Launcher v${version}`;
+        document.title = titleText;
+        document.getElementById('app-title-version').textContent = titleText;
+        
+        await populateLanguageSelects();
+
+        launcherSettingsCache = await window.electronAPI.getSettings();
+        const savedLang = launcherSettingsCache.language || 'en';
+        
+        languageModalSelect.value = savedLang;
+        languageSettingsSelect.value = savedLang;
+        
+        await setLanguage(savedLang);
+        
+        addToConsole("Launcher initializing...", "INFO");
+        setStatus(currentTranslations['initializing'] || "Initializing...", true, 'initializing');
+        
+        await refreshUISetupState();
+        addToConsole("Launcher initialized.", "INFO");
+
+    } catch (error) {
+        addToConsole(`Initialization failed: ${error.message}`, 'ERROR');
+        setStatus('Initialization Error!', false);
+    } finally {
+        loadingScreen.style.opacity = '0';
+        setTimeout(() => {
+            loadingScreen.classList.add('hidden');
+            window.electronAPI.appReadyToShow();
+        }, 500);
+    }
 }
 
 document.addEventListener('DOMContentLoaded', initializeApp);
@@ -614,7 +701,8 @@ window.electronAPI.onStartCountdown((type, delay) => {
     autoStartIsActive = true;
     updateButtonStates(localIsServerRunning);
 
-    const message = type === 'initial' ? 'Auto-starting server' : 'Auto-restarting server';
+    const messageKey = type === 'initial' ? 'autoStartingServer' : 'autoRestartingServer';
+    const message = currentTranslations[messageKey] || (type === 'initial' ? 'Auto-starting server' : 'Auto-restarting server');
     startCountdown(delay, message, () => {
         if (autoStartIsActive && !localIsServerRunning) {
             window.electronAPI.startServer();
@@ -625,10 +713,8 @@ window.electronAPI.onStartCountdown((type, delay) => {
     });
 });
 
-// ===== JAVA INSTALL LISTENERS =====
 window.electronAPI.onJavaInstallRequired(() => {
-    // Resetează starea modală la fiecare deschidere
-    javaInstallMessage.textContent = 'Java is not detected on your system. It is required to run the server.';
+    javaInstallMessage.textContent = currentTranslations['javaModalDescription'] || 'Java is not detected on your system. It is required to run the server.';
     javaInstallButton.classList.remove('hidden');
     javaInstallButton.disabled = false;
     javaInstallButton.classList.remove('btn-disabled');
@@ -655,7 +741,6 @@ window.electronAPI.onJavaInstallStatus((status, progress) => {
     javaInstallMessage.textContent = status;
     const lowerStatus = status.toLowerCase();
 
-    // Resetează starea butoanelor și a indicatorului de progres
     javaInstallButton.classList.add('hidden');
     javaRestartButton.classList.add('hidden');
     javaInstallProgressBarContainer.classList.add('hidden');
@@ -663,7 +748,7 @@ window.electronAPI.onJavaInstallStatus((status, progress) => {
     const existingSpinner = javaInstallModalContent.querySelector('.fa-spinner');
     if (existingSpinner) {
         existingSpinner.remove();
-    }addToConsole
+    }
 
     if (lowerStatus.includes('downloading')) {
         javaInstallProgressBarContainer.classList.remove('hidden');
@@ -673,9 +758,9 @@ window.electronAPI.onJavaInstallStatus((status, progress) => {
         spinner.className = 'fas fa-spinner fa-spin text-2xl text-blue-400 mt-4';
         javaInstallModalContent.appendChild(spinner);
     } else if (lowerStatus.includes('error') || lowerStatus.includes('failed') || lowerStatus.includes('timed out')) {
-        javaInstallButton.classList.remove('hidden'); // Permite reîncercarea
+        javaInstallButton.classList.remove('hidden');
         javaInstallButton.disabled = false;
         javaInstallButton.classList.remove('btn-disabled');
-        javaRestartButton.classList.remove('hidden'); // Oferă opțiunea de repornire manuală
+        javaRestartButton.classList.remove('hidden');
     }
 });

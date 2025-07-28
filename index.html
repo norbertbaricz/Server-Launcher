@@ -15,7 +15,7 @@
     <div id="loading-screen" class="fixed inset-0 bg-gray-900 flex items-center justify-center z-[100]">
         <div class="text-center">
             <i class="fas fa-spinner fa-spin text-4xl text-blue-400"></i>
-            <p class="mt-4 text-lg text-gray-300">Loading Launcher...</p>
+            <p class="mt-4 text-lg text-gray-300" data-key="loadingLauncher">Loading Launcher...</p>
         </div>
     </div>
 
@@ -26,85 +26,71 @@
         </div>
         
         <div id="title-bar-buttons">
-            <button id="minimize-btn" class="title-bar-btn" aria-label="Minimize">
-                ---
-            </button>
-            <button id="maximize-btn" class="title-bar-btn" aria-label="Maximize">
-                <i class="far fa-square"></i> 
-            </button>
-            <button id="close-btn" class="title-bar-btn" aria-label="Close">
-                <i class="fas fa-times"></i>
-            </button>
+            <button id="minimize-btn" class="title-bar-btn" aria-label="Minimize">---</button>
+            <button id="maximize-btn" class="title-bar-btn" aria-label="Maximize"><i class="far fa-square"></i></button>
+            <button id="close-btn" class="title-bar-btn" aria-label="Close"><i class="fas fa-times"></i></button>
         </div>
     </div>
 
     <div id="main-content-area" class="flex-grow flex flex-col space-y-3 p-4 overflow-y-auto">
-
         <div class="bg-gray-800 p-4 rounded-lg shadow-xl animate-fadeIn" style="animation-delay: 0.1s;">
             <div id="status-and-open-folder-area" class="hidden flex items-center justify-between gap-x-3">
                 <div id="status-bar-content" class="bg-gray-700 p-3 rounded-md flex-grow min-w-0 flex items-center">
-                <i class="fas fa-info-circle text-gray-400 mr-2"></i>
-                <span class="text-sm font-medium text-gray-400">Status:</span>
-                <span id="status-message" class="text-sm text-yellow-400 ml-2 truncate">Initializing...</span>
+                    <i class="fas fa-info-circle text-gray-400 mr-2"></i>
+                    <span class="text-sm font-medium text-gray-400" data-key="statusLabel">Status:</span>
+                    <span id="status-message" class="text-sm text-yellow-400 ml-2 truncate" data-key="initializing">Initializing...</span>
+                </div>
+                <div class="flex items-stretch gap-x-2">
+                    <button id="plugins-folder-button" class="btn-primary font-semibold px-4 py-3 flex items-center justify-center rounded-md">
+                        <i class="fas fa-puzzle-piece mr-2"></i><span data-key="pluginsButton">Plugins</span>
+                    </button>
+                    <button id="settings-button" class="btn-secondary font-semibold px-4 py-3 flex items-center justify-center rounded-md">
+                        <i class="fas fa-cog mr-2"></i><span data-key="settingsButton">Settings</span>
+                    </button>
+                </div>
             </div>
-
-            <div class="flex items-stretch gap-x-2">
-                <button id="plugins-folder-button" class="btn-primary font-semibold px-4 py-3 flex items-center justify-center rounded-md">
-                    <i class="fas fa-puzzle-piece mr-2"></i>Plugins
-                </button>
-                <button id="settings-button" class="btn-secondary font-semibold px-4 py-3 flex items-center justify-center rounded-md">
-                    <i class="fas fa-cog mr-2"></i>Settings
-                </button>
-            </div>
-            </div>
-
-            <div id="setup-active-placeholder-top" class="hidden text-center text-gray-400 py-8">
+            <div id="setup-active-placeholder-top" class="hidden text-center text-gray-400 py-8" data-key="setupPlaceholder">
                 Please complete server configuration in the popup.
             </div>
         </div>
 
         <div class="flex-grow bg-gray-800 p-4 rounded-lg shadow-xl flex flex-col min-h-[25vh] animate-fadeIn" style="animation-delay: 0.2s;">
-            <div id="console-output" class="console-output flex flex-col flex-grow bg-gray-900 text-sm p-3 rounded-md overflow-y-auto font-mono leading-normal whitespace-pre-wrap">
-            </div>
+            <div id="console-output" class="console-output flex flex-col flex-grow bg-gray-900 text-sm p-3 rounded-md overflow-y-auto font-mono leading-normal whitespace-pre-wrap"></div>
         </div>
 
         <div id="ip-info-bar" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 animate-fadeIn" style="animation-delay: 0.25s;">
             <div id="local-ip-widget" class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
                 <i class="fas fa-network-wired text-blue-400 text-xl w-6 text-center"></i>
                 <div>
-                    <p class="text-xs text-gray-400 font-medium">Local IP</p>
-                    <p id="local-ip-address" class="text-sm font-semibold text-gray-200 truncate">Fetching...</p>
+                    <p class="text-xs text-gray-400 font-medium" data-key="localIpLabel">Local IP</p>
+                    <p id="local-ip-address" class="text-sm font-semibold text-gray-200 truncate" data-key="fetching">Fetching...</p>
                 </div>
             </div>
-
             <div id="public-ip-widget" class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
                 <i class="fas fa-globe text-blue-400 text-xl w-6 text-center"></i>
                 <div>
-                    <p class="text-xs text-gray-400 font-medium">Public IP</p>
-                    <p id="public-ip-address" class="text-sm font-semibold text-gray-200 truncate">Fetching...</p>
+                    <p class="text-xs text-gray-400 font-medium" data-key="publicIpLabel">Public IP</p>
+                    <p id="public-ip-address" class="text-sm font-semibold text-gray-200 truncate" data-key="fetching">Fetching...</p>
                 </div>
             </div>
-
             <div id="server-version-widget" class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
                 <i class="fas fa-tag text-blue-400 text-xl w-6 text-center"></i>
                 <div>
-                    <p class="text-xs text-gray-400 font-medium">Version</p>
+                    <p class="text-xs text-gray-400 font-medium" data-key="versionLabel">Version</p>
                     <p id="server-version" class="text-sm font-semibold text-gray-200 truncate">N/A</p>
                 </div>
             </div>
-
             <div class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
                 <i class="fas fa-memory text-blue-400 text-xl w-6 text-center"></i>
                 <div>
-                    <p class="text-xs text-gray-400 font-medium">Memory</p>
+                    <p class="text-xs text-gray-400 font-medium" data-key="memoryLabel">Memory</p>
                     <p id="memory-usage" class="text-sm font-semibold text-gray-200 truncate">N/A</p>
                 </div>
             </div>
-
             <div class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
                 <i class="fas fa-tachometer-alt text-blue-400 text-xl w-6 text-center"></i>
                 <div>
-                    <p class="text-xs text-gray-400 font-medium">Ticks Per Second</p>
+                    <p class="text-xs text-gray-400 font-medium" data-key="tpsLabel">Ticks Per Second</p>
                     <p id="server-tps" class="text-sm font-semibold text-gray-200 truncate">0.0</p>
                 </div>
             </div>
@@ -112,15 +98,15 @@
 
         <div id="bottom-action-bar" class="bg-gray-800 p-3 rounded-lg shadow-xl animate-fadeIn" style="animation-delay: 0.3s;">
             <div class="flex flex-col space-y-3 sm:space-y-0 sm:flex-row sm:space-x-2 items-stretch">
-                <input type="text" id="command-input" placeholder="Enter server command..." class="flex-grow bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5">
+                <input type="text" id="command-input" data-key-placeholder="commandPlaceholder" placeholder="Enter server command..." class="flex-grow bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5">
                 <button id="send-command-button" class="btn-primary font-semibold py-2.5 px-4 rounded-md shadow-md flex items-center justify-center w-full sm:w-auto">
-                    <i class="fas fa-paper-plane mr-2"></i>Send
+                    <i class="fas fa-paper-plane mr-2"></i><span data-key="sendButton">Send</span>
                 </button>
                 <button id="start-button" class="btn-primary font-semibold py-2.5 px-5 rounded-md shadow-md flex items-center justify-center w-full sm:w-auto" style="background-color: #16a34a; color:white;">
-                    <i class="fas fa-play mr-2" style="color:white;"></i>Start Server
+                    <i class="fas fa-play mr-2" style="color:white;"></i><span data-key="startButton">Start Server</span>
                 </button>
                 <button id="stop-button" class="btn-danger font-semibold py-2.5 px-5 rounded-md shadow-md flex items-center justify-center btn-disabled w-full sm:w-auto">
-                    <i class="fas fa-stop mr-2"></i>Stop Server
+                    <i class="fas fa-stop mr-2"></i><span data-key="stopButton">Stop Server</span>
                 </button>
             </div>
         </div>
@@ -128,8 +114,8 @@
 
     <div id="java-install-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
         <div id="java-install-modal-content" class="modal-content bg-gray-800 p-6 md:p-8 rounded-lg shadow-2xl w-11/12 md:w-3/4 lg:w-1/2 xl:w-1/3">
-            <h2 class="text-xl md:text-2xl font-semibold text-blue-400 mb-5 text-center">Java (JDK) Required</h2>
-            <p id="java-install-message" class="text-gray-300 mb-6 text-center text-sm">
+            <h2 class="text-xl md:text-2xl font-semibold text-blue-400 mb-5 text-center" data-key="javaModalTitle">Java (JDK) Required</h2>
+            <p id="java-install-message" class="text-gray-300 mb-6 text-center text-sm" data-key="javaModalDescription">
                 Java is not detected on your system. It is required to run the server.
             </p>
             <div id="java-install-progress-bar-container" class="w-full bg-gray-700 rounded-full h-2.5 mb-4 hidden">
@@ -138,65 +124,61 @@
             <div id="java-install-controls">
                 <button id="java-install-button" class="w-full btn-primary font-semibold py-3 px-4 rounded-md shadow-md flex items-center justify-center text-base">
                     <i class="fas fa-download mr-2"></i>
-                    <span>Download & Install Java</span>
+                    <span data-key="javaDownloadButton">Download & Install Java</span>
                 </button>
                 <button id="java-restart-button" class="w-full btn-primary font-semibold py-3 px-4 rounded-md shadow-md flex items-center justify-center text-base hidden mt-4">
                     <i class="fas fa-power-off mr-2"></i>
-                    <span>Restart Launcher</span>
+                    <span data-key="javaRestartButton">Restart Launcher</span>
                 </button>
             </div>
         </div>
     </div>
 
-
     <div id="setup-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
         <div id="setup-modal-content" class="modal-content bg-gray-800 p-6 md:p-8 rounded-lg shadow-2xl w-11/12 md:w-3/4 lg:w-1/2 xl:w-1/3">
-            <h2 class="text-xl md:text-2xl font-semibold text-blue-400 mb-5 text-center">Server Setup Required</h2>
-            <p class="text-gray-300 mb-6 text-center text-sm">
+            <h2 class="text-xl md:text-2xl font-semibold text-blue-400 mb-5 text-center" data-key="setupTitle">Server Setup Required</h2>
+            <p class="text-gray-300 mb-6 text-center text-sm" data-key="setupDescription">
                 Server files (paper.jar) or configuration (config.json) are missing.
                 Please select options and click "Download / Configure".
             </p>
             <div id="modal-setup-form-controls" class="space-y-5">
                 <div>
-                    <label for="mc-version-modal" class="block text-sm font-medium text-gray-300 mb-1">Minecraft Version:</label>
+                    <label for="mc-version-modal" class="block text-sm font-medium text-gray-300 mb-1" data-key="mcVersionLabel">Minecraft Version:</label>
                     <select id="mc-version-modal" name="mc-version-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
-                        <option value="" disabled selected>Loading versions...</option>
+                        <option value="" disabled selected data-key="loadingVersions">Loading versions...</option>
                     </select>
                 </div>
                 <div>
-                    <label for="ram-allocation-modal" class="block text-sm font-medium text-gray-300 mb-1">RAM Allocation:</label>
+                    <label for="ram-allocation-modal" class="block text-sm font-medium text-gray-300 mb-1" data-key="ramAlloLabel">RAM Allocation:</label>
                     <select id="ram-allocation-modal" name="ram-allocation-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
-                        <option value="auto" selected>Auto (Detect System)</option>
-                        <option value="512M">512MB (Very Small)</option>
-                        <option value="1024M">1GB (Minimum)</option>
+                        <option value="auto" selected data-key="ramAuto">Auto (Detect System)</option>
+                        <option value="512M" data-key="ramVerySmall">512MB (Very Small)</option>
+                        <option value="1024M" data-key="ramMinimum">1GB (Minimum)</option>
                         <option value="1536M">1.5GB</option>
-                        <option value="2048M">2GB (Recommended Small)</option>
+                        <option value="2048M" data-key="ramRecommendedSmall">2GB (Recommended Small)</option>
                         <option value="3072M">3GB</option>
-                        <option value="4096M">4GB (Recommended Medium)</option>
+                        <option value="4096M" data-key="ramRecommendedMedium">4GB (Recommended Medium)</option>
                         <option value="6144M">6GB</option>
-                        <option value="8192M">8GB (Recommended Large)</option>
+                        <option value="8192M" data-key="ramRecommendedLarge">8GB (Recommended Large)</option>
                         <option value="12288M">12GB</option>
-                        <option value="16384M">16GB (Very Large)</option>
+                        <option value="16384M" data-key="ramVeryLarge">16GB (Very Large)</option>
                     </select>
                 </div>
                 <div>
-                    <label for="language-modal-select" class="block text-sm font-medium text-gray-300 mb-1">Language:</label>
-                    <select id="language-modal-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer" disabled>
-                        <option value="en" selected>English (Default)</option>
-                        <!-- Alte limbi vor fi adăugate aici în viitor -->
+                    <label for="language-modal-select" class="block text-sm font-medium text-gray-300 mb-1" data-key="langLabel">Language:</label>
+                    <select id="language-modal-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
                     </select>
                 </div>
                 <div>
-                    <label for="server-type-modal-select" class="block text-sm font-medium text-gray-300 mb-1">Server Type:</label>
-                    <select id="server-type-modal-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer" disabled>
-                        <option value="papermc" selected>PaperMC (Default)</option>
-                        <!-- Alte tipuri de server (ex. Spigot, Forge) vor fi adăugate aici în viitor -->
+                    <label for="server-type-modal-select" class="block text-sm font-medium text-gray-300 mb-1" data-key="serverTypeLabel">Server Type:</label>
+                    <select id="server-type-modal-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500" disabled>
+                        <option value="papermc" selected data-key="serverTypeDefault">PaperMC (Default)</option>
                     </select>
                 </div>
                 <div class="pt-4">
                     <button id="download-button-modal" class="w-full btn-primary font-semibold py-3 px-4 rounded-md shadow-md flex items-center justify-center text-base">
                         <i class="fas fa-download mr-2"></i>
-                        <span id="download-button-text">Download / Configure Server</span>
+                        <span id="download-button-text" data-key="downloadButton">Download / Configure Server</span>
                     </button>
                 </div>
             </div>
@@ -205,68 +187,65 @@
 
     <div id="settings-modal" class="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 hidden">
         <div id="settings-modal-content" class="modal-content bg-gray-800 p-6 md:p-8 rounded-lg shadow-2xl w-11/12 md:w-3/4 lg:w-7/12 xl:w-1/2 flex flex-col max-h-[95vh]">
-            <h2 class="text-xl md:text-2xl font-semibold text-gray-200 mb-6 text-center flex-shrink-0">Settings</h2>
+            <h2 class="text-xl md:text-2xl font-semibold text-gray-200 mb-6 text-center flex-shrink-0" data-key="settingsTitle">Settings</h2>
             
             <div class="flex-grow overflow-y-auto pr-4 -mr-4 space-y-5">
                 
                 <div>
-                    <h3 class="text-lg font-medium text-blue-400 mb-3">Server Configuration</h3>
+                    <h3 class="text-lg font-medium text-blue-400 mb-3" data-key="serverConfigHeader">Server Configuration</h3>
                     <div>
-                        <label for="mc-version-settings" class="block text-sm font-medium text-gray-300 mb-1">Minecraft Version:</label>
-                    <select id="mc-version-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
-                            <option value="" disabled>Loading...</option>
+                        <label for="mc-version-settings" class="block text-sm font-medium text-gray-300 mb-1" data-key="mcVersionLabel">Minecraft Version:</label>
+                        <select id="mc-version-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
+                            <option value="" disabled data-key="loadingVersions">Loading...</option>
                         </select>
                     </div>
                     <div class="mt-4">
-                        <label for="ram-allocation-settings" class="block text-sm font-medium text-gray-300 mb-1">RAM Allocation:</label>
-                    <select id="ram-allocation-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
-                            <option value="auto" selected>Auto (Detect System)</option>
-                            <option value="512M">512MB (Very Small)</option>
-                            <option value="1024M">1GB (Minimum)</option>
+                        <label for="ram-allocation-settings" class="block text-sm font-medium text-gray-300 mb-1" data-key="ramAlloLabel">RAM Allocation:</label>
+                        <select id="ram-allocation-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
+                            <option value="auto" selected data-key="ramAuto">Auto (Detect System)</option>
+                            <option value="512M" data-key="ramVerySmall">512MB (Very Small)</option>
+                            <option value="1024M" data-key="ramMinimum">1GB (Minimum)</option>
                             <option value="1536M">1.5GB</option>
-                            <option value="2048M">2GB (Recommended Small)</option>
+                            <option value="2048M" data-key="ramRecommendedSmall">2GB (Recommended Small)</option>
                             <option value="3072M">3GB</option>
-                            <option value="4096M">4GB (Recommended Medium)</option>
+                            <option value="4096M" data-key="ramRecommendedMedium">4GB (Recommended Medium)</option>
                             <option value="6144M">6GB</option>
-                            <option value="8192M">8GB (Recommended Large)</option>
+                            <option value="8192M" data-key="ramRecommendedLarge">8GB (Recommended Large)</option>
                             <option value="12288M">12GB</option>
-                            <option value="16384M">16GB (Very Large)</option>
+                            <option value="16384M" data-key="ramVeryLarge">16GB (Very Large)</option>
                         </select>
                     </div>
                     <div class="mt-4">
-                        <label for="java-arguments-settings" class="block text-sm font-medium text-gray-300 mb-1">Java Arguments:</label>
-                    <select id="java-arguments-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
-                            <option value="Default">Default (Standard JVM arguments)</option>
-                            <option value="Performance">Performance (Includes Aikar's flags for optimization)</option>
+                        <label for="java-arguments-settings" class="block text-sm font-medium text-gray-300 mb-1" data-key="javaArgsLabel">Java Arguments:</label>
+                        <select id="java-arguments-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
+                            <option value="Default" data-key="javaArgsDefault">Default (Standard JVM arguments)</option>
+                            <option value="Performance" data-key="javaArgsPerformance">Performance (Includes Aikar's flags for optimization)</option>
                         </select>
                     </div>
                     <div class="mt-4">
-                        <label for="language-settings-select" class="block text-sm font-medium text-gray-300 mb-1">Language:</label>
-                        <select id="language-settings-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer" disabled>
-                            <option value="en" selected>English (Default)</option>
-                            <!-- Alte limbi vor fi adăugate aici în viitor -->
-                        </select>
+                        <label for="language-settings-select" class="block text-sm font-medium text-gray-300 mb-1" data-key="langLabel">Language:</label>
+                        <select id="language-settings-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
+                           </select>
                     </div>
                     <div class="mt-4">
-                        <label for="server-type-settings-select" class="block text-sm font-medium text-gray-300 mb-1">Server Type:</label>
-                        <select id="server-type-settings-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer" disabled>
-                            <option value="papermc" selected>PaperMC (Default)</option>
-                            <!-- Alte tipuri de server (ex. Spigot, Forge) vor fi adăugate aici în viitor -->
+                        <label for="server-type-settings-select" class="block text-sm font-medium text-gray-300 mb-1" data-key="serverTypeLabel">Server Type:</label>
+                        <select id="server-type-settings-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500" disabled>
+                            <option value="papermc" selected data-key="serverTypeDefault">PaperMC (Default)</option>
                         </select>
                     </div>
                 </div>
 
                 <div class="border-t border-gray-700 pt-5">
-                     <h3 class="text-lg font-medium text-blue-400 mb-3">Launcher Settings</h3>
+                     <h3 class="text-lg font-medium text-blue-400 mb-3" data-key="launcherSettingsHeader">Launcher Settings</h3>
                     <label for="start-with-windows-checkbox" class="flex items-center justify-between p-3 bg-gray-700 rounded-md cursor-pointer hover:bg-gray-600 transition-colors">
-                        <span class="text-gray-300">Start with Windows</span>
+                        <span class="text-gray-300" data-key="startWithWindowsLabel">Start with Windows</span>
                         <div class="switch">
                             <input type="checkbox" id="start-with-windows-checkbox" class="sr-only">
                             <div class="switch-track"><div class="switch-thumb"></div></div>
                         </div>
                     </label>
                     <label for="auto-start-server-checkbox" class="flex items-center justify-between p-3 bg-gray-700 rounded-md cursor-pointer hover:bg-gray-600 transition-colors mt-3">
-                        <span class="text-gray-300">Automatically start server</span>
+                        <span class="text-gray-300" data-key="autoStartServerLabel">Automatically start server</span>
                         <div class="switch">
                             <input type="checkbox" id="auto-start-server-checkbox" class="sr-only">
                             <div class="switch-track"><div class="switch-thumb"></div></div>
@@ -275,7 +254,7 @@
                     <div id="auto-start-delay-container" class="bg-gray-700 rounded-md">
                         <div class="p-3">
                             <label for="auto-start-delay-slider" class="flex justify-between text-sm font-medium text-gray-300 mb-2">
-                                <span>Auto-start Delay</span>
+                                <span data-key="autoStartDelayLabel">Auto-start Delay</span>
                                 <span id="auto-start-delay-value">5s</span>
                             </label>
                             <input id="auto-start-delay-slider" type="range" min="5" max="60" value="5" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
@@ -284,17 +263,17 @@
                 </div>
 
                 <div class="border-t border-gray-700 pt-5">
-                    <h3 class="text-lg font-medium text-blue-400 mb-3">Server Properties</h3>
+                    <h3 class="text-lg font-medium text-blue-400 mb-3" data-key="serverPropsHeader">Server Properties</h3>
                     <div id="server-properties-container" class="space-y-3">
-                        <p class="text-gray-400 text-center">Run the server once to generate and edit server.properties.</p>
+                        <p class="text-gray-400 text-center" data-key="serverPropsUnavailable">Run the server once to generate and edit server.properties.</p>
                     </div>
                 </div>
 
             </div>
 
             <div class="flex justify-end space-x-3 mt-8 flex-shrink-0">
-                <button id="close-settings-button" class="btn-secondary font-semibold py-2 px-5 rounded-md shadow-md">Close</button>
-                <button id="save-settings-button" class="btn-primary font-semibold py-2 px-5 rounded-md shadow-md">Save & Apply</button>
+                <button id="close-settings-button" class="btn-secondary font-semibold py-2 px-5 rounded-md shadow-md" data-key="closeButton">Close</button>
+                <button id="save-settings-button" class="btn-primary font-semibold py-2 px-5 rounded-md shadow-md" data-key="saveApplyButton">Save & Apply</button>
             </div>
         </div>
     </div>
