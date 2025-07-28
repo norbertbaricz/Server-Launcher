@@ -26,7 +26,8 @@
     "discord-rpc": "^4.0.1",
     "electron-log": "^5.4.1",
     "electron-updater": "^6.3.1",
-    "pidusage": "^4.0.1"
+    "pidusage": "^4.0.1",
+    "find-process": "^1.4.7"
   },
   "build": {
     "appId": "com.skypixel.serverlauncher",

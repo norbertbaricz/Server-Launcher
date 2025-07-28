@@ -64,5 +64,13 @@
   "serverPropsLoading": "Loading properties...",
   "serverPropsUnavailable": "Could not load server.properties. Run the server once to generate it.",
   "closeButton": "Close",
-  "saveApplyButton": "Save & Apply"
+  "saveApplyButton": "Save & Apply",
+  "serverStoppedUnexpectedly": "Server stopped unexpectedly.",
+  "paperJarNotFound": "paper.jar not found.",
+  "configError": "Config error.",
+  "eulaError": "EULA error.",
+  "javaNotFound": "Java not found!",
+  "serverStartFailed": "Server start failed.",
+  "downloadSuccess": "PaperMC downloaded successfully!",
+  "downloadFailed": "Download failed."
 }

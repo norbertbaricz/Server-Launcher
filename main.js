@@ -10,6 +10,7 @@ const log = require('electron-log');
 const RPC = require('discord-rpc');
 const pidusage = require('pidusage');
 const AnsiToHtml = require('ansi-to-html');
+const find = require('find-process');
 
 let javaExecutablePath = 'java';
 
@@ -52,6 +53,24 @@ let localIsServerRunningGlobal = false;
 let mainWindow;
 let performanceStatsInterval = null;
 let manualTpsCheck = false;
+
+async function killStrayServerProcess() {
+    try {
+        const processes = await find('name', 'java', true);
+        const serverJarPath = path.join(serverFilesDir, paperJarName);
+
+        for (const p of processes) {
+            if (p.cmd.includes(serverJarPath)) {
+                log.warn(`Found a stray server process with PID ${p.pid}. Attempting to kill it.`);
+                sendConsole(`Found a stray server process (PID: ${p.pid}). Terminating...`, 'WARN');
+                process.kill(p.pid);
+            }
+        }
+    } catch (err) {
+        log.error('Error while trying to find and kill stray server processes:', err);
+        sendConsole('Error checking for stray server processes.', 'ERROR');
+    }
+}
 
 async function checkJava() {
     return new Promise((resolve) => {
@@ -259,9 +278,9 @@ async function downloadAndInstallJava() {
 }
 
 function getMainWindow() { return mainWindow; }
-function sendStatus(message, pulse = false) {
+function sendStatus(fallbackMessage, pulse = false, translationKey = null) {
     const win = getMainWindow();
-    if (win && !win.isDestroyed()) win.webContents.send('update-status', message, pulse);
+    if (win && !win.isDestroyed()) win.webContents.send('update-status', fallbackMessage, pulse, translationKey);
 }
 function sendConsole(message, type = 'INFO') {
     const win = getMainWindow();
@@ -399,7 +418,7 @@ function createWindow () {
   mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-maximized', false));
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData');
   serverFilesDir = path.join(userDataPath, 'MinecraftServer');
   serverConfigFilePath = path.join(serverFilesDir, serverConfigFileName);
@@ -414,6 +433,7 @@ app.whenReady().then(() => {
       dialog.showErrorBox('Directory Creation Failed', `Failed to create server directory at ${serverFilesDir}:\n${error.message}`);
     }
   }
+  await killStrayServerProcess();
   createWindow();
 
   rpc = new RPC.Client({ transport: 'ipc' });
@@ -438,7 +458,7 @@ autoUpdater.on('checking-for-update', () => sendConsole('Updater: Checking for u
 autoUpdater.on('update-available', (info) => sendConsole(`Updater: Update available! Version: ${info.version}`, 'SUCCESS'));
 autoUpdater.on('update-not-available', (info) => sendConsole('Updater: No new updates available.', 'INFO'));
 autoUpdater.on('error', (err) => sendConsole('Updater: Error during update. ' + err.message, 'ERROR'));
-autoUpdater.on('download-progress', (p) => setStatus(`Download speed: ${Math.round(p.bytesPerSecond / 1024)} KB/s - Downloaded ${Math.round(p.percent)}%`, true));
+autoUpdater.on('download-progress', (p) => sendStatus(`Download speed: ${Math.round(p.bytesPerSecond / 1024)} KB/s - Downloaded ${Math.round(p.percent)}%`, true));
 autoUpdater.on('update-downloaded', (info) => {
   sendConsole(`Updater: Update downloaded (${info.version}). It will be installed on restart.`, 'SUCCESS');
   dialog.showMessageBox({
@@ -646,12 +666,12 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
             sendConsole('Old paper.jar removed successfully.', 'SUCCESS');
         } catch (error) {
             sendConsole(`Error removing old paper.jar: ${error.message}`, 'ERROR');
-            sendStatus('Error updating version.', false);
+            sendStatus('Error updating version.', false, 'error');
             getMainWindow()?.webContents.send('setup-finished');
             return;
         }
     } else if (fs.existsSync(paperJarPath) && oldVersion === mcVersion) {
-        sendStatus('Configuration saved! Version is already up to date.', false);
+        sendStatus('Configuration saved! Version is already up to date.', false, 'configSaved');
         getMainWindow()?.webContents.send('setup-finished');
         
         setTimeout(async () => {
@@ -663,7 +683,7 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
         return;
     }
     
-    sendStatus(`Downloading PaperMC ${mcVersion}...`, true);
+    sendStatus(`Downloading PaperMC ${mcVersion}...`, true, 'downloading');
     try {
         const buildsApiUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds`;
         const buildsResponseData = await new Promise((resolve, reject) => {
@@ -686,7 +706,7 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
             }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
         });
         
-        sendStatus('PaperMC downloaded successfully!', false);
+        sendStatus('PaperMC downloaded successfully!', false, 'downloadSuccess');
         sendConsole(`${paperJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
         getMainWindow()?.webContents.send('setup-finished');
         
@@ -701,7 +721,7 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
         }, 2000);
 
     } catch (error) {
-        sendStatus('Download failed.', false);
+        sendStatus('Download failed.', false, 'downloadFailed');
         sendConsole(`ERROR: ${error.message}`, 'ERROR');
         getMainWindow()?.webContents.send('setup-finished');
     }
@@ -715,13 +735,13 @@ ipcMain.on('start-server', async () => {
     const serverJarPath = path.join(serverFilesDir, paperJarName);
     if (!fs.existsSync(serverJarPath)) {
         sendConsole(`${paperJarName} not found.`, 'ERROR');
-        sendStatus(`${paperJarName} not found.`, false);
+        sendStatus(`${paperJarName} not found.`, false, 'paperJarNotFound');
         return;
     }
     const serverConfig = readServerConfig();
     if (!serverConfig.version) {
         sendConsole('Server version missing in config.', 'ERROR');
-        sendStatus('Config error.', false);
+        sendStatus('Config error.', false, 'configError');
         return;
     }
     const eulaPath = path.join(serverFilesDir, 'eula.txt');
@@ -732,7 +752,7 @@ ipcMain.on('start-server', async () => {
         }
     } catch (error) {
         sendConsole(`EULA file error: ${error.message}`, 'ERROR');
-        sendStatus('EULA error.', false);
+        sendStatus('EULA error.', false, 'eulaError');
         return;
     }
     let ramToUseForJava = "";
@@ -750,7 +770,7 @@ ipcMain.on('start-server', async () => {
     const javaArgs = (javaArgsProfile === 'Performance') ? performanceArgs : defaultArgs;
     sendConsole(`Using ${javaArgsProfile} Java arguments.`, 'INFO');
     sendConsole(`Starting server with ${ramToUseForJava} RAM...`, 'INFO');
-    sendStatus('Starting server...', true);
+    sendStatus('Starting server...', true, 'serverStarting');
 
     function parseRamToGB(ramString) {
         if (!ramString) return '-';
@@ -787,6 +807,21 @@ ipcMain.on('start-server', async () => {
                 }
             } catch (e) {
                 clearInterval(performanceStatsInterval);
+                if (localIsServerRunningGlobal) {
+                    log.error('Lost connection to server process (pidusage failed).', e);
+                    sendConsole('Lost connection to the server process.', 'ERROR');
+                    sendStatus('Server stopped unexpectedly.', false, 'serverStoppedUnexpectedly');
+                    sendServerStateChange(false);
+                    setDiscordActivity();
+                    serverProcess = null;
+
+                    const launcherSettings = readLauncherSettings();
+                    if (launcherSettings.autoStartServer) {
+                        sendConsole('Attempting to auto-restart server...', 'WARN');
+                        const delay = launcherSettings.autoStartDelay || 5;
+                        mainWindow.webContents.send('start-countdown', 'restart', delay);
+                    }
+                }
             }
         }, 2000);
 
@@ -809,7 +844,6 @@ ipcMain.on('start-server', async () => {
             if (!serverIsFullyStarted && /Done \([^)]+\)! For help, type "help"/.test(cleanOutput)) {
                 serverIsFullyStarted = true;
                 sendServerStateChange(true);
-                sendStatus('Server is running.', false);
                 setDiscordActivity();
             }
         });
@@ -826,10 +860,9 @@ ipcMain.on('start-server', async () => {
             setDiscordActivity();
     
             if (killedInternally) {
-                sendStatus('Server stopped.', false);
                 sendConsole('Server process stopped normally.', 'INFO');
             } else {
-                sendStatus('Server stopped unexpectedly.', false);
+                sendStatus('Server stopped unexpectedly.', false, 'serverStoppedUnexpectedly');
                 sendConsole(`Server process exited unexpectedly with code ${code}.`, 'ERROR');
                 
                 const launcherSettings = readLauncherSettings();
@@ -844,7 +877,7 @@ ipcMain.on('start-server', async () => {
         serverProcess.on('error', (err) => {
             if (performanceStatsInterval) clearInterval(performanceStatsInterval); 
             sendConsole(`Failed to start process: ${err.message}`, 'ERROR');
-            sendStatus(err.message.includes('ENOENT') ? 'Java not found!' : 'Server start failed.');
+            sendStatus(err.message.includes('ENOENT') ? 'Java not found!' : 'Server start failed.', false, err.message.includes('ENOENT') ? 'javaNotFound' : 'serverStartFailed');
             serverProcess = null;
             sendServerStateChange(false);
         });
@@ -853,7 +886,7 @@ ipcMain.on('start-server', async () => {
         sendConsole(`Error spawning server: ${error.message}`, 'ERROR');
         serverProcess = null;
         sendServerStateChange(false);
-        sendStatus('Error starting server.', false);
+        sendStatus('Error starting server.', false, 'error');
     }
 });
 
@@ -861,7 +894,7 @@ ipcMain.on('stop-server', async () => {
     if (!serverProcess || serverProcess.killed) { sendConsole('Server not running.', 'WARN'); return; }
     if (performanceStatsInterval) clearInterval(performanceStatsInterval);
     sendConsole('Stopping server...', 'INFO');
-    sendStatus('Stopping server...', true);
+    sendStatus('Stopping server...', true, 'serverStopping');
     serverProcess.killedInternally = true;
     try {
         if (serverProcess.stdin.writable) {

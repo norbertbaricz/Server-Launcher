@@ -64,5 +64,13 @@
   "serverPropsLoading": "Se încarcă proprietățile...",
   "serverPropsUnavailable": "Nu s-a putut încărca server.properties. Rulează serverul o dată pentru a-l genera.",
   "closeButton": "Închide",
-  "saveApplyButton": "Salvează & Aplică"
+  "saveApplyButton": "Salvează & Aplică",
+  "serverStoppedUnexpectedly": "Serverul s-a oprit în mod neașteptat.",
+  "paperJarNotFound": "Fișierul paper.jar nu a fost găsit.",
+  "configError": "Eroare de configurare.",
+  "eulaError": "Eroare EULA.",
+  "javaNotFound": "Java nu a fost găsit!",
+  "serverStartFailed": "Pornirea serverului a eșuat.",
+  "downloadSuccess": "PaperMC descărcat cu succes!",
+  "downloadFailed": "Descărcare eșuată."
 }

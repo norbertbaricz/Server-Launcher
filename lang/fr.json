@@ -64,5 +64,13 @@
   "serverPropsLoading": "Chargement des propriétés...",
   "serverPropsUnavailable": "Impossible de charger server.properties. Lancez le serveur une fois pour le générer.",
   "closeButton": "Fermer",
-  "saveApplyButton": "Enregistrer & Appliquer"
+  "saveApplyButton": "Enregistrer & Appliquer",
+  "serverStoppedUnexpectedly": "Le serveur s'est arrêté de manière inattendue.",
+  "paperJarNotFound": "paper.jar non trouvé.",
+  "configError": "Erreur de configuration.",
+  "eulaError": "Erreur EULA.",
+  "javaNotFound": "Java non trouvé !",
+  "serverStartFailed": "Le démarrage du serveur a échoué.",
+  "downloadSuccess": "PaperMC téléchargé avec succès !",
+  "downloadFailed": "Échec du téléchargement."
 }

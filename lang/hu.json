@@ -64,5 +64,13 @@
   "serverPropsLoading": "Tulajdonságok betöltése...",
   "serverPropsUnavailable": "A server.properties nem tölthető be. Futtassa egyszer a szervert a generáláshoz.",
   "closeButton": "Bezárás",
-  "saveApplyButton": "Mentés és Alkalmazás"
+  "saveApplyButton": "Mentés és Alkalmazás",
+  "serverStoppedUnexpectedly": "A szerver váratlanul leállt.",
+  "paperJarNotFound": "A paper.jar nem található.",
+  "configError": "Konfigurációs hiba.",
+  "eulaError": "EULA hiba.",
+  "javaNotFound": "Java nem található!",
+  "serverStartFailed": "Szerver indítása sikertelen.",
+  "downloadSuccess": "A PaperMC sikeresen letöltve!",
+  "downloadFailed": "Letöltés sikertelen."
 }

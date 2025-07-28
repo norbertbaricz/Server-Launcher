@@ -64,5 +64,13 @@
   "serverPropsLoading": "Ładowanie właściwości...",
   "serverPropsUnavailable": "Nie można wczytać server.properties. Uruchom serwer raz, aby go wygenerować.",
   "closeButton": "Zamknij",
-  "saveApplyButton": "Zapisz i zastosuj"
+  "saveApplyButton": "Zapisz i zastosuj",
+  "serverStoppedUnexpectedly": "Serwer nieoczekiwanie zatrzymany.",
+  "paperJarNotFound": "Nie znaleziono pliku paper.jar.",
+  "configError": "Błąd konfiguracji.",
+  "eulaError": "Błąd EULA.",
+  "javaNotFound": "Nie znaleziono Javy!",
+  "serverStartFailed": "Uruchomienie serwera nie powiodło się.",
+  "downloadSuccess": "Pomyślnie pobrano PaperMC!",
+  "downloadFailed": "Pobieranie nie powiodło się."
 }

@@ -187,18 +187,23 @@ function addToConsole(message, type = 'INFO') {
 
 function getStatusColor(text) {
     const lowerText = text.toLowerCase();
-    if (lowerText.includes("running") || lowerText.includes("rulează")) return '#22c55e';
-    if (lowerText.includes("failed") || lowerText.includes("error") || lowerText.includes("eșuat")) return '#ef4444';
-    if (lowerText.includes("successfully") || lowerText.includes("saved") || lowerText.includes("ready") || lowerText.includes("succes") || lowerText.includes("pregătit")) return '#4ade80';
-    if (lowerText.includes("stopped") || lowerText.includes("initialized") || lowerText.includes("cancelled") || lowerText.includes("oprit") || lowerText.includes("inițializat") || lowerText.includes("anulat")) return '#9ca3af';
+    if (lowerText.includes("running") || lowerText.includes("rulează") || lowerText.includes("läuft")) return '#22c55e';
+    if (lowerText.includes("failed") || lowerText.includes("error") || lowerText.includes("eșuat") || lowerText.includes("fehler")) return '#ef4444';
+    if (lowerText.includes("successfully") || lowerText.includes("saved") || lowerText.includes("ready") || lowerText.includes("succes") || lowerText.includes("pregătit") || lowerText.includes("bereit")) return '#4ade80';
+    if (lowerText.includes("stopped") || lowerText.includes("initialized") || lowerText.includes("cancelled") || lowerText.includes("oprit") || lowerText.includes("inițializat") || lowerText.includes("anulat") || lowerText.includes("gestoppt")) return '#9ca3af';
     return '#3b82f6';
 }
 
-function setStatus(text, pulse = false, translationKey = null) {
-    statusMessageSpan.textContent = text;
-    statusMessageSpan.dataset.key = translationKey || '';
+function setStatus(fallbackText, pulse = false, translationKey = null) {
+    const key = translationKey || statusMessageSpan.dataset.key;
+    let message = (key && currentTranslations[key]) ? currentTranslations[key] : fallbackText;
+
+    statusMessageSpan.textContent = message;
+    statusMessageSpan.dataset.key = key || '';
+    
     const pulseTarget = statusBarContent;
-    const statusColor = getStatusColor(text);
+    const statusColor = getStatusColor(statusMessageSpan.textContent);
+    
     pulseTarget.classList.toggle('status-bar-pulse', pulse);
     statusMessageSpan.style.color = pulse ? '#3b82f6' : statusColor;
 }
@@ -304,7 +309,7 @@ async function refreshUISetupState() {
     const { needsSetup, config, error } = await window.electronAPI.checkInitialSetup();
     if (error) {
         addToConsole(`Critical Error: ${error}.`, "ERROR");
-        setStatus("Launcher Error!", false);
+        setStatus("Launcher Error!", false, 'error');
         updateButtonStates(localIsServerRunning);
         return;
     }
@@ -504,16 +509,16 @@ window.electronAPI.onWindowMaximized((isMaximized) => {
 
 window.electronAPI.onUpdateConsole((message, type) => addToConsole(message, type));
 
-window.electronAPI.onUpdateStatus(async (message, pulse) => {
-    setStatus(message, pulse);
-    const lowerMessage = message.toLowerCase();
+window.electronAPI.onUpdateStatus(async (fallbackMessage, pulse, translationKey) => {
+    setStatus(fallbackMessage, pulse, translationKey);
+    const lowerMessage = (currentTranslations[translationKey] || fallbackMessage).toLowerCase();
 
-    if (lowerMessage.includes('downloading')) {
+    if (lowerMessage.includes('downloading') || lowerMessage.includes('se descarcă')) {
         isDownloadingFromServer = true;
         updateButtonStates(localIsServerRunning);
     }
 
-    if (lowerMessage.includes('starting')) {
+    if (lowerMessage.includes('starting') || lowerMessage.includes('se pornește')) {
         settingsButton.disabled = true;
         settingsButton.classList.add('btn-disabled');
     }
@@ -602,7 +607,7 @@ window.electronAPI.onUpdatePerformanceStats(({ tps, memoryGB, allocatedRamGB }) 
 
 window.electronAPI.onRequestStatusCheckForFail(() => {
     if (statusMessageSpan.textContent.toLowerCase().includes('starting')) {
-        setStatus('Server failed to stay running.', false);
+        setStatus('Server failed to stay running.', false, 'serverStartFailed');
     }
 });
 
@@ -655,7 +660,7 @@ async function initializeApp() {
 
     } catch (error) {
         addToConsole(`Initialization failed: ${error.message}`, 'ERROR');
-        setStatus('Initialization Error!', false);
+        setStatus('Initialization Error!', false, 'error');
     } finally {
         loadingScreen.style.opacity = '0';
         setTimeout(() => {
@@ -667,7 +672,7 @@ async function initializeApp() {
 
 document.addEventListener('DOMContentLoaded', initializeApp);
 
-function startCountdown(seconds, message, callback) {
+function startCountdown(seconds, messageKey, callback) {
     if (countdownInterval) clearInterval(countdownInterval);
 
     let remaining = seconds;
@@ -680,7 +685,8 @@ function startCountdown(seconds, message, callback) {
         }
 
         if (remaining > 0) {
-            setStatus(`${message} in ${remaining}s...`, true);
+            const message = (currentTranslations[messageKey] || "Auto-starting server") + ` in ${remaining}s...`;
+            setStatus(message, true, null); // We don't use a key here as it's a dynamic message
             remaining--;
         } else {
             clearInterval(countdownInterval);
@@ -702,8 +708,7 @@ window.electronAPI.onStartCountdown((type, delay) => {
     updateButtonStates(localIsServerRunning);
 
     const messageKey = type === 'initial' ? 'autoStartingServer' : 'autoRestartingServer';
-    const message = currentTranslations[messageKey] || (type === 'initial' ? 'Auto-starting server' : 'Auto-restarting server');
-    startCountdown(delay, message, () => {
+    startCountdown(delay, messageKey, () => {
         if (autoStartIsActive && !localIsServerRunning) {
             window.electronAPI.startServer();
         } else {
