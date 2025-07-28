@@ -236,11 +236,6 @@ input:focus, select:focus, textarea:focus {
     display: none;
 }
 
-#open-folder-button-main {
-    padding-top: 0.75rem;
-    padding-bottom: 0.75rem;
-}
-
 /* Animatie de incarcare (spinner) */
 @keyframes spin {
     from { 

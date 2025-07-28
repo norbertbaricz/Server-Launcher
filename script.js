@@ -17,7 +17,7 @@ const publicIpWidget = document.getElementById('public-ip-widget');
 const serverVersionWidget = document.getElementById('server-version-widget');
 
 // Butoane de acțiune
-const openFolderButtonMain = document.getElementById('open-folder-button-main');
+const pluginsFolderButton = document.getElementById('plugins-folder-button');
 const settingsButton = document.getElementById('settings-button');
 
 // Container
@@ -151,13 +151,13 @@ function updateButtonStates(isRunning) {
     stopButton.disabled = !isRunning;
     sendCommandButton.disabled = !isRunning;
     commandInput.disabled = !isRunning;
-    openFolderButtonMain.disabled = !setupComplete;
+    pluginsFolderButton.disabled = !setupComplete;
     settingsButton.disabled = isRunning || !setupComplete;
 
     startButton.classList.toggle('btn-disabled', startButton.disabled);
     stopButton.classList.toggle('btn-disabled', stopButton.disabled);
     sendCommandButton.classList.toggle('btn-disabled', sendCommandButton.disabled);
-    openFolderButtonMain.classList.toggle('btn-disabled', openFolderButtonMain.disabled);
+    pluginsFolderButton.classList.toggle('btn-disabled', pluginsFolderButton.disabled);
     settingsButton.classList.toggle('btn-disabled', settingsButton.disabled);
     
     statusAndOpenFolderArea.classList.toggle('hidden', !setupComplete);
@@ -306,7 +306,7 @@ downloadModalButton.addEventListener('click', () => {
     window.electronAPI.downloadPaperMC({ mcVersion: version, ramAllocation: ram, javaArgs: 'Default' });
 });
 
-openFolderButtonMain.addEventListener('click', () => { if(!openFolderButtonMain.disabled) window.electronAPI.openServerFolder(); });
+pluginsFolderButton.addEventListener('click', () => { if(!pluginsFolderButton.disabled) window.electronAPI.openPluginsFolder(); });
 
 settingsButton.addEventListener('click', async () => {
     if (settingsButton.disabled) return;

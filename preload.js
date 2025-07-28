@@ -20,7 +20,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     closeWindow: () => ipcRenderer.send('close-window'),
     appReadyToShow: () => ipcRenderer.send('app-ready-to-show'), // Adăugat pentru loading screen
     setSettings: (settings) => ipcRenderer.send('set-settings', settings),
-    openServerFolder: () => ipcRenderer.send('open-server-folder'),
+    openPluginsFolder: () => ipcRenderer.send('open-plugins-folder'),
     downloadPaperMC: (options) => ipcRenderer.send('download-papermc', options),
     startServer: () => ipcRenderer.send('start-server'),
     stopServer: () => ipcRenderer.send('stop-server'),

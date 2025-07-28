@@ -567,9 +567,18 @@ ipcMain.handle('get-available-papermc-versions', async () => {
         return [];
     }
 });
-ipcMain.on('open-server-folder', () => {
-    if (!fs.existsSync(serverFilesDir)) sendConsole(`Error: Server directory ${serverFilesDir} does not exist.`, 'WARN');
-    shell.openPath(serverFilesDir).catch(err => sendConsole(`Failed to open folder: ${err.message}`, 'ERROR'));
+ipcMain.on('open-plugins-folder', () => {
+    const pluginsDir = path.join(serverFilesDir, 'plugins');
+    if (!fs.existsSync(pluginsDir)) {
+        try {
+            fs.mkdirSync(pluginsDir, { recursive: true });
+            sendConsole('Plugins directory created.', 'INFO');
+        } catch (error) {
+            sendConsole(`Failed to create plugins directory: ${error.message}`, 'ERROR');
+            return;
+        }
+    }
+    shell.openPath(pluginsDir).catch(err => sendConsole(`Failed to open plugins folder: ${err.message}`, 'ERROR'));
 });
 
 ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArgs }) => {
