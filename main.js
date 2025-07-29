@@ -503,7 +503,7 @@ ipcMain.on('app-ready-to-show', () => {
 ipcMain.handle('get-settings', () => {
     const settings = readLauncherSettings();
     return {
-        openAtLogin: settings.startWithWindows || false,
+        openAtLogin: settings.openAtLogin || false,
         autoStartServer: settings.autoStartServer || false,
         autoStartDelay: settings.autoStartDelay || 5,
         language: settings.language || 'en'

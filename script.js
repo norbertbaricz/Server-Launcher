@@ -44,7 +44,7 @@ const ramAllocationSettingsSelect = document.getElementById('ram-allocation-sett
 const javaArgumentsSettingsSelect = document.getElementById('java-arguments-settings');
 const languageSettingsSelect = document.getElementById('language-settings-select');
 const serverTypeSettingsSelect = document.getElementById('server-type-settings-select');
-const startWithWindowsCheckbox = document.getElementById('start-with-windows-checkbox');
+const startWithSystemCheckbox = document.getElementById('start-with-system-checkbox');
 const saveSettingsButton = document.getElementById('save-settings-button');
 const closeSettingsButton = document.getElementById('close-settings-button');
 const serverPropertiesContainer = document.getElementById('server-properties-container');
@@ -393,7 +393,7 @@ pluginsFolderButton.addEventListener('click', () => { if(!pluginsFolderButton.di
 settingsButton.addEventListener('click', async () => {
     if (settingsButton.disabled) return;
     launcherSettingsCache = await window.electronAPI.getSettings();
-    startWithWindowsCheckbox.checked = launcherSettingsCache.openAtLogin;
+    startWithSystemCheckbox.checked = launcherSettingsCache.openAtLogin;
     autoStartServerCheckbox.checked = launcherSettingsCache.autoStartServer;
     
     const delay = launcherSettingsCache.autoStartDelay || 5;
@@ -419,7 +419,7 @@ settingsButton.addEventListener('click', async () => {
 closeSettingsButton.addEventListener('click', () => hideModal(settingsModal, settingsModalContent));
 
 saveSettingsButton.addEventListener('click', () => {
-    launcherSettingsCache.openAtLogin = startWithWindowsCheckbox.checked;
+    launcherSettingsCache.openAtLogin = startWithSystemCheckbox.checked;
     launcherSettingsCache.autoStartServer = autoStartServerCheckbox.checked;
     launcherSettingsCache.autoStartDelay = parseInt(autoStartDelaySlider.value, 10);
     launcherSettingsCache.language = languageSettingsSelect.value;

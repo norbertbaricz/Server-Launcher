@@ -57,7 +57,7 @@
   "javaArgsDefault": "Implicite (Argumente JVM standard)",
   "javaArgsPerformance": "Performanță (Include flag-urile lui Aikar pentru optimizare)",
   "launcherSettingsHeader": "Setări Lansator",
-  "startWithWindowsLabel": "Pornește cu Windows",
+  "startWithSystemLabel": "Pornește cu sistemul de operare",
   "autoStartServerLabel": "Pornește automat serverul",
   "autoStartDelayLabel": "Întârziere pornire automată",
   "serverPropsHeader": "Proprietăți Server",

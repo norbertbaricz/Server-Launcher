@@ -57,7 +57,7 @@
   "javaArgsDefault": "Alapértelmezett (Standard JVM argumentumok)",
   "javaArgsPerformance": "Teljesítmény (Aikar flagjeit tartalmazza az optimalizáláshoz)",
   "launcherSettingsHeader": "Indító Beállításai",
-  "startWithWindowsLabel": "Indítás a Windows-szal",
+  "startWithSystemLabel": "Indítás az operációs rendszerrel",
   "autoStartServerLabel": "Szerver automatikus indítása",
   "autoStartDelayLabel": "Automatikus indítás késleltetése",
   "serverPropsHeader": "Szerver Tulajdonságok",

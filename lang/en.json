@@ -57,7 +57,7 @@
   "javaArgsDefault": "Default (Standard JVM arguments)",
   "javaArgsPerformance": "Performance (Includes Aikar's flags for optimization)",
   "launcherSettingsHeader": "Launcher Settings",
-  "startWithWindowsLabel": "Start with Windows",
+  "startWithSystemLabel": "Start with Operating System",
   "autoStartServerLabel": "Automatically start server",
   "autoStartDelayLabel": "Auto-start Delay",
   "serverPropsHeader": "Server Properties",

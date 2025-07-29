@@ -57,7 +57,7 @@
   "javaArgsDefault": "Domyślne (Standardowe argumenty JVM)",
   "javaArgsPerformance": "Wydajność (Zawiera flagi Aikara do optymalizacji)",
   "launcherSettingsHeader": "Ustawienia programu",
-  "startWithWindowsLabel": "Uruchom wraz z systemem Windows",
+  "startWithSystemLabel": "Uruchom wraz z systemem operacyjnym",
   "autoStartServerLabel": "Automatycznie uruchom serwer",
   "autoStartDelayLabel": "Opóźnienie autostartu",
   "serverPropsHeader": "Właściwości serwera",
