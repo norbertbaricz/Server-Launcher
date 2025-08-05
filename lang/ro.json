@@ -22,7 +22,7 @@
   "publicIpLabel": "IP Public",
   "versionLabel": "Versiune",
   "memoryLabel": "Memorie",
-  "tpsLabel": "Tick-uri Pe Secundă",
+  "latencyLabel": "Latență Server",
   "commandPlaceholder": "Introduceți o comandă pentru server...",
   "sendButton": "Trimite",
   "startButton": "Pornește Server",

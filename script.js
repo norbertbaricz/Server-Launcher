@@ -564,9 +564,9 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         await fetchAndDisplayIPs(false);
         memoryUsageSpan.textContent = '0 / 0 GB';
         memoryUsageSpan.style.color = '';
-        serverTpsSpan.textContent = '0 / 20.0';
+        serverTpsSpan.textContent = '0 ms'; // Reset la oprire
         serverTpsSpan.style.color = '';
-        allocatedRamCache = '-'; 
+        allocatedRamCache = '0'; 
     }
     updateButtonStates(isRunning);
     if (!isRunning) {
@@ -574,7 +574,7 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
     }
 });
 
-window.electronAPI.onUpdatePerformanceStats(({ tps, memoryGB, allocatedRamGB }) => {
+window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, responseTime }) => {
     if (allocatedRamGB) {
         allocatedRamCache = allocatedRamGB;
     }
@@ -599,12 +599,15 @@ window.electronAPI.onUpdatePerformanceStats(({ tps, memoryGB, allocatedRamGB }) 
         }
     }
 
-    if (tps) {
-        const tpsValue = parseFloat(tps);
-        serverTpsSpan.textContent = `${tpsValue.toFixed(1)} / 20.0`;
-        if (tpsValue < 15) serverTpsSpan.style.color = '#ef4444';
-        else if (tpsValue < 18) serverTpsSpan.style.color = '#facc15';
-        else serverTpsSpan.style.color = '#4ade80';
+    if (typeof responseTime !== 'undefined') {
+        serverTpsSpan.textContent = `${responseTime} ms`;
+        if (responseTime > 500) {
+            serverTpsSpan.style.color = '#ef4444';
+        } else if (responseTime > 200) {
+            serverTpsSpan.style.color = '#facc15';
+        } else {
+            serverTpsSpan.style.color = '#4ade80';
+        }
     }
 });
 
