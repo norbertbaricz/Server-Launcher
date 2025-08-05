@@ -40,6 +40,7 @@ let rpc;
 let rpcStartTime;
 
 let serverFilesDir;
+const paperJarName = 'paper.jar';
 let serverProcess = null;
 
 let serverConfigFilePath;
@@ -53,282 +54,853 @@ let localIsServerRunningGlobal = false;
 let mainWindow;
 let performanceStatsInterval = null;
 let tpsRequestStartTime;
-let manualListCheck = false;
+let manualListCheck = false; // Flag pentru a verifica dacă utilizatorul a tastat comanda
 
-// --- Funcții Helper (neschimbate) ---
-async function killStrayServerProcess() { /* ... codul existent ... */ }
-async function checkJava() { /* ... codul existent ... */ }
-async function downloadAndInstallJava() { /* ... codul existent ... */ }
+async function killStrayServerProcess() {
+    try {
+        const processes = await find('name', 'java', true);
+        const serverJarPath = path.join(serverFilesDir, paperJarName);
+
+        for (const p of processes) {
+            if (p.cmd.includes(serverJarPath)) {
+                log.warn(`Found a stray server process with PID ${p.pid}. Attempting to kill it.`);
+                sendConsole(`Found a stray server process (PID: ${p.pid}). Terminating...`, 'WARN');
+                process.kill(p.pid);
+            }
+        }
+    } catch (err) {
+        log.error('Error while trying to find and kill stray server processes:', err);
+        sendConsole('Error checking for stray server processes.', 'ERROR');
+    }
+}
+
+async function checkJava() {
+    return new Promise((resolve) => {
+        const verifyJavaVersion = (javaPath, callback) => {
+            exec(`"${javaPath}" -version`, (error, stdout, stderr) => {
+                const output = stderr || stdout;
+                if (error) {
+                    return callback(false);
+                }
+                const versionMatch = output.match(/version "(\d+)/);
+                if (versionMatch && parseInt(versionMatch[1], 10) >= MINIMUM_JAVA_VERSION) {
+                    log.info(`Java >= ${MINIMUM_JAVA_VERSION} verified at: ${javaPath}`);
+                    javaExecutablePath = javaPath;
+                    callback(true);
+                } else {
+                    callback(false);
+                }
+            });
+        };
+
+        const checkRegistry = (onComplete) => {
+            if (process.platform !== 'win32') {
+                return onComplete(null);
+            }
+            const keysToQuery = [
+                'HKEY_LOCAL_MACHINE\\SOFTWARE\\Eclipse Adoptium\\JDK',
+                'HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\JDK',
+                'HKEY_LOCAL_MACHINE\\SOFTWARE\\Amazon Corretto\\JDK'
+            ];
+            let foundValidPath = null;
+            let keysProcessed = 0;
+
+            keysToQuery.forEach(key => {
+                exec(`reg query "${key}" /s`, (error, stdout) => {
+                    if (!error && stdout) {
+                        const lines = stdout.trim().split(/[\r\n]+/).filter(line => line.trim().startsWith('HKEY_'));
+                        let checkedSubKeys = 0;
+                        if (lines.length === 0) {
+                           keysProcessed++;
+                           if (keysProcessed === keysToQuery.length && !foundValidPath) onComplete(null);
+                           return;
+                        }
+
+                        lines.forEach(line => {
+                            if (foundValidPath) return;
+                            exec(`reg query "${line.trim()}" /v JavaHome`, (homeError, homeStdout) => {
+                                checkedSubKeys++;
+                                if (!homeError && homeStdout) {
+                                    const match = homeStdout.match(/JavaHome\s+REG_SZ\s+(.*)/);
+                                    if (match && match[1]) {
+                                        const javaExe = path.join(match[1].trim(), 'bin', 'java.exe');
+                                        if (fs.existsSync(javaExe)) {
+                                            verifyJavaVersion(javaExe, (isValid) => {
+                                                if (isValid && !foundValidPath) {
+                                                    foundValidPath = javaExe;
+                                                    onComplete(foundValidPath);
+                                                }
+                                            });
+                                        }
+                                    }
+                                }
+                                if (checkedSubKeys === lines.length) {
+                                    keysProcessed++;
+                                    if (keysProcessed === keysToQuery.length && !foundValidPath) onComplete(null);
+                                }
+                            });
+                        });
+                    } else {
+                        keysProcessed++;
+                        if (keysProcessed === keysToQuery.length && !foundValidPath) onComplete(null);
+                    }
+                });
+            });
+        };
+
+        const checkPath = () => {
+            verifyJavaVersion('java', (isValid) => {
+                if (isValid) {
+                    log.info(`Java >= ${MINIMUM_JAVA_VERSION} found in system PATH.`);
+                    javaExecutablePath = 'java';
+                    resolve(true);
+                } else {
+                    log.warn('No compatible Java version found in registry or PATH.');
+                    resolve(false);
+                }
+            });
+        };
+        
+        log.info(`Checking for Java >= ${MINIMUM_JAVA_VERSION}...`);
+        checkRegistry(registryPath => {
+            if (registryPath) {
+                resolve(true);
+            } else {
+                log.info('No compatible Java version found in registry. Checking system PATH.');
+                checkPath();
+            }
+        });
+    });
+}
+
+
+async function downloadAndInstallJava() {
+    const win = getMainWindow();
+    if (!win) return;
+
+    try {
+        win.webContents.send('java-install-status', 'Finding the latest Java version for your system...');
+
+        if (process.platform !== 'win32') {
+            throw new Error('Automated Java installation is currently supported only on Windows.');
+        }
+
+        const arch = process.arch === 'ia32' ? 'x86' : 'x64';
+        
+        const apiUrl = `https://api.adoptium.net/v3/assets/latest/21/hotspot?vendor=eclipse&os=windows&architecture=${arch}&image_type=jdk`;
+        
+        const apiResponse = await new Promise((resolve, reject) => {
+            https.get(apiUrl, { headers: { 'User-Agent': 'Server-Launcher-Electron' } }, (res) => {
+                if (res.statusCode !== 200) {
+                    res.resume();
+                    return reject(new Error(`Failed to query Adoptium API (Status: ${res.statusCode})`));
+                }
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => resolve(JSON.parse(data)));
+            }).on('error', reject);
+        });
+
+        const installerPackage = apiResponse.find(p => p.binary.installer?.name?.endsWith('.msi'));
+        if (!installerPackage) {
+            throw new Error(`Could not find a valid MSI installer for your system (${arch}). Please install Java manually.`);
+        }
+        
+        const downloadUrl = installerPackage.binary.installer.link;
+        const totalBytes = installerPackage.binary.installer.size;
+        const fileName = installerPackage.binary.installer.name;
+        
+        const tempDir = app.getPath('temp');
+        const filePath = path.join(tempDir, fileName);
+
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+
+        win.webContents.send('java-install-status', `Downloading ${fileName}...`, 0);
+
+        await new Promise((resolve, reject) => {
+            const fileStream = fs.createWriteStream(filePath);
+            let downloadedBytes = 0;
+
+            const followRedirect = (url, callback) => {
+                https.get(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
+                    if (response.statusCode === 302 || response.statusCode === 301) {
+                        const redirectUrl = response.headers.location;
+                        if (!redirectUrl) {
+                            return reject(new Error('Redirect failed: No Location header'));
+                        }
+                        followRedirect(redirectUrl, callback);
+                    } else if (response.statusCode !== 200) {
+                        return reject(new Error(`Download failed with status code ${response.statusCode}`));
+                    } else {
+                        callback(response);
+                    }
+                }).on('error', err => reject(err));
+            };
+
+            followRedirect(downloadUrl, (response) => {
+                response.on('data', chunk => {
+                    downloadedBytes += chunk.length;
+                    const progress = totalBytes ? Math.round((downloadedBytes / totalBytes) * 100) : 0;
+                    win.webContents.send('java-install-status', `Downloading... ${progress}%`, progress);
+                });
+
+                response.pipe(fileStream);
+
+                fileStream.on('finish', () => fileStream.close(resolve));
+            });
+
+            fileStream.on('error', err => fs.unlink(filePath, () => reject(err)));
+        });
+        
+        win.webContents.send('java-install-status', 'Download complete. Launching installer...');
+
+        shell.openPath(filePath).then(errorMessage => {
+            if (errorMessage) {
+                throw new Error(`Failed to open installer: ${errorMessage}`);
+            }
+            win.webContents.send('java-install-status', 'Installer launched. Please complete the installation, then restart the launcher. The application will now close.');
+            log.info('Java installer launched. Closing the launcher.');
+            
+            setTimeout(() => {
+                app.quit();
+            }, 4000);
+        });
+
+    } catch (error) {
+        log.error('Java install error:', error);
+        win.webContents.send(
+            'java-install-status',
+            `Error: ${error.message}. Please try again or install Java manually.`
+        );
+    }
+}
+
 function getMainWindow() { return mainWindow; }
-function sendStatus(fallbackMessage, pulse = false, translationKey = null) { getMainWindow()?.webContents.send('update-status', fallbackMessage, pulse, translationKey); }
-function sendConsole(message, type = 'INFO') { getMainWindow()?.webContents.send('update-console', message, type); }
-function sendServerStateChange(isRunning) { localIsServerRunningGlobal = isRunning; getMainWindow()?.webContents.send('server-state-change', isRunning); }
-function readJsonFile(filePath, fileNameForLog) { try { if (fs.existsSync(filePath)) { const fileData = fs.readFileSync(filePath, 'utf8'); if (fileData.trim() === "") { return {}; } return JSON.parse(fileData); } } catch (error) { sendConsole(`Error reading or parsing ${fileNameForLog}: ${error.message}`, 'ERROR'); } return {}; }
-function writeJsonFile(filePath, dataObject, fileNameForLog) { try { fs.writeFileSync(filePath, JSON.stringify(dataObject, null, 2)); } catch (error) { sendConsole(`Error writing ${fileNameForLog}: ${error.message}`, 'ERROR'); } }
+function sendStatus(fallbackMessage, pulse = false, translationKey = null) {
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) win.webContents.send('update-status', fallbackMessage, pulse, translationKey);
+}
+function sendConsole(message, type = 'INFO') {
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) win.webContents.send('update-console', message, type);
+}
+function sendServerStateChange(isRunning) {
+    localIsServerRunningGlobal = isRunning;
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) win.webContents.send('server-state-change', isRunning);
+}
+
+function setDiscordActivity() {
+    if (!rpc || !mainWindow) {
+        return;
+    }
+    const serverConfig = readServerConfig();
+    const state = serverConfig.version ? `Version: ${serverConfig.version}` : 'Configuring server...';
+    const activity = {
+        details: localIsServerRunningGlobal ? 'Server is running' : 'Server is stopped',
+        state: state,
+        startTimestamp: rpcStartTime,
+        largeImageKey: 'server_icon_large',
+        largeImageText: 'Server Launcher',
+        smallImageKey: localIsServerRunningGlobal ? 'play_icon' : 'stop_icon',
+        smallImageText: localIsServerRunningGlobal ? 'Running' : 'Stopped',
+        instance: false,
+    };
+    rpc.setActivity(activity).catch(err => {
+        if (!err.message.includes('Could not connect')) {
+            sendConsole(`Discord RPC Error: ${err.message}`, 'ERROR');
+        }
+    });
+}
+
+function readJsonFile(filePath, fileNameForLog) {
+    try {
+        if (fs.existsSync(filePath)) {
+            const fileData = fs.readFileSync(filePath, 'utf8');
+            if (fileData.trim() === "") { return {}; }
+            return JSON.parse(fileData);
+        }
+    } catch (error) {
+        sendConsole(`Error reading or parsing ${fileNameForLog}: ${error.message}`, 'ERROR');
+    }
+    return {};
+}
+
+function writeJsonFile(filePath, dataObject, fileNameForLog) {
+    try {
+        fs.writeFileSync(filePath, JSON.stringify(dataObject, null, 2));
+    } catch (error) {
+        sendConsole(`Error writing ${fileNameForLog}: ${error.message}`, 'ERROR');
+    }
+}
+
 function readServerConfig() { return readJsonFile(serverConfigFilePath, serverConfigFileName); }
 function writeServerConfig(configObject) { writeJsonFile(serverConfigFilePath, configObject, serverConfigFileName); }
 function readLauncherSettings() { return readJsonFile(launcherSettingsFilePath, launcherSettingsFileName); }
 function writeLauncherSettings(settingsObject) { writeJsonFile(launcherSettingsFilePath, settingsObject, launcherSettingsFileName); }
-function getLocalIPv4() { /* ... codul existent ... */ }
-async function getPublicIP() { /* ... codul existent ... */ }
 
-// --- Logica Discord RPC (neschimbată) ---
-function setDiscordActivity() { /* ... codul existent ... */ }
+function getLocalIPv4() {
+    const networkInterfaces = os.networkInterfaces();
+    for (const interfaceName in networkInterfaces) {
+        const MynetworkInterface = networkInterfaces[interfaceName];
+        for (let i = 0; i < MynetworkInterface.length; i++) {
+            const alias = MynetworkInterface[i];
+            if (alias.family === 'IPv4' && !alias.internal) {
+                return alias.address;
+            }
+        }
+    }
+    return '-';
+}
 
-// --- Logica Ferestrei Principale (neschimbată) ---
-function createWindow() { /* ... codul existent ... */ }
-app.whenReady().then(async () => { /* ... codul existent ... */ });
-autoUpdater.on('update-downloaded', (info) => { /* ... codul existent ... */ });
-app.on('window-all-closed', () => { /* ... codul existent ... */ });
+async function getPublicIP() {
+    return new Promise((resolve, reject) => {
+        const request = https.get('https://api.ipify.org?format=json', { headers: {'User-Agent': 'MyMinecraftLauncher/1.0'} }, (res) => {
+            if (res.statusCode !== 200) {
+                res.resume();
+                return reject(new Error(`Failed to get public IP (Status: ${res.statusCode})`));
+            }
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+                try {
+                    const jsonData = JSON.parse(data);
+                    resolve(jsonData.ip || '-');
+                } catch (e) {
+                    reject(new Error('Failed to parse public IP response.'));
+                }
+            });
+        });
+        request.on('error', (err) => {
+            reject(new Error(`Error fetching public IP: ${err.message}`));
+        });
+        request.end();
+    });
+}
+
+function createWindow () {
+  mainWindow = new BrowserWindow({
+    width: 1280,
+    height: 720,
+    resizable: true,
+    fullscreenable: true,
+    frame: false,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      devTools: !app.isPackaged
+    }
+  });
+
+  mainWindow.loadFile('index.html');
+  mainWindow.webContents.on('did-finish-load', async () => {
+      const hasJava = await checkJava();
+      if (!hasJava && app.isPackaged) {
+          mainWindow.webContents.send('java-install-required');
+          return;
+      }
+      
+      sendServerStateChange(localIsServerRunningGlobal);
+      mainWindow.webContents.send('window-maximized', mainWindow.isMaximized());
+
+      const launcherSettings = readLauncherSettings();
+      if (launcherSettings.autoStartServer) {
+          const delay = launcherSettings.autoStartDelay || 5;
+          mainWindow.webContents.send('start-countdown', 'initial', delay);
+      }
+  });
+
+  mainWindow.on('maximize', () => mainWindow.webContents.send('window-maximized', true));
+  mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-maximized', false));
+}
+
+app.whenReady().then(async () => {
+  const userDataPath = app.getPath('userData');
+  serverFilesDir = path.join(userDataPath, 'MinecraftServer');
+  serverConfigFilePath = path.join(serverFilesDir, serverConfigFileName);
+  launcherSettingsFilePath = path.join(userDataPath, launcherSettingsFileName);
+  serverPropertiesFilePath = path.join(serverFilesDir, serverPropertiesFileName);
+
+  if (!fs.existsSync(serverFilesDir)) {
+    try {
+      fs.mkdirSync(serverFilesDir, { recursive: true });
+    } catch (error) {
+      log.error(`FATAL: Failed to create directory ${serverFilesDir}:`, error);
+      dialog.showErrorBox('Directory Creation Failed', `Failed to create server directory at ${serverFilesDir}:\n${error.message}`);
+    }
+  }
+  await killStrayServerProcess();
+  createWindow();
+
+  rpc = new RPC.Client({ transport: 'ipc' });
+  rpc.on('ready', () => {
+    sendConsole('Discord Rich Presence is active.', 'INFO');
+    rpcStartTime = new Date();
+    setDiscordActivity();
+    setInterval(setDiscordActivity, 15000);
+  });
+  rpc.login({ clientId }).catch(err => {
+      if (!err.message.includes('Could not connect')) {
+          sendConsole(`Discord RPC login error: ${err.message}`, 'ERROR');
+      }
+  });
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdates();
+  }
+  app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow();});
+});
+
+autoUpdater.on('checking-for-update', () => sendConsole('Updater: Checking for updates...', 'INFO'));
+autoUpdater.on('update-available', (info) => sendConsole(`Updater: Update available! Version: ${info.version}`, 'SUCCESS'));
+autoUpdater.on('update-not-available', (info) => sendConsole('Updater: No new updates available.', 'INFO'));
+autoUpdater.on('error', (err) => sendConsole('Updater: Error during update. ' + err.message, 'ERROR'));
+autoUpdater.on('download-progress', (p) => setStatus(`Download speed: ${Math.round(p.bytesPerSecond / 1024)} KB/s - Downloaded ${Math.round(p.percent)}%`, true));
+autoUpdater.on('update-downloaded', (info) => {
+  sendConsole(`Updater: Update downloaded (${info.version}). It will be installed on restart.`, 'SUCCESS');
+  dialog.showMessageBox({
+    type: 'info',
+    title: 'Update Ready',
+    message: 'A new version has been downloaded. Restart the application to install the update.',
+    buttons: ['Restart Now', 'Later']
+  }).then(({ response }) => {
+    if (response === 0) autoUpdater.quitAndInstall();
+  });
+});
+
+app.on('window-all-closed', () => {
+    if (serverProcess && typeof serverProcess.kill === 'function' && !serverProcess.killed) {
+        serverProcess.killedInternally = true;
+        serverProcess.kill('SIGKILL');
+    }
+    if (rpc) {
+        rpc.destroy().catch(err => {
+            if (!err.message.includes('Could not connect')) sendConsole(`Discord RPC destroy error: ${err.message}`, 'ERROR');
+        });
+    }
+    if (process.platform !== 'darwin') app.quit();
+});
+
 ipcMain.on('minimize-window', () => getMainWindow()?.minimize());
-ipcMain.on('maximize-window', () => { /* ... codul existent ... */ });
+ipcMain.on('maximize-window', () => {
+    const win = getMainWindow();
+    if (win?.isMaximized()) win.unmaximize();
+    else win?.maximize();
+});
 ipcMain.on('close-window', () => getMainWindow()?.close());
-ipcMain.handle('get-icon-path', () => { /* ... codul existent ... */ });
-ipcMain.on('app-ready-to-show', () => { mainWindow.show(); });
-ipcMain.handle('get-app-version', () => version);
-ipcMain.on('open-plugins-folder', () => { /* ... codul existent ... */ });
+ipcMain.handle('get-icon-path', () => {
+    let iconPath = path.join(process.resourcesPath, 'icon.ico');
+    if (!fs.existsSync(iconPath)) iconPath = path.join(__dirname, 'build', 'icon.ico');
+    return fs.existsSync(iconPath) ? iconPath : null;
+});
 
-// --- IPC Handlers MODIFICATE și NOI ---
+ipcMain.on('app-ready-to-show', () => {
+    mainWindow.show();
+});
 
-ipcMain.handle('get-settings', () => readLauncherSettings());
+ipcMain.handle('get-settings', () => {
+    const settings = readLauncherSettings();
+    return {
+        openAtLogin: settings.openAtLogin || false,
+        autoStartServer: settings.autoStartServer || false,
+        autoStartDelay: settings.autoStartDelay || 5,
+        language: settings.language || 'en'
+    };
+});
+
 ipcMain.on('set-settings', (event, settings) => {
     const currentSettings = readLauncherSettings();
     const newSettings = { ...currentSettings, ...settings };
     app.setLoginItemSettings({ openAtLogin: newSettings.openAtLogin });
-    writeLauncherSettings(newSettings);
+    writeJsonFile(launcherSettingsFilePath, newSettings, launcherSettingsFileName);
 });
 
+ipcMain.on('start-java-install', () => {
+    downloadAndInstallJava();
+});
+ipcMain.on('restart-app', () => {
+    app.relaunch();
+    app.quit();
+});
+
+ipcMain.handle('get-app-version', () => version);
 ipcMain.handle('get-server-config', () => readServerConfig());
-ipcMain.handle('get-server-properties', () => { /* ... codul existent ... */ });
-ipcMain.on('set-server-properties', (event, newProperties) => { /* ... codul existent ... */ });
-ipcMain.on('start-java-install', () => downloadAndInstallJava());
-ipcMain.on('restart-app', () => { app.relaunch(); app.quit(); });
-ipcMain.handle('get-app-path', () => app.getAppPath());
-
-ipcMain.handle('check-initial-setup', async () => {
-    const config = readServerConfig();
-    const serverType = config.serverType || 'papermc'; // Default to papermc
-    let jarName;
-    
-    switch(serverType) {
-        case 'fabric':
-            jarName = 'fabric-server-launch.jar';
-            break;
-        case 'forge':
-            // Forge jar name is dynamic, we need to find it
-            const files = fs.readdirSync(serverFilesDir);
-            jarName = files.find(file => file.startsWith('forge-') && file.endsWith('.jar') && !file.includes('installer'));
-            break;
-        case 'papermc':
-        default:
-            jarName = 'paper.jar';
-            break;
-    }
-    
-    const jarExists = jarName ? fs.existsSync(path.join(serverFilesDir, jarName)) : false;
-    const configExists = fs.existsSync(serverConfigFilePath);
-    
-    const needsSetup = !jarExists || !configExists;
-    if (!needsSetup) sendConsole(`Setup check OK for ${serverType}.`, 'INFO');
-    
-    return { needsSetup, config: configExists ? config : {} };
-});
-
-// NOU: Funcție generică pentru a obține versiunile
-async function fetchJson(url) {
-    return new Promise((resolve, reject) => {
-        https.get(url, { headers: { 'User-Agent': 'Server-Launcher/1.0' } }, (res) => {
-            if (res.statusCode !== 200) {
-                res.resume();
-                return reject(new Error(`API Error (Status ${res.statusCode})`));
-            }
-            let data = '';
-            res.on('data', chunk => data += chunk);
-            res.on('end', () => {
-                try {
-                    resolve(JSON.parse(data));
-                } catch (e) {
-                    reject(new Error('Failed to parse JSON response.'));
-                }
-            });
-        }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
-    });
-}
-
-ipcMain.handle('get-available-versions', async (event, serverType) => {
+ipcMain.handle('get-server-properties', () => {
+    if (!fs.existsSync(serverPropertiesFilePath)) return null;
     try {
-        switch (serverType) {
-            case 'fabric':
-                const fabricVersions = await fetchJson('https://meta.fabricmc.net/v2/versions/game');
-                return fabricVersions.filter(v => v.stable).map(v => v.version);
-            case 'forge':
-                const forgeVersions = await fetchJson('https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json');
-                return Object.keys(forgeVersions.promos).filter(v => v.endsWith('-latest')).map(v => v.replace('-latest', ''));
-            case 'papermc':
-            default:
-                const paperProject = await fetchJson('https://api.papermc.io/v2/projects/paper');
-                return paperProject.versions.reverse();
-        }
+        const fileContent = fs.readFileSync(serverPropertiesFilePath, 'utf8');
+        const properties = {};
+        fileContent.split(/\r?\n/).forEach(line => {
+            if (line.startsWith('#') || !line.includes('=')) return;
+            const [key, ...valueParts] = line.split('=');
+            properties[key.trim()] = valueParts.join('=').trim();
+        });
+        return properties;
     } catch (error) {
-        sendConsole(`Could not fetch versions for ${serverType}: ${error.message}`, 'ERROR');
+        sendConsole(`Error reading server.properties: ${error.message}`, 'ERROR');
+        return null;
+    }
+});
+ipcMain.on('set-server-properties', (event, newProperties) => {
+    if (!fs.existsSync(serverPropertiesFilePath)) {
+        sendConsole('Cannot save server.properties, file does not exist.', 'ERROR');
+        return;
+    }
+    try {
+        const lines = fs.readFileSync(serverPropertiesFilePath, 'utf8').split(/\r?\n/);
+        const updatedLines = lines.map(line => {
+            if (line.startsWith('#') || !line.includes('=')) return line;
+            const [key] = line.split('=');
+            const trimmedKey = key.trim();
+            return newProperties.hasOwnProperty(trimmedKey) ? `${trimmedKey}=${newProperties[trimmedKey]}` : line;
+        });
+        fs.writeFileSync(serverPropertiesFilePath, updatedLines.join('\n'));
+        sendConsole('server.properties saved successfully.', 'SUCCESS');
+    } catch (error) {
+        sendConsole(`Error writing to server.properties: ${error.message}`, 'ERROR');
+    }
+});
+ipcMain.handle('get-app-path', () => app.getAppPath());
+ipcMain.handle('check-initial-setup', async () => {
+    const jarExists = fs.existsSync(path.join(serverFilesDir, paperJarName));
+    const configExists = fs.existsSync(serverConfigFilePath);
+    const needsSetup = !jarExists || !configExists;
+    if (!needsSetup) sendConsole(`Setup check OK.`, 'INFO');
+    return { needsSetup, config: configExists ? readServerConfig() : {} };
+});
+ipcMain.handle('get-available-papermc-versions', async () => {
+    try {
+        const projectApiUrl = 'https://api.papermc.io/v2/projects/paper';
+        const projectResponseData = await new Promise((resolve, reject) => {
+            https.get(projectApiUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
+                if (res.statusCode !== 200) { res.resume(); return reject(new Error(`API Error (Status ${res.statusCode})`)); }
+                let data = ''; res.on('data', chunk => data += chunk);
+                res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse JSON.')); }});
+            }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
+        });
+        if (projectResponseData.versions?.length > 0) return projectResponseData.versions.reverse();
+        throw new Error('No versions found.');
+    } catch (error) {
+        sendConsole(`Could not fetch PaperMC versions: ${error.message}`, 'ERROR');
         return [];
     }
 });
+ipcMain.on('open-plugins-folder', () => {
+    const pluginsDir = path.join(serverFilesDir, 'plugins');
+    if (!fs.existsSync(pluginsDir)) {
+        try {
+            fs.mkdirSync(pluginsDir, { recursive: true });
+            sendConsole('Plugins directory created.', 'INFO');
+        } catch (error) {
+            sendConsole(`Failed to create plugins directory: ${error.message}`, 'ERROR');
+            return;
+        }
+    }
+    shell.openPath(pluginsDir).catch(err => sendConsole(`Failed to open plugins folder: ${err.message}`, 'ERROR'));
+});
 
-
-// NOU: Funcție de descărcare generică
-ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocation, javaArgs }) => {
-    sendConsole(`Configuring for ${serverType}: Version ${mcVersion}, RAM ${ramAllocation}`, 'INFO');
-
-    // Salvează configurația
-    const currentConfig = readServerConfig();
-    const oldConfig = { ...currentConfig };
-    
-    currentConfig.serverType = serverType;
-    currentConfig.version = mcVersion;
-    currentConfig.javaArgs = javaArgs || 'Default';
-    currentConfig.ram = (ramAllocation?.toLowerCase() !== 'auto') ? ramAllocation : undefined;
-    
-    writeServerConfig(currentConfig);
-
-    // Șterge fișierele vechi dacă tipul de server sau versiunea s-a schimbat
-    if (oldConfig.serverType !== serverType || oldConfig.version !== mcVersion) {
-        sendConsole('Server type or version changed, cleaning up old files...', 'INFO');
-        const files = fs.readdirSync(serverFilesDir);
-        files.forEach(file => {
-            if (file.endsWith('.jar') || file === 'libraries' || file.startsWith('unix_args') || file.startsWith('win_args')) {
+ipcMain.handle('get-available-languages', () => {
+    const langDir = path.join(__dirname, 'lang');
+    const languages = [];
+    try {
+        const files = fs.readdirSync(langDir);
+        for (const file of files) {
+            if (file.endsWith('.json')) {
                 try {
-                    const fullPath = path.join(serverFilesDir, file);
-                    if (fs.lstatSync(fullPath).isDirectory()) {
-                        fs.rmSync(fullPath, { recursive: true, force: true });
-                    } else {
-                        fs.unlinkSync(fullPath);
+                    const filePath = path.join(langDir, file);
+                    const fileContent = fs.readFileSync(filePath, 'utf8');
+                    const langData = JSON.parse(fileContent);
+                    if (langData.languageName) {
+                        languages.push({
+                            code: path.basename(file, '.json'),
+                            name: langData.languageName
+                        });
                     }
                 } catch (e) {
-                    sendConsole(`Could not remove old file/folder: ${file}`, 'WARN');
+                    log.error(`Could not parse language file ${file}:`, e);
                 }
             }
-        });
+        }
+        return languages;
+    } catch (error) {
+        log.error('Could not read languages directory:', error);
+        return [{ code: 'en', name: 'English' }]; // Fallback
     }
+});
 
-    sendStatus(`Downloading ${serverType} ${mcVersion}...`, true, 'downloading');
+ipcMain.handle('get-translations', async (event, lang) => {
+  const langPath = path.join(__dirname, 'lang', `${lang}.json`);
+  try {
+    if (fs.existsSync(langPath)) {
+      const data = fs.readFileSync(langPath, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (error) {
+    log.error(`Could not load language file for ${lang}:`, error);
+  }
+  return null;
+});
 
-    try {
-        let downloadUrl, fileName;
+ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArgs }) => {
+    sendConsole(`Configuring: Version ${mcVersion}, RAM ${ramAllocation}`, 'INFO');
+    const currentConfig = readServerConfig();
+    const oldVersion = currentConfig.version;
+    currentConfig.version = mcVersion;
+    currentConfig.javaArgs = javaArgs || 'Default';
+    if (ramAllocation?.toLowerCase() !== 'auto') {
+        currentConfig.ram = ramAllocation;
+    } else {
+        delete currentConfig.ram;
+    }
+    writeServerConfig(currentConfig);
 
-        switch (serverType) {
-            case 'papermc':
-                const builds = await fetchJson(`https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds`);
-                const latestBuild = builds.builds.pop();
-                fileName = latestBuild.downloads.application.name;
-                downloadUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds/${latestBuild.build}/downloads/${fileName}`;
-                fileName = 'paper.jar'; // Redenumim pentru consistență
-                break;
-            case 'fabric':
-                const loaderData = await fetchJson('https://meta.fabricmc.net/v2/versions/loader');
-                const installerData = await fetchJson('https://meta.fabricmc.net/v2/versions/installer');
-                const latestLoader = loaderData[0].version;
-                const latestInstaller = installerData[0].version;
-                fileName = `fabric-server-launch.jar`;
-                downloadUrl = `https://meta.fabricmc.net/v2/versions/loader/${mcVersion}/${latestLoader}/${latestInstaller}/server/jar`;
-                break;
-            case 'forge':
-                const promos = await fetchJson('https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json');
-                const forgeVersion = promos.promos[`${mcVersion}-latest`];
-                if (!forgeVersion) throw new Error(`Could not find latest Forge for MC ${mcVersion}`);
-                fileName = `forge-${mcVersion}-${forgeVersion}-installer.jar`;
-                downloadUrl = `https://files.minecraftforge.net/net/minecraftforge/forge/versions/${mcVersion}/forge-${mcVersion}-${forgeVersion}-installer.jar`;
-                break;
+    const paperJarPath = path.join(serverFilesDir, paperJarName);
+
+    if (fs.existsSync(paperJarPath) && oldVersion !== mcVersion) {
+        sendConsole(`Removing old paper.jar for version ${oldVersion}...`, 'INFO');
+        try {
+            fs.unlinkSync(paperJarPath);
+            sendConsole('Old paper.jar removed successfully.', 'SUCCESS');
+        } catch (error) {
+            sendConsole(`Error removing old paper.jar: ${error.message}`, 'ERROR');
+            sendStatus('Error updating version.', false, 'error');
+            getMainWindow()?.webContents.send('setup-finished');
+            return;
         }
-
-        const filePath = path.join(serverFilesDir, fileName);
-        const fileStream = fs.createWriteStream(filePath);
-        await new Promise((resolve, reject) => {
-            https.get(downloadUrl, { headers: { 'User-Agent': 'Server-Launcher/1.0' } }, (res) => {
-                if (res.statusCode !== 200) return reject(new Error(`Download failed (Status ${res.statusCode})`));
-                res.pipe(fileStream);
-                fileStream.on('finish', () => fileStream.close(resolve));
-            }).on('error', err => reject(err));
-        });
-
-        sendConsole(`Downloaded ${fileName}.`, 'SUCCESS');
-
-        if (serverType === 'forge') {
-            sendStatus('Installing Forge server...', true, 'downloading');
-            await new Promise((resolve, reject) => {
-                const installerProcess = spawn(javaExecutablePath, ['-jar', fileName, '--installServer'], { cwd: serverFilesDir });
-                installerProcess.stdout.on('data', data => sendConsole(data.toString(), 'INFO'));
-                installerProcess.stderr.on('data', data => sendConsole(data.toString(), 'SERVER_ERROR'));
-                installerProcess.on('close', code => {
-                    if (code === 0) {
-                        sendConsole('Forge server installed successfully.', 'SUCCESS');
-                        fs.unlinkSync(filePath); // Șterge installer-ul
-                        resolve();
-                    } else {
-                        reject(new Error(`Forge installer failed with code ${code}.`));
-                    }
-                });
-            });
-        }
+    } else if (fs.existsSync(paperJarPath) && oldVersion === mcVersion) {
+        sendStatus('Configuration saved! Version is already up to date.', false, 'configSaved');
+        getMainWindow()?.webContents.send('setup-finished');
         
-        sendStatus(`${serverType} configured successfully!`, false, 'downloadSuccess');
+        setTimeout(async () => {
+            const hasJava = await checkJava();
+            if (!hasJava && app.isPackaged) {
+                getMainWindow()?.webContents.send('java-install-required');
+            }
+        }, 2000);
+        return;
+    }
+    
+    sendStatus(`Downloading PaperMC ${mcVersion}...`, true, 'downloading');
+    try {
+        const buildsApiUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds`;
+        const buildsResponseData = await new Promise((resolve, reject) => {
+             https.get(buildsApiUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
+                if (res.statusCode !== 200) { res.resume(); return reject(new Error(`API Error (Status ${res.statusCode})`)); }
+                let data = ''; res.on('data', chunk => data += chunk);
+                res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse JSON.')); }});
+            }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
+        });
+        if (!buildsResponseData.builds?.length > 0) throw new Error('No builds found.');
+        const latestBuild = buildsResponseData.builds.pop();
+        const downloadUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds/${latestBuild.build}/downloads/${latestBuild.downloads.application.name}`;
+        
+        const fileStream = fs.createWriteStream(path.join(serverFilesDir, paperJarName));
+        await new Promise((resolve, reject) => {
+            https.get(downloadUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (response) => {
+                if (response.statusCode !== 200) return reject(new Error(`Download failed (Status ${response.statusCode})`));
+                response.pipe(fileStream);
+                fileStream.on('finish', () => fileStream.close(resolve));
+            }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
+        });
+        
+        sendStatus('PaperMC downloaded successfully!', false, 'downloadSuccess');
+        sendConsole(`${paperJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
+        getMainWindow()?.webContents.send('setup-finished');
+        
+        setTimeout(async () => {
+            const hasJava = await checkJava();
+            if (!hasJava && app.isPackaged) {
+                const win = getMainWindow();
+                if (win && !win.isDestroyed()) {
+                    win.webContents.send('java-install-required');
+                }
+            }
+        }, 2000);
 
     } catch (error) {
-        sendStatus('Configuration failed.', false, 'downloadFailed');
+        sendStatus('Download failed.', false, 'downloadFailed');
         sendConsole(`ERROR: ${error.message}`, 'ERROR');
-    } finally {
         getMainWindow()?.webContents.send('setup-finished');
     }
 });
 
 ipcMain.on('start-server', async () => {
-    // ... (restul logicii de start server)
-    const serverConfig = readServerConfig();
-    const serverType = serverConfig.serverType || 'papermc';
-    
-    let jarName, startArgs = [];
-    
-    switch (serverType) {
-        case 'fabric':
-            jarName = 'fabric-server-launch.jar';
-            break;
-        case 'forge':
-            const files = fs.readdirSync(serverFilesDir);
-            jarName = files.find(file => file.startsWith('forge-') && file.endsWith('.jar') && !file.includes('installer'));
-            
-            // Forge folosește argumente speciale
-            const argsFile = os.platform() === 'win32' ? 'win_args.txt' : 'unix_args.txt';
-            const argsPath = path.join(serverFilesDir, 'libraries', 'net', 'minecraftforge', 'forge', `${serverConfig.version}-${files.find(f => f.startsWith('forge-')).split('-')[2]}`, argsFile);
-            if (fs.existsSync(argsPath)) {
-                // Nu folosim direct @, ci citim argumentele
-                // startArgs = [`@${argsPath}`]; - poate da erori
-            }
-            break;
-        case 'papermc':
-        default:
-            jarName = 'paper.jar';
-            break;
+    if (serverProcess) {
+        sendConsole('Server is already running.', 'WARN');
+        return;
     }
-
-    const serverJarPath = path.join(serverFilesDir, jarName);
-    if (!fs.existsSync(serverJarPath)) { /* ... eroare ... */ return; }
-
+    const serverJarPath = path.join(serverFilesDir, paperJarName);
+    if (!fs.existsSync(serverJarPath)) {
+        sendConsole(`${paperJarName} not found.`, 'ERROR');
+        sendStatus(`${paperJarName} not found.`, false, 'paperJarNotFound');
+        return;
+    }
+    const serverConfig = readServerConfig();
+    if (!serverConfig.version) {
+        sendConsole('Server version missing in config.', 'ERROR');
+        sendStatus('Config error.', false, 'configError');
+        return;
+    }
     const eulaPath = path.join(serverFilesDir, 'eula.txt');
     try {
-        fs.writeFileSync(eulaPath, 'eula=true\n');
-        sendConsole('EULA accepted.', 'INFO');
-    } catch (error) { /* ... eroare ... */ return; }
-    
+        if (!fs.existsSync(eulaPath) || !fs.readFileSync(eulaPath, 'utf8').includes('eula=true')) {
+            fs.writeFileSync(eulaPath, 'eula=true\n');
+            sendConsole('EULA accepted.', 'INFO');
+        }
+    } catch (error) {
+        sendConsole(`EULA file error: ${error.message}`, 'ERROR');
+        sendStatus('EULA error.', false, 'eulaError');
+        return;
+    }
     let ramToUseForJava = "";
-    //... (logica pentru RAM)
-
+    if (serverConfig.ram && serverConfig.ram.toLowerCase() !== 'auto') {
+        ramToUseForJava = serverConfig.ram;
+    } else {
+        const totalSystemRamMB = Math.floor(os.totalmem() / (1024 * 1024));
+        let autoRamMB = Math.floor(totalSystemRamMB / 3);
+        if (autoRamMB < 1024) autoRamMB = 1024;
+        ramToUseForJava = `${autoRamMB}M`;
+    }
     const javaArgsProfile = serverConfig.javaArgs || 'Default';
-    const baseArgs = (javaArgsProfile === 'Performance') ? [/*...*/] : [/*...*/];
-    
-    // Adaugă argumentele specifice tipului de server
-    const finalArgs = [...baseArgs.slice(0, -3), ...startArgs, '-jar', jarName, 'nogui'];
-    
-    // ... restul funcției `start-server` cu `finalArgs`...
+    const performanceArgs = ['-Xms' + ramToUseForJava, '-Xmx' + ramToUseForJava, '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-XX:MaxGCPauseMillis=200', '-XX:+UnlockExperimentalVMOptions', '-XX:+DisableExplicitGC', '-XX:+AlwaysPreTouch', '-XX:G1NewSizePercent=40', '-XX:G1MaxNewSizePercent=50', '-XX:G1HeapRegionSize=16M', '-XX:G1ReservePercent=15', '-XX:G1HeapWastePercent=5', '-XX:InitiatingHeapOccupancyPercent=20', '-XX:G1MixedGCLiveThresholdPercent=90', '-XX:G1RSetUpdatingPauseTimePercent=5', '-XX:SurvivorRatio=32', '-XX:MaxTenuringThreshold=1', '-Dusing.aikars.flags=https://mcflags.emc.gs', '-Daikars.new.flags=true', '-jar', paperJarName, 'nogui'];
+    const defaultArgs = ['-Xms' + ramToUseForJava, '-Xmx' + ramToUseForJava, '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-XX:+UnlockExperimentalVMOptions', '-XX:MaxGCPauseMillis=200', '-XX:G1NewSizePercent=30', '-XX:G1MaxNewSizePercent=40', '-XX:G1HeapRegionSize=8M', '-XX:G1ReservePercent=20', '-XX:InitiatingHeapOccupancyPercent=45', '-jar', paperJarName, 'nogui'];
+    const javaArgs = (javaArgsProfile === 'Performance') ? performanceArgs : defaultArgs;
+    sendConsole(`Using ${javaArgsProfile} Java arguments.`, 'INFO');
+    sendConsole(`Starting server with ${ramToUseForJava} RAM...`, 'INFO');
+    sendStatus('Starting server...', true, 'serverStarting');
+
+    function parseRamToGB(ramString) {
+        if (!ramString) return '-';
+        const value = parseInt(ramString.slice(0, -1));
+        const unit = ramString.slice(-1).toUpperCase();
+        if (unit === 'G') return value.toFixed(1);
+        if (unit === 'M') return (value / 1024).toFixed(1);
+        return '-';
+    }
+
+    const stripAnsiCodes = (str) => str.replace(/\u001b\[(?:\d{1,3}(?:;\d{1,3})*)?[m|K]/g, '');
+
+    try {
+        const allocatedRamGB = parseRamToGB(ramToUseForJava);
+        getMainWindow()?.webContents.send('update-performance-stats', { allocatedRamGB });
+
+        serverProcess = spawn(javaExecutablePath, javaArgs, { cwd: serverFilesDir, stdio: ['pipe', 'pipe', 'pipe'] });
+        serverProcess.killedInternally = false;
+        let serverIsFullyStarted = false;
+
+        if (performanceStatsInterval) clearInterval(performanceStatsInterval);
+
+        performanceStatsInterval = setInterval(async () => {
+            if (!serverProcess || serverProcess.killed) {
+                clearInterval(performanceStatsInterval);
+                return;
+            }
+            try {
+                const stats = await pidusage(serverProcess.pid);
+                const memoryGB = stats.memory / (1024 * 1024 * 1024);
+                getMainWindow()?.webContents.send('update-performance-stats', { memoryGB });
+                if (serverProcess && serverProcess.stdin && serverProcess.stdin.writable) {
+                    tpsRequestStartTime = Date.now();
+                    serverProcess.stdin.write("list\n");
+                }
+            } catch (e) {
+                clearInterval(performanceStatsInterval);
+                if (localIsServerRunningGlobal) {
+                    log.error('Lost connection to server process (pidusage failed).', e);
+                    sendConsole('Lost connection to the server process.', 'ERROR');
+                    sendServerStateChange(false);
+                }
+            }
+        }, 2000);
+
+        serverProcess.stdout.on('data', (data) => {
+            const rawOutput = data.toString();
+            const cleanOutput = stripAnsiCodes(rawOutput).trimEnd();
+            const isListResponse = cleanOutput.includes('players online:');
+
+            if (tpsRequestStartTime && isListResponse) {
+                const responseTime = Date.now() - tpsRequestStartTime;
+                getMainWindow()?.webContents.send('update-performance-stats', { responseTime });
+                tpsRequestStartTime = null;
+            }
+
+            if (isListResponse) {
+                if (manualListCheck) {
+                    sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
+                    manualListCheck = false;
+                }
+            } else {
+                sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
+            }
+
+            if (!serverIsFullyStarted && /Done \([^)]+\)! For help, type "help"/.test(cleanOutput)) {
+                serverIsFullyStarted = true;
+                sendServerStateChange(true);
+                setDiscordActivity();
+            }
+        });
+
+        serverProcess.stderr.on('data', (data) => {
+            sendConsole(ansiConverter.toHtml(data.toString()), 'SERVER_LOG_HTML');
+        });
+
+        serverProcess.on('close', (code) => {
+            if (performanceStatsInterval) clearInterval(performanceStatsInterval);
+            const killedInternally = serverProcess?.killedInternally;
+            serverProcess = null;
+        
+            sendServerStateChange(false);
+            setDiscordActivity();
+        
+            if (killedInternally) {
+                sendConsole('Server process stopped normally.', 'INFO');
+                sendStatus('Server stopped.', false, 'serverStopped');
+            } else {
+                const launcherSettings = readLauncherSettings();
+                if (launcherSettings.autoStartServer) {
+                    sendConsole('Server stopped unexpectedly. Attempting to auto-restart...', 'WARN');
+                    const delay = launcherSettings.autoStartDelay || 5;
+                    mainWindow.webContents.send('start-countdown', 'restart', delay);
+                } else {
+                    sendStatus('Server stopped unexpectedly.', false, 'serverStoppedUnexpectedly');
+                    sendConsole(`Server process exited unexpectedly with code ${code}.`, 'ERROR');
+                }
+            }
+        });
+        
+        serverProcess.on('error', (err) => {
+            if (performanceStatsInterval) clearInterval(performanceStatsInterval); 
+            sendConsole(`Failed to start process: ${err.message}`, 'ERROR');
+            sendStatus(err.message.includes('ENOENT') ? 'Java not found!' : 'Server start failed.', false, err.message.includes('ENOENT') ? 'javaNotFound' : 'serverStartFailed');
+            serverProcess = null;
+            sendServerStateChange(false);
+        });
+    } catch (error) {
+        if (performanceStatsInterval) clearInterval(performanceStatsInterval);
+        sendConsole(`Error spawning server: ${error.message}`, 'ERROR');
+        serverProcess = null;
+        sendServerStateChange(false);
+        sendStatus('Error starting server.', false, 'error');
+    }
+});
+
+ipcMain.on('stop-server', async () => {
+    if (!serverProcess || serverProcess.killed) { sendConsole('Server not running.', 'WARN'); return; }
+    if (performanceStatsInterval) clearInterval(performanceStatsInterval);
+    sendConsole('Stopping server...', 'INFO');
+    sendStatus('Stopping server...', true, 'serverStopping');
+    serverProcess.killedInternally = true;
+    try {
+        if (serverProcess.stdin.writable) {
+            serverProcess.stdin.write("stop\n");
+        }
+    } catch (e) {
+        serverProcess.kill('SIGKILL');
+    }
+    setTimeout(() => { if (serverProcess && !serverProcess.killed) serverProcess.kill('SIGKILL'); }, 10000);
 });
 
 ipcMain.on('send-command', (event, command) => {
@@ -336,5 +908,17 @@ ipcMain.on('send-command', (event, command) => {
     if (trimmedCommand === 'list' || trimmedCommand === '/list') {
         manualListCheck = true;
     }
-    // ... restul funcției ...
+    if (serverProcess && serverProcess.stdin.writable) {
+        try { serverProcess.stdin.write(command + '\n'); }
+        catch (error) { sendConsole(`Error writing to stdin: ${error.message}`, 'ERROR'); }
+    } else { sendConsole('Cannot send command: Server not running.', 'ERROR'); }
+});
+
+ipcMain.handle('get-local-ip', () => getLocalIPv4());
+ipcMain.handle('get-public-ip', async () => {
+    try { return await getPublicIP(); }
+    catch (error) {
+        sendConsole(`Could not fetch Public IP: ${error.message}`, 'ERROR');
+        return '- (Error)';
+    }
 });

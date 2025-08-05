@@ -71,7 +71,7 @@ const maximizeBtnIcon = maximizeBtn.querySelector('i');
 let localIsServerRunning = false;
 let currentServerConfig = {};
 let isModalAnimating = false;
-let availableMcVersionsCache = [];
+let availableMcVersionsCache = {};
 let allocatedRamCache = '-';
 let autoStartIsActive = false; 
 let countdownInterval = null;
@@ -254,27 +254,28 @@ function updateButtonStates(isRunning) {
     }
 }
 
-async function populateMcVersionSelect(selectElement, currentVersion) {
+async function populateMcVersionSelect(selectElement, currentVersion, serverType) {
     selectElement.disabled = true;
-    if (availableMcVersionsCache.length === 0) {
+    if (!availableMcVersionsCache[serverType] || availableMcVersionsCache[serverType].length === 0) {
         selectElement.innerHTML = `<option value="" disabled>${currentTranslations['loadingVersions'] || 'Loading versions...'}</option>`;
         try {
-            availableMcVersionsCache = await window.electronAPI.getAvailablePaperMCVersions();
+            availableMcVersionsCache[serverType] = await window.electronAPI.getAvailableVersions(serverType);
         } catch (error) {
             selectElement.innerHTML = `<option value="" disabled selected>${currentTranslations['errorLoadingVersions'] || 'Error loading versions'}</option>`;
             return;
         }
     }
 
+    const versions = availableMcVersionsCache[serverType];
     selectElement.innerHTML = '';
-    if (availableMcVersionsCache.length > 0) {
-        availableMcVersionsCache.forEach((version, index) => {
+    if (versions.length > 0) {
+        versions.forEach((version, index) => {
             const option = document.createElement('option');
             option.value = version;
-            option.textContent = version + (index === 0 ? ` (${currentTranslations['latestVersion'] || 'Latest'})` : '');
+            option.textContent = version + ((index === 0 && serverType === 'papermc') ? ` (${currentTranslations['latestVersion'] || 'Latest'})` : '');
             selectElement.appendChild(option);
         });
-        selectElement.value = (currentVersion && availableMcVersionsCache.includes(currentVersion)) ? currentVersion : availableMcVersionsCache[0];
+        selectElement.value = (currentVersion && versions.includes(currentVersion)) ? currentVersion : versions[0];
     } else {
         selectElement.innerHTML = `<option value="" disabled selected>${currentTranslations['noVersionsFound'] || 'No versions found'}</option>`;
     }
@@ -317,7 +318,9 @@ async function refreshUISetupState() {
     if (needsSetup) {
         hideModal(settingsModal, settingsModalContent);
         showModal(setupModal, setupModalContent);
-        await populateMcVersionSelect(mcVersionModalSelect, currentServerConfig.version);
+        const serverType = currentServerConfig.serverType || 'papermc';
+        serverTypeModalSelect.value = serverType;
+        await populateMcVersionSelect(mcVersionModalSelect, currentServerConfig.version, serverType);
         ramAllocationModalSelect.value = currentServerConfig.ram || 'auto';
         updateButtonStates(localIsServerRunning);
     } else {
@@ -378,6 +381,7 @@ async function populateServerProperties() {
 
 downloadModalButton.addEventListener('click', () => {
     if (downloadModalButton.disabled) return;
+    const serverType = serverTypeModalSelect.value;
     const version = mcVersionModalSelect.value;
     const ram = ramAllocationModalSelect.value;
     if (!version) {
@@ -385,7 +389,7 @@ downloadModalButton.addEventListener('click', () => {
         return;
     }
     showDownloadLoading();
-    window.electronAPI.downloadPaperMC({ mcVersion: version, ramAllocation: ram, javaArgs: 'Default' });
+    window.electronAPI.configureServer({ serverType: serverType, mcVersion: version, ramAllocation: ram, javaArgs: 'Default' });
 });
 
 pluginsFolderButton.addEventListener('click', () => { if(!pluginsFolderButton.disabled) window.electronAPI.openPluginsFolder(); });
@@ -409,7 +413,8 @@ settingsButton.addEventListener('click', async () => {
     languageSettingsSelect.value = launcherSettingsCache.language || 'en';
 
     const serverConfig = await window.electronAPI.getServerConfig();
-    await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version);
+    serverTypeSettingsSelect.value = serverConfig.serverType || 'papermc';
+    await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version, serverConfig.serverType || 'papermc');
     ramAllocationSettingsSelect.value = serverConfig.ram || 'auto';
     javaArgumentsSettingsSelect.value = serverConfig.javaArgs || 'Default';
     await populateServerProperties();
@@ -432,10 +437,11 @@ saveSettingsButton.addEventListener('click', () => {
     });
     if (Object.keys(newProperties).length > 0) window.electronAPI.setServerProperties(newProperties);
     
+    const newServerType = serverTypeSettingsSelect.value;
     const newMcVersion = mcVersionSettingsSelect.value;
     const newRam = ramAllocationSettingsSelect.value;
     const newJavaArgs = javaArgumentsSettingsSelect.value;
-    window.electronAPI.downloadPaperMC({ mcVersion: newMcVersion, ramAllocation: newRam, javaArgs: newJavaArgs });
+    window.electronAPI.configureServer({ serverType: newServerType, mcVersion: newMcVersion, ramAllocation: newRam, javaArgs: newJavaArgs });
     
     addToConsole("Settings saved and applied.", "SUCCESS");
     hideModal(settingsModal, settingsModalContent);
@@ -501,6 +507,17 @@ languageSettingsSelect.addEventListener('change', (event) => {
     setLanguage(newLang);
 });
 
+serverTypeModalSelect.addEventListener('change', async () => {
+    const newType = serverTypeModalSelect.value;
+    serverTypeSettingsSelect.value = newType;
+    await populateMcVersionSelect(mcVersionModalSelect, null, newType);
+});
+
+serverTypeSettingsSelect.addEventListener('change', async () => {
+    const newType = serverTypeSettingsSelect.value;
+    serverTypeModalSelect.value = newType;
+    await populateMcVersionSelect(mcVersionSettingsSelect, null, newType);
+});
 
 window.electronAPI.onWindowMaximized((isMaximized) => {
     maximizeBtnIcon.className = isMaximized ? 'far fa-window-restore' : 'far fa-square';
