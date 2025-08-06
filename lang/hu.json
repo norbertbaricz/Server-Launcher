@@ -22,7 +22,7 @@
   "publicIpLabel": "Publikus IP",
   "versionLabel": "Verzió",
   "memoryLabel": "Memória",
-  "latencyLabel": "Szerver Késleltetés",
+  "tpsLabel": "Tick Per Szekundum",
   "commandPlaceholder": "Írja be a szerver parancsát...",
   "sendButton": "Küldés",
   "startButton": "Szerver Indítása",

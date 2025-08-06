@@ -22,7 +22,7 @@
   "publicIpLabel": "Public IP",
   "versionLabel": "Version",
   "memoryLabel": "Memory",
-  "latencyLabel": "Server Latency",
+  "tpsLabel": "Ticks Per Second",
   "commandPlaceholder": "Enter server command...",
   "sendButton": "Send",
   "startButton": "Start Server",

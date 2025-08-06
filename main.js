@@ -53,8 +53,8 @@ const serverPropertiesFileName = 'server.properties';
 let localIsServerRunningGlobal = false;
 let mainWindow;
 let performanceStatsInterval = null;
-let tpsRequestStartTime;
-let manualListCheck = false; // Flag pentru a verifica dacă utilizatorul a tastat comanda
+let manualTpsCheck = false; // Flag pentru comanda /tps manuală
+let manualListCheck = false; 
 
 async function killStrayServerProcess() {
     try {
@@ -571,7 +571,7 @@ ipcMain.handle('check-initial-setup', async () => {
     if (!needsSetup) sendConsole(`Setup check OK.`, 'INFO');
     return { needsSetup, config: configExists ? readServerConfig() : {} };
 });
-ipcMain.handle('get-available-papermc-versions', async () => {
+ipcMain.handle('get-available-versions', async (event, serverType) => {
     try {
         const projectApiUrl = 'https://api.papermc.io/v2/projects/paper';
         const projectResponseData = await new Promise((resolve, reject) => {
@@ -644,7 +644,7 @@ ipcMain.handle('get-translations', async (event, lang) => {
   return null;
 });
 
-ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArgs }) => {
+ipcMain.on('configure-server', async (event, { mcVersion, ramAllocation, javaArgs }) => {
     sendConsole(`Configuring: Version ${mcVersion}, RAM ${ramAllocation}`, 'INFO');
     const currentConfig = readServerConfig();
     const oldVersion = currentConfig.version;
@@ -657,12 +657,12 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
     }
     writeServerConfig(currentConfig);
 
-    const paperJarPath = path.join(serverFilesDir, paperJarName);
+    const serverJarPath = path.join(serverFilesDir, paperJarName);
 
-    if (fs.existsSync(paperJarPath) && oldVersion !== mcVersion) {
+    if (fs.existsSync(serverJarPath) && oldVersion !== mcVersion) {
         sendConsole(`Removing old paper.jar for version ${oldVersion}...`, 'INFO');
         try {
-            fs.unlinkSync(paperJarPath);
+            fs.unlinkSync(serverJarPath);
             sendConsole('Old paper.jar removed successfully.', 'SUCCESS');
         } catch (error) {
             sendConsole(`Error removing old paper.jar: ${error.message}`, 'ERROR');
@@ -670,7 +670,7 @@ ipcMain.on('download-papermc', async (event, { mcVersion, ramAllocation, javaArg
             getMainWindow()?.webContents.send('setup-finished');
             return;
         }
-    } else if (fs.existsSync(paperJarPath) && oldVersion === mcVersion) {
+    } else if (fs.existsSync(serverJarPath) && oldVersion === mcVersion) {
         sendStatus('Configuration saved! Version is already up to date.', false, 'configSaved');
         getMainWindow()?.webContents.send('setup-finished');
         
@@ -803,8 +803,7 @@ ipcMain.on('start-server', async () => {
                 const memoryGB = stats.memory / (1024 * 1024 * 1024);
                 getMainWindow()?.webContents.send('update-performance-stats', { memoryGB });
                 if (serverProcess && serverProcess.stdin && serverProcess.stdin.writable) {
-                    tpsRequestStartTime = Date.now();
-                    serverProcess.stdin.write("list\n");
+                    serverProcess.stdin.write("tps\n");
                 }
             } catch (e) {
                 clearInterval(performanceStatsInterval);
@@ -819,19 +818,18 @@ ipcMain.on('start-server', async () => {
         serverProcess.stdout.on('data', (data) => {
             const rawOutput = data.toString();
             const cleanOutput = stripAnsiCodes(rawOutput).trimEnd();
-            const isListResponse = cleanOutput.includes('players online:');
-
-            if (tpsRequestStartTime && isListResponse) {
-                const responseTime = Date.now() - tpsRequestStartTime;
-                getMainWindow()?.webContents.send('update-performance-stats', { responseTime });
-                tpsRequestStartTime = null;
-            }
-
-            if (isListResponse) {
-                if (manualListCheck) {
+            
+            const tpsMatch = cleanOutput.match(/TPS from last 1m, 5m, 15m: (\*?\d+\.\d+)/);
+            if (tpsMatch) {
+                const tps = tpsMatch[1].replace('*', '');
+                getMainWindow()?.webContents.send('update-performance-stats', { tps: parseFloat(tps) });
+                if (manualTpsCheck) {
                     sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
-                    manualListCheck = false;
+                    manualTpsCheck = false;
                 }
+            } else if (manualListCheck && cleanOutput.includes('players online:')) {
+                sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
+                manualListCheck = false;
             } else {
                 sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
             }
@@ -907,6 +905,8 @@ ipcMain.on('send-command', (event, command) => {
     const trimmedCommand = command.trim().toLowerCase();
     if (trimmedCommand === 'list' || trimmedCommand === '/list') {
         manualListCheck = true;
+    } else if (trimmedCommand === 'tps' || trimmedCommand === '/tps') {
+        manualTpsCheck = true;
     }
     if (serverProcess && serverProcess.stdin.writable) {
         try { serverProcess.stdin.write(command + '\n'); }
@@ -921,4 +921,4 @@ ipcMain.handle('get-public-ip', async () => {
         sendConsole(`Could not fetch Public IP: ${error.message}`, 'ERROR');
         return '- (Error)';
     }
-});
+}); 

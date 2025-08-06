@@ -31,7 +31,6 @@ const setupModalContent = document.getElementById('setup-modal-content');
 const mcVersionModalSelect = document.getElementById('mc-version-modal');
 const ramAllocationModalSelect = document.getElementById('ram-allocation-modal');
 const languageModalSelect = document.getElementById('language-modal-select');
-const serverTypeModalSelect = document.getElementById('server-type-modal-select');
 const downloadModalButton = document.getElementById('download-button-modal');
 const downloadModalButtonIcon = downloadModalButton.querySelector('i');
 const downloadModalButtonText = document.getElementById('download-button-text');
@@ -43,7 +42,6 @@ const mcVersionSettingsSelect = document.getElementById('mc-version-settings');
 const ramAllocationSettingsSelect = document.getElementById('ram-allocation-settings');
 const javaArgumentsSettingsSelect = document.getElementById('java-arguments-settings');
 const languageSettingsSelect = document.getElementById('language-settings-select');
-const serverTypeSettingsSelect = document.getElementById('server-type-settings-select');
 const startWithSystemCheckbox = document.getElementById('start-with-system-checkbox');
 const saveSettingsButton = document.getElementById('save-settings-button');
 const closeSettingsButton = document.getElementById('close-settings-button');
@@ -318,8 +316,7 @@ async function refreshUISetupState() {
     if (needsSetup) {
         hideModal(settingsModal, settingsModalContent);
         showModal(setupModal, setupModalContent);
-        const serverType = currentServerConfig.serverType || 'papermc';
-        serverTypeModalSelect.value = serverType;
+        const serverType = 'papermc';
         await populateMcVersionSelect(mcVersionModalSelect, currentServerConfig.version, serverType);
         ramAllocationModalSelect.value = currentServerConfig.ram || 'auto';
         updateButtonStates(localIsServerRunning);
@@ -381,7 +378,6 @@ async function populateServerProperties() {
 
 downloadModalButton.addEventListener('click', () => {
     if (downloadModalButton.disabled) return;
-    const serverType = serverTypeModalSelect.value;
     const version = mcVersionModalSelect.value;
     const ram = ramAllocationModalSelect.value;
     if (!version) {
@@ -389,7 +385,7 @@ downloadModalButton.addEventListener('click', () => {
         return;
     }
     showDownloadLoading();
-    window.electronAPI.configureServer({ serverType: serverType, mcVersion: version, ramAllocation: ram, javaArgs: 'Default' });
+    window.electronAPI.configureServer({ mcVersion: version, ramAllocation: ram, javaArgs: 'Default' });
 });
 
 pluginsFolderButton.addEventListener('click', () => { if(!pluginsFolderButton.disabled) window.electronAPI.openPluginsFolder(); });
@@ -413,8 +409,7 @@ settingsButton.addEventListener('click', async () => {
     languageSettingsSelect.value = launcherSettingsCache.language || 'en';
 
     const serverConfig = await window.electronAPI.getServerConfig();
-    serverTypeSettingsSelect.value = serverConfig.serverType || 'papermc';
-    await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version, serverConfig.serverType || 'papermc');
+    await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version, 'papermc');
     ramAllocationSettingsSelect.value = serverConfig.ram || 'auto';
     javaArgumentsSettingsSelect.value = serverConfig.javaArgs || 'Default';
     await populateServerProperties();
@@ -437,11 +432,10 @@ saveSettingsButton.addEventListener('click', () => {
     });
     if (Object.keys(newProperties).length > 0) window.electronAPI.setServerProperties(newProperties);
     
-    const newServerType = serverTypeSettingsSelect.value;
     const newMcVersion = mcVersionSettingsSelect.value;
     const newRam = ramAllocationSettingsSelect.value;
     const newJavaArgs = javaArgumentsSettingsSelect.value;
-    window.electronAPI.configureServer({ serverType: newServerType, mcVersion: newMcVersion, ramAllocation: newRam, javaArgs: newJavaArgs });
+    window.electronAPI.configureServer({ mcVersion: newMcVersion, ramAllocation: newRam, javaArgs: newJavaArgs });
     
     addToConsole("Settings saved and applied.", "SUCCESS");
     hideModal(settingsModal, settingsModalContent);
@@ -507,18 +501,6 @@ languageSettingsSelect.addEventListener('change', (event) => {
     setLanguage(newLang);
 });
 
-serverTypeModalSelect.addEventListener('change', async () => {
-    const newType = serverTypeModalSelect.value;
-    serverTypeSettingsSelect.value = newType;
-    await populateMcVersionSelect(mcVersionModalSelect, null, newType);
-});
-
-serverTypeSettingsSelect.addEventListener('change', async () => {
-    const newType = serverTypeSettingsSelect.value;
-    serverTypeModalSelect.value = newType;
-    await populateMcVersionSelect(mcVersionSettingsSelect, null, newType);
-});
-
 window.electronAPI.onWindowMaximized((isMaximized) => {
     maximizeBtnIcon.className = isMaximized ? 'far fa-window-restore' : 'far fa-square';
     maximizeBtn.setAttribute('aria-label', isMaximized ? 'Restore' : 'Maximize');
@@ -581,7 +563,7 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         await fetchAndDisplayIPs(false);
         memoryUsageSpan.textContent = '0 / 0 GB';
         memoryUsageSpan.style.color = '';
-        serverTpsSpan.textContent = '0 ms'; // Reset la oprire
+        serverTpsSpan.textContent = '0.0 / 20.0';
         serverTpsSpan.style.color = '';
         allocatedRamCache = '0'; 
     }
@@ -591,7 +573,7 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
     }
 });
 
-window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, responseTime }) => {
+window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, tps }) => {
     if (allocatedRamGB) {
         allocatedRamCache = allocatedRamGB;
     }
@@ -602,7 +584,7 @@ window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, respons
 
         if (!isNaN(memUsage) && !isNaN(allocatedRam) && allocatedRam > 0) {
             const finalMemUsage = Math.max(0, memUsage);
-            memoryUsageSpan.textContent = `${finalMemUsage.toFixed(2)} / ${allocatedRamCache} GB`;
+            memoryUsageSpan.textContent = `${finalMemUsage.toFixed(1)} / ${allocatedRamCache} GB`;
 
             const usagePercent = (finalMemUsage / allocatedRam) * 100;
 
@@ -616,14 +598,15 @@ window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, respons
         }
     }
 
-    if (typeof responseTime !== 'undefined') {
-        serverTpsSpan.textContent = `${responseTime} ms`;
-        if (responseTime > 500) {
-            serverTpsSpan.style.color = '#ef4444';
-        } else if (responseTime > 200) {
-            serverTpsSpan.style.color = '#facc15';
+    if (typeof tps !== 'undefined') {
+        const tpsValue = parseFloat(tps);
+        serverTpsSpan.textContent = tpsValue.toFixed(1) + ' / 20.0';
+        if (tpsValue < 15) {
+            serverTpsSpan.style.color = '#ef4444'; // Roșu
+        } else if (tpsValue < 19) {
+            serverTpsSpan.style.color = '#facc15'; // Galben
         } else {
-            serverTpsSpan.style.color = '#4ade80';
+            serverTpsSpan.style.color = '#4ade80'; // Verde
         }
     }
 });
