@@ -1,10 +1,10 @@
 # 🎮 Server-Launcher
 
-[![ISC License](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)  
-[![Electron](https://img.shields.io/badge/Built_with-Electron-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)  
-[![Tailwind CSS](https://img.shields.io/badge/Styled_with-Tailwind_CSS-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
+[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
+[![Built with Electron](https://img.shields.io/badge/Built_with-Electron-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
+[![Styled with Tailwind CSS](https://img.shields.io/badge/Styled_with-Tailwind_CSS-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 
-An intuitive desktop app to manage and run your own Minecraft server. Built with Electron, this launcher radically simplifies the process of setting up, starting, stopping, and interacting with a PaperMC server.
+**Server-Launcher** is a sleek and intuitive desktop app for managing your own Minecraft server powered by PaperMC. Built using Electron and styled with Tailwind CSS, it simplifies everything from setup to server control.
 
 ![Server Launcher Screenshot](https://raw.githubusercontent.com/norbertbaricz/server-launcher/main/build/screenshot.png)
 
@@ -12,34 +12,36 @@ An intuitive desktop app to manage and run your own Minecraft server. Built with
 
 ## ✨ Key Features
 
-* **🚀 Simplified Setup:** Automatically downloads the PaperMC server files on first launch.
-* **📋 Version Selector:** Easily choose your preferred Minecraft version from an updated list.
-* **🧠 Smart RAM Allocation:** Configure RAM dedicated to the server, with an "auto" option for simplicity.
-* **🖥️ Integrated Console:** View the server console output live directly inside the app.
-* **⌨️ Command Input:** Send commands to the server without needing a separate terminal.
-* **🌐 IP Info:** Quickly display your local and public IP addresses to share with friends.
-* **💻 Cross-Platform:** Compatible with Windows, macOS, and Linux.
-* **🎨 Modern Interface:** A clean and user-friendly design powered by Tailwind CSS.
+- 🚀 **Automatic Setup:** Downloads the required PaperMC server files on first launch.
+- 📋 **Version Selector:** Easily pick your favorite Minecraft version from an updated list.
+- 🧠 **Smart RAM Allocation:** Choose how much RAM to allocate, or let the app decide with "auto".
+- 🖥️ **Built-in Console:** See real-time server logs directly inside the app.
+- ⌨️ **Command Input:** Send Minecraft server commands without needing an external terminal.
+- 🌐 **IP Information:** Instantly view your local and public IP addresses for sharing.
+- 💻 **Cross-Platform:** Runs on Windows, macOS, and Linux.
+- 🎨 **Modern UI:** Clean and responsive interface thanks to Tailwind CSS.
 
 ---
 
 ## 🛠️ Technologies Used
 
-* **Framework:** [Electron](https://www.electronjs.org/)
-* **Server:** [PaperMC](https://papermc.io/)
-* **Styling:** [Tailwind CSS](https://tailwindcss.com/)
-* **Runtime:** [Node.js](https://nodejs.org/)
+| Component     | Description |
+|---------------|-------------|
+| **Electron**  | Desktop app framework |
+| **PaperMC**   | High-performance Minecraft server |
+| **Tailwind CSS** | Styling framework |
+| **Node.js**   | Runtime environment |
 
 ---
 
 ## 🚀 Getting Started
 
-### Prerequisites
+### Requirements
 
-* [Node.js](https://nodejs.org/) must be installed on your system.
-* Java must be installed and added to your system `PATH` to run the Minecraft server.
+- [Node.js](https://nodejs.org/) must be installed on your system.
+- Java must be installed and added to your system’s `PATH` (required to run Minecraft servers).
 
-### Installation & Running
+### Installation (Development Mode)
 
 1. **Clone the repository:**
     ```bash
@@ -52,7 +54,7 @@ An intuitive desktop app to manage and run your own Minecraft server. Built with
     npm install
     ```
 
-3. **Run the app in development mode:**
+3. **Run the app:**
     ```bash
     npm start
     ```
@@ -61,39 +63,56 @@ An intuitive desktop app to manage and run your own Minecraft server. Built with
 
 ## 📦 Building the App
 
-To create a distributable package for your operating system, use the following commands. The final app will be located in the `dist_electron` folder.
+You can create a production-ready version of the app using:
 
-* **Build for the current OS:**
+- **Build for current OS:**
     ```bash
     npm run dist
     ```
 
-* **Build specifically for Windows:**
+- **Build specifically for Windows:**
     ```bash
     npm run dist:win
     ```
+
+> The output will be located in the `dist_electron` directory.
 
 ---
 
 ## 🕹️ Usage Guide
 
-1. **First Launch (Setup):**
-    * On first launch, a setup window will appear.
-    * Select your preferred Minecraft version and RAM allocation.
-    * Click **"Download / Configure"**. The app will download the required `.jar` file and create a `config.json`.
+### 🛠️ First-Time Setup
 
-2. **Starting the Server:**
-    * After configuration, the main interface will be available.
-    * Click **"Start Server"**. The launcher will automatically accept the EULA and start the server.
+1. When you launch the app for the first time, a setup window appears.
+2. Select the Minecraft version and desired RAM allocation.
+3. Click **“Download / Configure”** to install the necessary files and generate `config.json`.
 
-3. **Server Management:**
-    * **Console:** The main text area displays live server activity.
-    * **Commands:** Type any server command in the input field at the bottom and click **"Send"**.
-    * **Stop:** Click **"Stop Server"** to safely shut down the server.
-    * **File Directory:** Click **"Open Folder"** to open the folder containing all server files (`MinecraftServer`).
+### ▶️ Starting the Server
+
+- After setup is complete, the main interface appears.
+- Click **“Start Server”** to automatically accept the EULA and launch the server.
+
+### 🧰 Server Management
+
+- **Console:** View real-time server output.
+- **Commands:** Type server commands in the input field and click **“Send”**.
+- **Stop Server:** Click **“Stop Server”** for a safe shutdown.
+- **File Access:** Click **“Open Folder”** to open the `MinecraftServer` directory.
 
 ---
 
 ## ⚖️ License
 
-This project is licensed under the ISC License. See the `LICENSE.txt` file for full details.
+This project is licensed under the ISC License.  
+See the [`LICENSE.txt`](./LICENSE.txt) file for full details.
+
+---
+
+## 💡 Contribute or Follow
+
+📁 GitHub Repository: [https://github.com/norbertbaricz/server-launcher](https://github.com/norbertbaricz/server-launcher)
+
+---
+
+Crafted with care by [Norbert Baricz](https://github.com/norbertbaricz) 🐺  
+Feel free to fork, contribute, or share!
