@@ -72,5 +72,7 @@
   "javaNotFound": "未找到Java！",
   "serverStartFailed": "服务器启动失败。",
   "downloadSuccess": "成功下载PaperMC！",
-  "downloadFailed": "下载失败。"
+  "downloadFailed": "下载失败。",
+  "serverModelLabel": "服务器模型",
+  "themeLabel": "主题"
 }

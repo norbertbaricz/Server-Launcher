@@ -22,7 +22,7 @@
   "publicIpLabel": "Javni IP",
   "versionLabel": "Verzija",
   "memoryLabel": "Memorija",
-  "tpsLabel": "Tika u sekundi",
+  "tpsLabel": "Tikovi u sekundi",
   "commandPlaceholder": "Unesite naredbu poslužitelja...",
   "sendButton": "Pošalji",
   "startButton": "Pokreni poslužitelj",
@@ -72,5 +72,7 @@
   "javaNotFound": "Java nije pronađena!",
   "serverStartFailed": "Pokretanje poslužitelja nije uspjelo.",
   "downloadSuccess": "PaperMC je uspješno preuzet!",
-  "downloadFailed": "Preuzimanje nije uspjelo."
+  "downloadFailed": "Preuzimanje nije uspjelo.",
+  "serverModelLabel": "Model poslužitelja",
+  "themeLabel": "Tema"
 }

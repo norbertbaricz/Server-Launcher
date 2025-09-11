@@ -32,7 +32,7 @@
   "javaDownloadButton": "Stáhnout a nainstalovat Javu",
   "javaRestartButton": "Restartovat launcher",
   "setupTitle": "Je vyžadováno nastavení serveru",
-  "setupDescription": "Chybí soubory serveru (paper.jar) nebo konfigurace (config.json). Vyberte možnosti a klikněte на 'Stáhnout / Konfigurovat'.",
+  "setupDescription": "Chybí soubory serveru (paper.jar) nebo konfigurace (config.json). Vyberte možnosti a klikněte na 'Stáhnout / Konfigurovat'.",
   "mcVersionLabel": "Verze Minecraftu:",
   "loadingVersions": "Načítání verzí...",
   "errorLoadingVersions": "Chyba při načítání verzí",
@@ -72,5 +72,7 @@
   "javaNotFound": "Java nenalezena!",
   "serverStartFailed": "Spuštění serveru se nezdařilo.",
   "downloadSuccess": "PaperMC úspěšně stažen!",
-  "downloadFailed": "Stažení se nezdařilo."
+  "downloadFailed": "Stažení se nezdařilo.",
+  "serverModelLabel": "Model serveru",
+  "themeLabel": "Téma"
 }

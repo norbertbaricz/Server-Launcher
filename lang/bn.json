@@ -72,5 +72,7 @@
   "javaNotFound": "জাভা পাওয়া যায়নি!",
   "serverStartFailed": "সার্ভার শুরু করতে ব্যর্থ হয়েছে।",
   "downloadSuccess": "পেপারএমসি সফলভাবে ডাউনলোড হয়েছে!",
-  "downloadFailed": "ডাউনলোড ব্যর্থ হয়েছে।"
+  "downloadFailed": "ডাউনলোড ব্যর্থ হয়েছে।",
+  "serverModelLabel": "সার্ভার মডেল",
+  "themeLabel": "থিম"
 }

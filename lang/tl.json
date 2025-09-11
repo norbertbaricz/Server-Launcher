@@ -72,5 +72,7 @@
   "javaNotFound": "Hindi nahanap ang Java!",
   "serverStartFailed": "Nabigo ang pagsisimula ng server.",
   "downloadSuccess": "Matagumpay na na-download ang PaperMC!",
-  "downloadFailed": "Nabigo ang pag-download."
+  "downloadFailed": "Nabigo ang pag-download.",
+  "serverModelLabel": "Modelo ng Server",
+  "themeLabel": "Tema"
 }

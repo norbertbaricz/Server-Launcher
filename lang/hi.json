@@ -27,7 +27,7 @@
   "sendButton": "भेजें",
   "startButton": "सर्वर प्रारंभ करें",
   "stopButton": "सर्वर बंद करें",
-  "javaModalTitle": "जावा (जेडीके) आवश्यक है",
+  "javaModalTitle": "जावा (JDK) आवश्यक है",
   "javaModalDescription": "आपके सिस्टम पर जावा का पता नहीं चला है। सर्वर चलाने के लिए यह आवश्यक है।",
   "javaDownloadButton": "जावा डाउनलोड और इंस्टॉल करें",
   "javaRestartButton": "लांचर पुनरारंभ करें",
@@ -54,7 +54,7 @@
   "settingsTitle": "सेटिंग्स",
   "serverConfigHeader": "सर्वर कॉन्फ़िगरेशन",
   "javaArgsLabel": "जावा तर्क:",
-  "javaArgsDefault": "डिफ़ॉल्ट (मानक जेवीएम तर्क)",
+  "javaArgsDefault": "डिफ़ॉल्ट (मानक JVM तर्क)",
   "javaArgsPerformance": "प्रदर्शन (अनुकूलन के लिए आइकर के झंडे शामिल हैं)",
   "launcherSettingsHeader": "लांचर सेटिंग्स",
   "startWithSystemLabel": "ऑपरेटिंग सिस्टम के साथ प्रारंभ करें",
@@ -72,5 +72,7 @@
   "javaNotFound": "जावा नहीं मिला!",
   "serverStartFailed": "सर्वर प्रारंभ विफल रहा।",
   "downloadSuccess": "पेपरएमसी सफलतापूर्वक डाउनलोड किया गया!",
-  "downloadFailed": "डाउनलोड विफल रहा।"
+  "downloadFailed": "डाउनलोड विफल रहा।",
+  "serverModelLabel": "सर्वर मॉडल",
+  "themeLabel": "थीम"
 }

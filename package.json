@@ -1,12 +1,15 @@
 {
   "name": "server-launcher",
-  "version": "1.1.0",
+  "version": "1.1.2",
   "description": "A simple and powerful launcher to create, manage, and run your own Minecraft server directly from your computer. Get started in minutes!",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist:win": "electron-builder --win",
-    "dist:all": "electron-builder --win --mac --linux"
+    "dist:win": "electron-builder --publish never --win nsis",
+    "dist:linux": "electron-builder --publish never --linux AppImage",
+    "dist:ubuntu": "electron-builder --publish never --linux deb",
+    "dist:mac": "electron-builder --publish never --mac zip",
+    "dist:all": "electron-builder --publish never --win nsis --linux AppImage --mac zip"
   },
   "keywords": [
     "Minecraft",
@@ -30,13 +33,15 @@
     "find-process": "^1.4.7"
   },
   "build": {
+    "asar": true,
     "appId": "com.skypixel.serverlauncher",
     "productName": "Server Launcher",
     "publish": [
       {
         "provider": "github",
         "owner": "norbertbaricz",
-        "repo": "server-launcher"
+        "repo": "server-launcher",
+        "releaseType": "release"
       }
     ],
     "extraResources": [
@@ -57,9 +62,7 @@
         "to": "sidebar.bmp"
       }
     ],
-    "directories": {
-      "output": "dist_electron"
-    },
+    "directories": { "output": "release" },
     "files": [
       "**/*",
       "!node_modules/**/{CHANGELOG.md,README.md,README,readme.md,readme}",
@@ -109,6 +112,7 @@
         "tar.gz"
       ],
       "icon": "build/icon.png",
+      "artifactName": "Server-Launcher-${version}-${arch}.${ext}",
       "category": "Game",
       "maintainer": "Skypixel maxultimat3@yahoo.com"
     },
@@ -117,6 +121,7 @@
         "zip"
       ],
       "icon": "build/icon.icns",
+      "artifactName": "Server-Launcher-mac-${version}.${ext}",
       "category": "public.app-category.games"
     }
   }

@@ -72,5 +72,7 @@
   "javaNotFound": "Không tìm thấy Java!",
   "serverStartFailed": "Khởi động máy chủ không thành công.",
   "downloadSuccess": "Đã tải xuống PaperMC thành công!",
-  "downloadFailed": "Tải xuống không thành công."
+  "downloadFailed": "Tải xuống không thành công.",
+  "serverModelLabel": "Mô hình Máy chủ",
+  "themeLabel": "Giao diện"
 }

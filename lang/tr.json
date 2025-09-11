@@ -72,5 +72,7 @@
   "javaNotFound": "Java bulunamadı!",
   "serverStartFailed": "Sunucu başlatılamadı.",
   "downloadSuccess": "PaperMC başarıyla indirildi!",
-  "downloadFailed": "İndirme başarısız oldu."
+  "downloadFailed": "İndirme başarısız oldu.",
+  "serverModelLabel": "Sunucu Modeli",
+  "themeLabel": "Tema"
 }

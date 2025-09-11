@@ -13,7 +13,7 @@ const AnsiToHtml = require('ansi-to-html');
 const find = require('find-process');
 
 let javaExecutablePath = 'java';
-const MINIMUM_JAVA_VERSION = 21;
+let MINIMUM_JAVA_VERSION = 21;
 
 process.on('uncaughtException', (error) => {
   log.error('UNCAUGHT EXCEPTION:', error);
@@ -55,6 +55,20 @@ let mainWindow;
 let performanceStatsInterval = null;
 let manualTpsCheck = false; // Flag pentru comanda /tps manuală
 let manualListCheck = false; 
+
+// Enforce single-instance to avoid duplicate servers/processes
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+    app.quit();
+} else {
+    app.on('second-instance', () => {
+        const win = getMainWindow();
+        if (win) {
+            if (win.isMinimized()) win.restore();
+            win.focus();
+        }
+    });
+}
 
 async function killStrayServerProcess() {
     try {
@@ -160,14 +174,41 @@ async function checkJava() {
                 }
             });
         };
+
+        const checkMacJavaHome = (onComplete) => {
+            if (process.platform !== 'darwin') return onComplete(null);
+            // Try macOS helper to find a JDK 21 home
+            exec('/usr/libexec/java_home -v 21', (error, stdout) => {
+                if (error || !stdout) return onComplete(null);
+                const home = stdout.toString().trim();
+                const javaExe = path.join(home, 'bin', 'java');
+                if (!fs.existsSync(javaExe)) return onComplete(null);
+                verifyJavaVersion(javaExe, (isValid) => {
+                    if (isValid) {
+                        javaExecutablePath = javaExe;
+                        return onComplete(javaExe);
+                    }
+                    onComplete(null);
+                });
+            });
+        };
         
         log.info(`Checking for Java >= ${MINIMUM_JAVA_VERSION}...`);
         checkRegistry(registryPath => {
             if (registryPath) {
                 resolve(true);
             } else {
-                log.info('No compatible Java version found in registry. Checking system PATH.');
-                checkPath();
+                if (process.platform === 'darwin') {
+                    log.info('No Java found in registry (not Windows). Checking macOS java_home...');
+                    checkMacJavaHome((macPath) => {
+                        if (macPath) return resolve(true);
+                        log.info('No compatible Java via macOS java_home. Checking system PATH.');
+                        checkPath();
+                    });
+                } else {
+                    log.info('No compatible Java version found in registry. Checking system PATH.');
+                    checkPath();
+                }
             }
         });
     });
@@ -341,6 +382,19 @@ function writeServerConfig(configObject) { writeJsonFile(serverConfigFilePath, c
 function readLauncherSettings() { return readJsonFile(launcherSettingsFilePath, launcherSettingsFileName); }
 function writeLauncherSettings(settingsObject) { writeJsonFile(launcherSettingsFilePath, settingsObject, launcherSettingsFileName); }
 
+function requiredJavaForVersion(mcVersion) {
+    // Rough heuristic: Paper recommends Java 21 for 1.20.5+, Java 17 for earlier modern versions
+    try {
+        if (!mcVersion) return 21;
+        const parts = mcVersion.split('.').map(x => parseInt(x, 10));
+        const major = parts[0] || 1;
+        const minor = parts[1] || 0;
+        const patch = parts[2] || 0;
+        if (major === 1 && (minor > 20 || (minor === 20 && patch >= 5))) return 21;
+        return 17;
+    } catch { return 21; }
+}
+
 function getLocalIPv4() {
     const networkInterfaces = os.networkInterfaces();
     for (const interfaceName in networkInterfaces) {
@@ -373,6 +427,9 @@ async function getPublicIP() {
                 }
             });
         });
+        request.setTimeout(5000, () => {
+            request.destroy(new Error('Timeout while fetching public IP'));
+        });
         request.on('error', (err) => {
             reject(new Error(`Error fetching public IP: ${err.message}`));
         });
@@ -397,6 +454,18 @@ function createWindow () {
   });
 
   mainWindow.loadFile('index.html');
+  // Block unintended navigations and external window opens
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try { shell.openExternal(url); } catch (_) {}
+    return { action: 'deny' };
+  });
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    const currentUrl = mainWindow.webContents.getURL();
+    if (url !== currentUrl) {
+      e.preventDefault();
+      try { shell.openExternal(url); } catch (_) {}
+    }
+  });
   mainWindow.webContents.on('did-finish-load', async () => {
       const hasJava = await checkJava();
       if (!hasJava && app.isPackaged) {
@@ -458,7 +527,7 @@ autoUpdater.on('checking-for-update', () => sendConsole('Updater: Checking for u
 autoUpdater.on('update-available', (info) => sendConsole(`Updater: Update available! Version: ${info.version}`, 'SUCCESS'));
 autoUpdater.on('update-not-available', (info) => sendConsole('Updater: No new updates available.', 'INFO'));
 autoUpdater.on('error', (err) => sendConsole('Updater: Error during update. ' + err.message, 'ERROR'));
-autoUpdater.on('download-progress', (p) => setStatus(`Download speed: ${Math.round(p.bytesPerSecond / 1024)} KB/s - Downloaded ${Math.round(p.percent)}%`, true));
+autoUpdater.on('download-progress', (p) => sendStatus(`Download speed: ${Math.round(p.bytesPerSecond / 1024)} KB/s - Downloaded ${Math.round(p.percent)}%`, true));
 autoUpdater.on('update-downloaded', (info) => {
   sendConsole(`Updater: Update downloaded (${info.version}). It will be installed on restart.`, 'SUCCESS');
   dialog.showMessageBox({
@@ -473,8 +542,20 @@ autoUpdater.on('update-downloaded', (info) => {
 
 app.on('window-all-closed', () => {
     if (serverProcess && typeof serverProcess.kill === 'function' && !serverProcess.killed) {
-        serverProcess.killedInternally = true;
-        serverProcess.kill('SIGKILL');
+        try {
+            serverProcess.killedInternally = true;
+            if (serverProcess.stdin && serverProcess.stdin.writable) {
+                serverProcess.stdin.write('stop\n');
+            }
+            // Fallback hard kill after grace period
+            setTimeout(() => {
+                if (serverProcess && !serverProcess.killed) {
+                    serverProcess.kill('SIGKILL');
+                }
+            }, 7000);
+        } catch (_) {
+            try { serverProcess.kill('SIGKILL'); } catch (_) {}
+        }
     }
     if (rpc) {
         rpc.destroy().catch(err => {
@@ -507,7 +588,8 @@ ipcMain.handle('get-settings', () => {
         openAtLogin: settings.openAtLogin || false,
         autoStartServer: settings.autoStartServer || false,
         autoStartDelay: settings.autoStartDelay || 5,
-        language: settings.language || 'en'
+        language: settings.language || 'en',
+        theme: settings.theme || 'default'
     };
 });
 
@@ -516,6 +598,37 @@ ipcMain.on('set-settings', (event, settings) => {
     const newSettings = { ...currentSettings, ...settings };
     app.setLoginItemSettings({ openAtLogin: newSettings.openAtLogin });
     writeJsonFile(launcherSettingsFilePath, newSettings, launcherSettingsFileName);
+
+    // Linux autostart via XDG .desktop fallback
+    if (process.platform === 'linux') {
+        try {
+            const homeDir = os.homedir();
+            const autostartDir = path.join(homeDir, '.config', 'autostart');
+            const desktopFilePath = path.join(autostartDir, 'server-launcher.desktop');
+            if (!fs.existsSync(autostartDir)) {
+                fs.mkdirSync(autostartDir, { recursive: true });
+            }
+            if (newSettings.openAtLogin) {
+                const execPath = app.isPackaged ? process.execPath : process.execPath; // In dev this points to electron
+                const name = 'Server Launcher';
+                const desktopContent = [
+                    '[Desktop Entry]',
+                    'Type=Application',
+                    `Name=${name}`,
+                    `Exec="${execPath}"${app.isPackaged ? '' : ' .'}`,
+                    'X-GNOME-Autostart-enabled=true',
+                    'NoDisplay=false',
+                    'Terminal=false',
+                    `Comment=${name}`
+                ].join('\n');
+                fs.writeFileSync(desktopFilePath, desktopContent, 'utf8');
+            } else if (fs.existsSync(desktopFilePath)) {
+                fs.unlinkSync(desktopFilePath);
+            }
+        } catch (e) {
+            log.warn('Failed to manage Linux autostart entry:', e);
+        }
+    }
 });
 
 ipcMain.on('start-java-install', () => {
@@ -588,6 +701,131 @@ ipcMain.handle('get-available-versions', async (event, serverType) => {
         return [];
     }
 });
+
+// --- Plugins management ---
+ipcMain.handle('get-plugins', async () => {
+    try {
+        const pluginsDir = path.join(serverFilesDir, 'plugins');
+        if (!fs.existsSync(pluginsDir)) return [];
+        const files = fs.readdirSync(pluginsDir).filter(f => f.toLowerCase().endsWith('.jar'));
+        return files.map(name => {
+            const stat = fs.statSync(path.join(pluginsDir, name));
+            return { name, size: stat.size, mtime: stat.mtimeMs };
+        }).sort((a, b) => a.name.localeCompare(b.name));
+    } catch (e) {
+        sendConsole(`Failed to list plugins: ${e.message}`, 'ERROR');
+        return [];
+    }
+});
+
+ipcMain.handle('delete-plugin', async (_event, name) => {
+    try {
+        if (localIsServerRunningGlobal) {
+            return { ok: false, error: 'Stop the server before deleting plugins.' };
+        }
+        if (typeof name !== 'string' || !name || name.includes('..') || name.includes('/') || name.includes('\\') || !name.toLowerCase().endsWith('.jar')) {
+            return { ok: false, error: 'Invalid plugin name.' };
+        }
+        const pluginsDir = path.join(serverFilesDir, 'plugins');
+        const resolvedBase = path.resolve(pluginsDir) + path.sep;
+        const target = path.resolve(pluginsDir, name);
+        if (!target.startsWith(resolvedBase)) return { ok: false, error: 'Invalid path.' };
+        if (fs.existsSync(target)) fs.unlinkSync(target);
+        return { ok: true };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+ipcMain.handle('upload-plugins', async () => {
+    try {
+        const win = getMainWindow();
+        if (!win) return { ok: false, error: 'No window' };
+        const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+            title: 'Select plugin JAR files',
+            properties: ['openFile', 'multiSelections'],
+            filters: [{ name: 'Plugins', extensions: ['jar'] }]
+        });
+        if (canceled || !filePaths?.length) return { ok: true, added: [] };
+        const pluginsDir = path.join(serverFilesDir, 'plugins');
+        if (!fs.existsSync(pluginsDir)) fs.mkdirSync(pluginsDir, { recursive: true });
+        const added = [];
+        for (const src of filePaths) {
+            const base = path.basename(src);
+            if (!base.toLowerCase().endsWith('.jar')) continue;
+            const dest = path.join(pluginsDir, base);
+            fs.copyFileSync(src, dest);
+            added.push(base);
+        }
+        return { ok: true, added };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
+// --- Worlds management ---
+function readServerPropertiesObject() {
+    if (!fs.existsSync(serverPropertiesFilePath)) return {};
+    try {
+        const fileContent = fs.readFileSync(serverPropertiesFilePath, 'utf8');
+        const props = {};
+        fileContent.split(/\r?\n/).forEach(line => {
+            if (line.startsWith('#') || !line.includes('=')) return;
+            const [k, ...rest] = line.split('=');
+            props[k.trim()] = rest.join('=').trim();
+        });
+        return props;
+    } catch (e) {
+        return {};
+    }
+}
+
+ipcMain.handle('get-worlds-info', async () => {
+    try {
+        const props = readServerPropertiesObject();
+        const levelName = props['level-name'] || 'world';
+        const entries = fs.readdirSync(serverFilesDir, { withFileTypes: true });
+        const candidates = entries.filter(e => e.isDirectory()).map(e => e.name).filter(name => {
+            // world folders contain level.dat
+            return fs.existsSync(path.join(serverFilesDir, name, 'level.dat'));
+        });
+        const exists = {
+            overworld: fs.existsSync(path.join(serverFilesDir, levelName)),
+            nether: fs.existsSync(path.join(serverFilesDir, `${levelName}_nether`)),
+            the_end: fs.existsSync(path.join(serverFilesDir, `${levelName}_the_end`))
+        };
+        return { levelName, candidates, exists };
+    } catch (e) {
+        return { levelName: 'world', candidates: [], exists: {} };
+    }
+});
+
+ipcMain.handle('set-level-name', async (_event, newName) => {
+    try {
+        if (!newName || /[\\/:*?"<>|]/.test(newName)) {
+            return { ok: false, error: 'Invalid world name.' };
+        }
+        if (!fs.existsSync(serverPropertiesFilePath)) {
+            return { ok: false, error: 'server.properties not found. Run server once.' };
+        }
+        const lines = fs.readFileSync(serverPropertiesFilePath, 'utf8').split(/\r?\n/);
+        let changed = false;
+        const updated = lines.map(line => {
+            if (line.startsWith('#') || !line.includes('=')) return line;
+            const [key] = line.split('=');
+            if (key.trim() === 'level-name') {
+                changed = true;
+                return `level-name=${newName}`;
+            }
+            return line;
+        });
+        if (!changed) updated.push(`level-name=${newName}`);
+        fs.writeFileSync(serverPropertiesFilePath, updated.join('\n'));
+        return { ok: true };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
 ipcMain.on('open-plugins-folder', () => {
     const pluginsDir = path.join(serverFilesDir, 'plugins');
     if (!fs.existsSync(pluginsDir)) {
@@ -656,6 +894,8 @@ ipcMain.on('configure-server', async (event, { mcVersion, ramAllocation, javaArg
         delete currentConfig.ram;
     }
     writeServerConfig(currentConfig);
+    // Adjust minimum Java requirement based on selected version
+    MINIMUM_JAVA_VERSION = requiredJavaForVersion(mcVersion);
 
     const serverJarPath = path.join(serverFilesDir, paperJarName);
 
@@ -902,6 +1142,8 @@ ipcMain.on('stop-server', async () => {
 });
 
 ipcMain.on('send-command', (event, command) => {
+    if (typeof command !== 'string') return;
+    if (command.length > 1000) return; // simple guard
     const trimmedCommand = command.trim().toLowerCase();
     if (trimmedCommand === 'list' || trimmedCommand === '/list') {
         manualListCheck = true;
@@ -921,4 +1163,4 @@ ipcMain.handle('get-public-ip', async () => {
         sendConsole(`Could not fetch Public IP: ${error.message}`, 'ERROR');
         return '- (Error)';
     }
-}); 
+});

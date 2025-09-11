@@ -72,5 +72,7 @@
   "javaNotFound": "Javaが見つかりません！",
   "serverStartFailed": "サーバーの起動に失敗しました。",
   "downloadSuccess": "PaperMCのダウンロードに成功しました！",
-  "downloadFailed": "ダウンロードに失敗しました。"
+  "downloadFailed": "ダウンロードに失敗しました。",
+  "serverModelLabel": "サーバーモデル",
+  "themeLabel": "テーマ"
 }

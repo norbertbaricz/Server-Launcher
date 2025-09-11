@@ -22,7 +22,7 @@
   "publicIpLabel": "Publiczne IP",
   "versionLabel": "Wersja",
   "memoryLabel": "Pamięć",
-  "tpsLabel": "Tiki Na Sekundę",
+  "tpsLabel": "Tiki na sekundę",
   "commandPlaceholder": "Wprowadź komendę serwera...",
   "sendButton": "Wyślij",
   "startButton": "Uruchom serwer",
@@ -72,5 +72,7 @@
   "javaNotFound": "Nie znaleziono Javy!",
   "serverStartFailed": "Uruchomienie serwera nie powiodło się.",
   "downloadSuccess": "Pomyślnie pobrano PaperMC!",
-  "downloadFailed": "Pobieranie nie powiodło się."
+  "downloadFailed": "Pobieranie nie powiodło się.",
+  "serverModelLabel": "Model serwera",
+  "themeLabel": "Motyw"
 }

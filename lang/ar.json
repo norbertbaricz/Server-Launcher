@@ -72,5 +72,7 @@
   "javaNotFound": "لم يتم العثور على جافا!",
   "serverStartFailed": "فشل بدء الخادم.",
   "downloadSuccess": "تم تنزيل PaperMC بنجاح!",
-  "downloadFailed": "فشل التنزيل."
+  "downloadFailed": "فشل التنزيل.",
+  "serverModelLabel": "نموذج الخادم",
+  "themeLabel": "السمة"
 }

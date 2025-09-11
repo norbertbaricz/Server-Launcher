@@ -72,5 +72,8 @@
   "javaNotFound": "Java nu a fost găsit!",
   "serverStartFailed": "Pornirea serverului a eșuat.",
   "downloadSuccess": "PaperMC descărcat cu succes!",
-  "downloadFailed": "Descărcare eșuată."
+  "downloadFailed": "Descărcare eșuată.",
+  "serverModelLabel": "Model Server",
+  "serverModelVanilla": "Vanilla",
+  "themeLabel": "Temă"
 }

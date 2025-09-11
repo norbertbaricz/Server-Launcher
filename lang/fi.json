@@ -22,7 +22,7 @@
   "publicIpLabel": "Julkinen IP",
   "versionLabel": "Versio",
   "memoryLabel": "Muisti",
-  "tpsLabel": "Tikitystä sekunnissa",
+  "tpsLabel": "Tikit sekunnissa",
   "commandPlaceholder": "Syötä palvelimen komento...",
   "sendButton": "Lähetä",
   "startButton": "Käynnistä palvelin",
@@ -43,7 +43,7 @@
   "ramVerySmall": "512MB (Hyvin pieni)",
   "ramMinimum": "1GB (Minimi)",
   "ramRecommendedSmall": "2GB (Suositeltu pieni)",
-  "ramRecommendedMedium": "4GB (Suositeltu keski)",
+  "ramRecommendedMedium": "4GB (Suositeltu keskikokoinen)",
   "ramRecommendedLarge": "8GB (Suositeltu suuri)",
   "ramVeryLarge": "16GB (Hyvin suuri)",
   "langLabel": "Kieli:",
@@ -72,5 +72,7 @@
   "javaNotFound": "Javaa ei löytynyt!",
   "serverStartFailed": "Palvelimen käynnistys epäonnistui.",
   "downloadSuccess": "PaperMC ladattiin onnistuneesti!",
-  "downloadFailed": "Lataus epäonnistui."
+  "downloadFailed": "Lataus epäonnistui.",
+  "serverModelLabel": "Palvelinmalli",
+  "themeLabel": "Teema"
 }

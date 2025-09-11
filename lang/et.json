@@ -22,7 +22,7 @@
   "publicIpLabel": "Avalik IP",
   "versionLabel": "Versioon",
   "memoryLabel": "Mälu",
-  "tpsLabel": "Tikki sekundis",
+  "tpsLabel": "Tikke sekundis",
   "commandPlaceholder": "Sisestage serveri käsk...",
   "sendButton": "Saada",
   "startButton": "Käivita server",
@@ -72,5 +72,7 @@
   "javaNotFound": "Javat ei leitud!",
   "serverStartFailed": "Serveri käivitamine ebaõnnestus.",
   "downloadSuccess": "PaperMC on edukalt alla laaditud!",
-  "downloadFailed": "Allalaadimine ebaõnnestus."
+  "downloadFailed": "Allalaadimine ebaõnnestus.",
+  "serverModelLabel": "Serveri mudel",
+  "themeLabel": "Teema"
 }

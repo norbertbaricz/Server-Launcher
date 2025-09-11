@@ -42,6 +42,7 @@ const mcVersionSettingsSelect = document.getElementById('mc-version-settings');
 const ramAllocationSettingsSelect = document.getElementById('ram-allocation-settings');
 const javaArgumentsSettingsSelect = document.getElementById('java-arguments-settings');
 const languageSettingsSelect = document.getElementById('language-settings-select');
+const themeSelect = document.getElementById('theme-select');
 const startWithSystemCheckbox = document.getElementById('start-with-system-checkbox');
 const saveSettingsButton = document.getElementById('save-settings-button');
 const closeSettingsButton = document.getElementById('close-settings-button');
@@ -59,6 +60,25 @@ const javaInstallButton = document.getElementById('java-install-button');
 const javaRestartButton = document.getElementById('java-restart-button');
 const javaInstallProgressBarContainer = document.getElementById('java-install-progress-bar-container');
 const javaInstallProgressBar = document.getElementById('java-install-progress-bar');
+
+// Plugins & Worlds Modal
+const pluginsModal = document.getElementById('plugins-modal');
+const pluginsModalContent = document.getElementById('plugins-modal-content');
+const closePluginsButton = document.getElementById('close-plugins-button');
+const pluginsRefreshButton = document.getElementById('plugins-refresh-button');
+const pluginsCloseFooter = document.getElementById('plugins-close-footer');
+const pluginsList = document.getElementById('plugins-list');
+const uploadPluginButton = document.getElementById('upload-plugin-button');
+const openPluginsFolderButton = document.getElementById('open-plugins-folder-button');
+const currentWorldNameSpan = document.getElementById('current-world-name');
+const worldNameInput = document.getElementById('world-name-input');
+const applyWorldNameButton = document.getElementById('apply-world-name-button');
+const worldsCandidates = document.getElementById('worlds-candidates');
+const worldExistsOverworld = document.getElementById('world-exists-overworld');
+const worldExistsNether = document.getElementById('world-exists-nether');
+const worldExistsTheEnd = document.getElementById('world-exists-theend');
+
+// (Removed animated custom selects; using native selects)
 
 // Title Bar
 const minimizeBtn = document.getElementById('minimize-btn');
@@ -180,6 +200,11 @@ function addToConsole(message, type = 'INFO') {
     }
     
     consoleOutput.appendChild(line);
+    // Keep console memory bounded by limiting number of entries
+    const MAX_CONSOLE_LINES = 1000;
+    while (consoleOutput.childElementCount > MAX_CONSOLE_LINES) {
+        consoleOutput.removeChild(consoleOutput.firstElementChild);
+    }
     consoleOutput.scrollTop = consoleOutput.scrollHeight;
 }
 
@@ -189,7 +214,7 @@ function getStatusColor(text) {
     if (lowerText.includes("failed") || lowerText.includes("error") || lowerText.includes("eșuat") || lowerText.includes("fehler")) return '#ef4444';
     if (lowerText.includes("successfully") || lowerText.includes("saved") || lowerText.includes("ready") || lowerText.includes("succes") || lowerText.includes("pregătit") || lowerText.includes("bereit")) return '#4ade80';
     if (lowerText.includes("stopped") || lowerText.includes("initialized") || lowerText.includes("cancelled") || lowerText.includes("oprit") || lowerText.includes("inițializat") || lowerText.includes("anulat") || lowerText.includes("gestoppt")) return '#9ca3af';
-    return '#3b82f6';
+    return 'var(--color-primary)';
 }
 
 function setStatus(fallbackText, pulse = false, translationKey = null) {
@@ -203,7 +228,7 @@ function setStatus(fallbackText, pulse = false, translationKey = null) {
     const statusColor = getStatusColor(statusMessageSpan.textContent);
     
     pulseTarget.classList.toggle('status-bar-pulse', pulse);
-    statusMessageSpan.style.color = pulse ? '#3b82f6' : statusColor;
+    statusMessageSpan.style.color = pulse ? 'var(--color-primary)' : statusColor;
 }
 
 function showDownloadLoading() {
@@ -284,8 +309,8 @@ function showModal(modal, content) {
     if (isModalAnimating || !modal.classList.contains('hidden')) return;
     isModalAnimating = true;
     modal.classList.remove('hidden');
-    modal.style.animation = 'fadeInModalBg 0.25s ease-out forwards';
-    content.style.animation = 'fadeInModalContent 0.3s ease-out 0.05s forwards';
+    modal.style.animation = 'fadeInModalBg 0.18s ease-out forwards';
+    content.style.animation = 'fadeInModalContent 0.18s ease-out forwards';
     content.addEventListener('animationend', () => isModalAnimating = false, { once: true });
 }
 
@@ -295,8 +320,8 @@ function hideModal(modal, content, callback) {
         return;
     }
     isModalAnimating = true;
-    modal.style.animation = 'fadeOutModalBg 0.3s ease-in forwards';
-    content.style.animation = 'fadeOutModalContent 0.25s ease-in forwards';
+    modal.style.animation = 'fadeOutModalBg 0.18s ease-in forwards';
+    content.style.animation = 'fadeOutModalContent 0.18s ease-in forwards';
     content.addEventListener('animationend', () => {
         modal.classList.add('hidden');
         isModalAnimating = false;
@@ -388,7 +413,10 @@ downloadModalButton.addEventListener('click', () => {
     window.electronAPI.configureServer({ mcVersion: version, ramAllocation: ram, javaArgs: 'Default' });
 });
 
-pluginsFolderButton.addEventListener('click', () => { if(!pluginsFolderButton.disabled) window.electronAPI.openPluginsFolder(); });
+pluginsFolderButton.addEventListener('click', async () => {
+    if (pluginsFolderButton.disabled) return;
+    await openPluginsModal();
+});
 
 settingsButton.addEventListener('click', async () => {
     if (settingsButton.disabled) return;
@@ -407,6 +435,9 @@ settingsButton.addEventListener('click', async () => {
     }
     
     languageSettingsSelect.value = launcherSettingsCache.language || 'en';
+    const savedTheme = launcherSettingsCache.theme || 'skypixel';
+    applyThemeClass(savedTheme);
+    themeSelect.value = savedTheme === 'default' ? 'skypixel' : savedTheme;
 
     const serverConfig = await window.electronAPI.getServerConfig();
     await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version, 'papermc');
@@ -641,16 +672,23 @@ async function fetchAndDisplayIPs(showPort = false) {
 
 async function initializeApp() {
     try {
+        // Old behavior: simple overlay that hides after initialization completes
         const iconPath = await window.electronAPI.getIconPath();
         document.getElementById('app-icon').src = iconPath;
         const version = await window.electronAPI.getAppVersion();
         const titleText = `Server Launcher v${version}`;
         document.title = titleText;
         document.getElementById('app-title-version').textContent = titleText;
-        
-        await populateLanguageSelects();
+        // Keep loading overlay simple; no dynamic title/version on overlay
 
         launcherSettingsCache = await window.electronAPI.getSettings();
+        // Apply saved theme as early as possible on startup
+        const savedTheme = launcherSettingsCache.theme || 'skypixel';
+        applyThemeClass(savedTheme);
+        // Keep the settings UI in sync with the applied theme
+        themeSelect.value = savedTheme === 'default' ? 'skypixel' : savedTheme;
+        
+        await populateLanguageSelects();
         const savedLang = launcherSettingsCache.language || 'en';
         
         languageModalSelect.value = savedLang;
@@ -695,7 +733,7 @@ function startCountdown(seconds, messageKey, callback) {
             statusMessageSpan.textContent = message;
             statusMessageSpan.dataset.key = '';
             statusBarContent.classList.add('status-bar-pulse');
-            statusMessageSpan.style.color = '#3b82f6';
+            statusMessageSpan.style.color = 'var(--color-primary)';
             remaining--;
         } else {
             clearInterval(countdownInterval);
@@ -776,7 +814,7 @@ window.electronAPI.onJavaInstallStatus((status, progress) => {
         javaInstallProgressBar.style.width = `${progress || 0}%`;
     } else if (lowerStatus.includes('installer has been launched')) {
         const spinner = document.createElement('i');
-        spinner.className = 'fas fa-spinner fa-spin text-2xl text-blue-400 mt-4';
+        spinner.className = 'fas fa-spinner fa-spin text-2xl accent-text mt-4';
         javaInstallModalContent.appendChild(spinner);
     } else if (lowerStatus.includes('error') || lowerStatus.includes('failed') || lowerStatus.includes('timed out')) {
         javaInstallButton.classList.remove('hidden');
@@ -784,4 +822,133 @@ window.electronAPI.onJavaInstallStatus((status, progress) => {
         javaInstallButton.classList.remove('btn-disabled');
         javaRestartButton.classList.remove('hidden');
     }
+});
+
+// --- Plugins & Worlds Modal Logic ---
+async function openPluginsModal() {
+    await refreshPluginsList();
+    await refreshWorldsInfo();
+    showModal(pluginsModal, pluginsModalContent);
+}
+
+async function refreshPluginsList() {
+    pluginsList.innerHTML = '';
+    try {
+        const plugins = await window.electronAPI.getPlugins();
+        if (!plugins || plugins.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'text-gray-400 text-sm';
+            empty.textContent = 'No plugins found.';
+            pluginsList.appendChild(empty);
+            return;
+        }
+        plugins.forEach(p => {
+            const row = document.createElement('div');
+            row.className = 'flex items-center justify-between bg-gray-800 rounded px-3 py-2';
+            const left = document.createElement('div');
+            left.className = 'truncate';
+            const name = document.createElement('div');
+            name.className = 'text-sm text-gray-200 truncate';
+            name.textContent = p.name;
+            const meta = document.createElement('div');
+            meta.className = 'text-xs text-gray-400';
+            meta.textContent = `${(p.size/1024/1024).toFixed(2)} MB`;
+            left.appendChild(name);
+            left.appendChild(meta);
+            const actions = document.createElement('div');
+            const delBtn = document.createElement('button');
+            delBtn.className = 'btn-danger px-2 py-1 rounded text-xs';
+            delBtn.innerHTML = '<i class="fas fa-trash"></i>';
+            delBtn.addEventListener('click', async () => {
+                if (localIsServerRunning) {
+                    addToConsole('Stop the server before deleting plugins.', 'WARN');
+                    return;
+                }
+                const res = await window.electronAPI.deletePlugin(p.name);
+                if (!res.ok) addToConsole(`Delete failed: ${res.error}`, 'ERROR');
+                else addToConsole(`Deleted plugin ${p.name}`, 'SUCCESS');
+                await refreshPluginsList();
+            });
+            actions.appendChild(delBtn);
+            row.appendChild(left);
+            row.appendChild(actions);
+            pluginsList.appendChild(row);
+        });
+    } catch (e) {
+        addToConsole(`Failed to load plugins: ${e.message}`, 'ERROR');
+    }
+}
+
+async function refreshWorldsInfo() {
+    try {
+        const info = await window.electronAPI.getWorldsInfo();
+        currentWorldNameSpan.textContent = info.levelName || 'world';
+        worldNameInput.value = info.levelName || 'world';
+        worldsCandidates.innerHTML = '';
+        (info.candidates || []).forEach(name => {
+            const tag = document.createElement('button');
+            tag.className = 'px-2 py-1 rounded bg-gray-800 text-gray-200 text-xs hover:bg-gray-700';
+            tag.textContent = name;
+            tag.addEventListener('click', () => { worldNameInput.value = name; });
+            worldsCandidates.appendChild(tag);
+        });
+        worldExistsOverworld.textContent = info.exists?.overworld ? 'Yes' : 'No';
+        worldExistsNether.textContent = info.exists?.nether ? 'Yes' : 'No';
+        worldExistsTheEnd.textContent = info.exists?.the_end ? 'Yes' : 'No';
+    } catch (e) {
+        addToConsole(`Failed to load worlds info: ${e.message}`, 'ERROR');
+    }
+}
+
+uploadPluginButton?.addEventListener('click', async () => {
+    const res = await window.electronAPI.uploadPlugins();
+    if (!res.ok) addToConsole(`Upload failed: ${res.error}`, 'ERROR');
+    else if (res.added?.length) addToConsole(`Uploaded: ${res.added.join(', ')}`, 'SUCCESS');
+    await refreshPluginsList();
+});
+
+openPluginsFolderButton?.addEventListener('click', () => window.electronAPI.openPluginsFolder());
+
+applyWorldNameButton?.addEventListener('click', async () => {
+    const name = worldNameInput.value.trim();
+    if (!name) return;
+    const res = await window.electronAPI.setLevelName(name);
+    if (!res.ok) addToConsole(`Failed to apply level-name: ${res.error}`, 'ERROR');
+    else addToConsole(`Applied level-name=${name}`, 'SUCCESS');
+    await refreshWorldsInfo();
+});
+
+pluginsRefreshButton?.addEventListener('click', async () => {
+    await refreshPluginsList();
+    await refreshWorldsInfo();
+});
+
+const closePlugins = () => hideModal(pluginsModal, pluginsModalContent);
+closePluginsButton?.addEventListener('click', closePlugins);
+pluginsCloseFooter?.addEventListener('click', closePlugins);
+function applyThemeClass(theme) {
+    const classes = ['theme-skypixel','theme-nord','theme-aurora','theme-midnight','theme-emerald','theme-sunset','theme-crimson','theme-ocean','theme-grape','theme-neon'];
+    document.body.classList.remove(...classes);
+    if (theme === 'default') theme = 'skypixel';
+    const classMap = {
+        skypixel: null,
+        nord: 'theme-nord',
+        aurora: 'theme-aurora',
+        midnight: 'theme-midnight',
+        emerald: 'theme-emerald',
+        sunset: 'theme-sunset',
+        crimson: 'theme-crimson',
+        ocean: 'theme-ocean',
+        grape: 'theme-grape',
+        neon: 'theme-neon'
+    };
+    const cls = classMap[theme];
+    if (cls) document.body.classList.add(cls);
+}
+
+themeSelect.addEventListener('change', (e) => {
+    const value = e.target.value;
+    applyThemeClass(value);
+    launcherSettingsCache.theme = value;
+    window.electronAPI.setSettings({ theme: value });
 });

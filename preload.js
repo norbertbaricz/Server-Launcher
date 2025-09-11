@@ -21,6 +21,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     appReadyToShow: () => ipcRenderer.send('app-ready-to-show'),
     setSettings: (settings) => ipcRenderer.send('set-settings', settings),
     openPluginsFolder: () => ipcRenderer.send('open-plugins-folder'),
+    // Plugins & Worlds management
+    getPlugins: () => ipcRenderer.invoke('get-plugins'),
+    deletePlugin: (name) => ipcRenderer.invoke('delete-plugin', name),
+    uploadPlugins: () => ipcRenderer.invoke('upload-plugins'),
+    getWorldsInfo: () => ipcRenderer.invoke('get-worlds-info'),
+    setLevelName: (name) => ipcRenderer.invoke('set-level-name', name),
     configureServer: (options) => ipcRenderer.send('configure-server', options),
     startServer: () => ipcRenderer.send('start-server'),
     stopServer: () => ipcRenderer.send('stop-server'),

@@ -72,5 +72,7 @@
   "javaNotFound": "Java не е намерена!",
   "serverStartFailed": "Стартирането на сървъра е неуспешно.",
   "downloadSuccess": "PaperMC е изтеглен успешно!",
-  "downloadFailed": "Изтеглянето е неуспешно."
+  "downloadFailed": "Изтеглянето е неуспешно.",
+  "serverModelLabel": "Модел на сървъра",
+  "themeLabel": "Тема"
 }

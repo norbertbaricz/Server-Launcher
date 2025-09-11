@@ -72,5 +72,8 @@
   "javaNotFound": "Java not found!",
   "serverStartFailed": "Server start failed.",
   "downloadSuccess": "PaperMC downloaded successfully!",
-  "downloadFailed": "Download failed."
+  "downloadFailed": "Download failed.",
+  "serverModelLabel": "Server Model",
+  "serverModelVanilla": "Vanilla",
+  "themeLabel": "Theme"
 }

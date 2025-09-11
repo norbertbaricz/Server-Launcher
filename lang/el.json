@@ -72,5 +72,7 @@
   "javaNotFound": "Η Java δεν βρέθηκε!",
   "serverStartFailed": "Η εκκίνηση του διακομιστή απέτυχε.",
   "downloadSuccess": "Η λήψη του PaperMC ολοκληρώθηκε με επιτυχία!",
-  "downloadFailed": "Η λήψη απέτυχε."
+  "downloadFailed": "Η λήψη απέτυχε.",
+  "serverModelLabel": "Μοντέλο διακομιστή",
+  "themeLabel": "Θέμα"
 }

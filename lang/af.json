@@ -72,5 +72,7 @@
   "javaNotFound": "Java nie gevind nie!",
   "serverStartFailed": "Bedienerbegin het misluk.",
   "downloadSuccess": "PaperMC suksesvol afgelaai!",
-  "downloadFailed": "Aflaai het misluk."
+  "downloadFailed": "Aflaai het misluk.",
+  "serverModelLabel": "Bedienermodel",
+  "themeLabel": "Tema"
 }

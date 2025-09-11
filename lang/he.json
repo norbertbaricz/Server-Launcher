@@ -72,5 +72,7 @@
   "javaNotFound": "Java לא נמצאה!",
   "serverStartFailed": "הפעלת השרת נכשלה.",
   "downloadSuccess": "PaperMC הורד בהצלחה!",
-  "downloadFailed": "ההורדה נכשלה."
+  "downloadFailed": "ההורדה נכשלה.",
+  "serverModelLabel": "מודל שרת",
+  "themeLabel": "ערכת נושא"
 }

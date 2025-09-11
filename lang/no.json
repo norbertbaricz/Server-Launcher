@@ -72,5 +72,7 @@
   "javaNotFound": "Java ble ikke funnet!",
   "serverStartFailed": "Serverstart mislyktes.",
   "downloadSuccess": "PaperMC ble lastet ned!",
-  "downloadFailed": "Nedlasting mislyktes."
+  "downloadFailed": "Nedlasting mislyktes.",
+  "serverModelLabel": "Servermodell",
+  "themeLabel": "Tema"
 }
