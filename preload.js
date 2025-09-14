@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onJavaInstallRequired: (callback) => ipcRenderer.on('java-install-required', (_event, ...args) => callback(...args)),
     onJavaInstallStatus: (callback) => ipcRenderer.on('java-install-status', (_event, ...args) => callback(...args)),
     onSetupFinished: (callback) => ipcRenderer.on('setup-finished', (_event, ...args) => callback(...args)),
+    onPlaySound: (callback) => ipcRenderer.on('play-sound', (_event, ...args) => callback(...args)),
 
 
     // --- Renderer to Main (send) ---

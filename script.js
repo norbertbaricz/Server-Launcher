@@ -34,6 +34,7 @@ const languageModalSelect = document.getElementById('language-modal-select');
 const downloadModalButton = document.getElementById('download-button-modal');
 const downloadModalButtonIcon = downloadModalButton.querySelector('i');
 const downloadModalButtonText = document.getElementById('download-button-text');
+const serverTypeModalSelect = document.getElementById('server-type-modal');
 
 // Modal Settings
 const settingsModal = document.getElementById('settings-modal');
@@ -43,6 +44,8 @@ const ramAllocationSettingsSelect = document.getElementById('ram-allocation-sett
 const javaArgumentsSettingsSelect = document.getElementById('java-arguments-settings');
 const languageSettingsSelect = document.getElementById('language-settings-select');
 const themeSelect = document.getElementById('theme-select');
+const desktopNotificationsCheckbox = document.getElementById('notifications-checkbox');
+const serverTypeSettingsSelect = document.getElementById('server-type-settings');
 const startWithSystemCheckbox = document.getElementById('start-with-system-checkbox');
 const saveSettingsButton = document.getElementById('save-settings-button');
 const closeSettingsButton = document.getElementById('close-settings-button');
@@ -96,6 +99,22 @@ let countdownInterval = null;
 let isDownloadingFromServer = false;
 let currentTranslations = {};
 let launcherSettingsCache = {};
+
+function populateServerTypeSelect(selectEl, currentType) {
+    if (!selectEl) return;
+    const options = [
+        { value: 'papermc', label: currentTranslations['serverTypeDefault'] || 'PaperMC (Default)' },
+        { value: 'fabric', label: currentTranslations['serverTypeFabric'] || 'Fabric (Modded)' }
+    ];
+    selectEl.innerHTML = '';
+    for (const opt of options) {
+        const o = document.createElement('option');
+        o.value = opt.value;
+        o.textContent = opt.label;
+        selectEl.appendChild(o);
+    }
+    selectEl.value = currentType && ['papermc','fabric'].includes(currentType) ? currentType : 'papermc';
+}
 
 async function setLanguage(lang) {
     try {
@@ -221,6 +240,16 @@ function setStatus(fallbackText, pulse = false, translationKey = null) {
     const key = translationKey || statusMessageSpan.dataset.key;
     let message = (key && currentTranslations[key]) ? currentTranslations[key] : fallbackText;
 
+    // If status is 'downloading', preserve translated label and append percent from fallback if present
+    if (key === 'downloading' && typeof fallbackText === 'string') {
+        // Extract whatever is inside parentheses and append to translated base
+        const m = fallbackText.match(/\(([^)]+)\)/);
+        if (m && m[1]) {
+            const base = currentTranslations['downloading'] || 'Downloading';
+            message = `${base} (${m[1]})`;
+        }
+    }
+
     statusMessageSpan.textContent = message;
     statusMessageSpan.dataset.key = key || '';
     
@@ -271,7 +300,8 @@ function updateButtonStates(isRunning) {
     if (!isRunning) commandInput.value = "";
 
     if (currentServerConfig && currentServerConfig.version) {
-        serverVersionSpan.textContent = currentServerConfig.version;
+        const modSuffix = currentServerConfig.serverType === 'fabric' ? ' (Modded)' : '';
+        serverVersionSpan.textContent = currentServerConfig.version + modSuffix;
     } else {
         serverVersionSpan.textContent = 'N/A';
     }
@@ -295,7 +325,7 @@ async function populateMcVersionSelect(selectElement, currentVersion, serverType
         versions.forEach((version, index) => {
             const option = document.createElement('option');
             option.value = version;
-            option.textContent = version + ((index === 0 && serverType === 'papermc') ? ` (${currentTranslations['latestVersion'] || 'Latest'})` : '');
+            option.textContent = version + (index === 0 ? ` (${currentTranslations['latestVersion'] || 'Latest'})` : '');
             selectElement.appendChild(option);
         });
         selectElement.value = (currentVersion && versions.includes(currentVersion)) ? currentVersion : versions[0];
@@ -341,7 +371,11 @@ async function refreshUISetupState() {
     if (needsSetup) {
         hideModal(settingsModal, settingsModalContent);
         showModal(setupModal, setupModalContent);
-        const serverType = 'papermc';
+        const serverType = currentServerConfig.serverType || 'papermc';
+        populateServerTypeSelect(serverTypeModalSelect, serverType);
+        serverTypeModalSelect.onchange = async () => {
+            await populateMcVersionSelect(mcVersionModalSelect, null, serverTypeModalSelect.value);
+        };
         await populateMcVersionSelect(mcVersionModalSelect, currentServerConfig.version, serverType);
         ramAllocationModalSelect.value = currentServerConfig.ram || 'auto';
         updateButtonStates(localIsServerRunning);
@@ -352,6 +386,12 @@ async function refreshUISetupState() {
             }
             updateButtonStates(localIsServerRunning);
             await fetchAndDisplayIPs();
+            // Update Plugins button text in main UI
+            try {
+                const labelSpan = pluginsFolderButton.querySelector('span');
+                const label = (currentServerConfig?.serverType === 'fabric') ? 'Mods' : (currentTranslations['pluginsButton'] || 'Plugins');
+                if (labelSpan) labelSpan.textContent = label;
+            } catch (_) {}
         });
     }
 }
@@ -405,12 +445,13 @@ downloadModalButton.addEventListener('click', () => {
     if (downloadModalButton.disabled) return;
     const version = mcVersionModalSelect.value;
     const ram = ramAllocationModalSelect.value;
+    const serverType = serverTypeModalSelect?.value || 'papermc';
     if (!version) {
         addToConsole("No Minecraft version selected.", "ERROR");
         return;
     }
     showDownloadLoading();
-    window.electronAPI.configureServer({ mcVersion: version, ramAllocation: ram, javaArgs: 'Default' });
+    window.electronAPI.configureServer({ serverType, mcVersion: version, ramAllocation: ram, javaArgs: 'Default' });
 });
 
 pluginsFolderButton.addEventListener('click', async () => {
@@ -423,6 +464,7 @@ settingsButton.addEventListener('click', async () => {
     launcherSettingsCache = await window.electronAPI.getSettings();
     startWithSystemCheckbox.checked = launcherSettingsCache.openAtLogin;
     autoStartServerCheckbox.checked = launcherSettingsCache.autoStartServer;
+    desktopNotificationsCheckbox.checked = (launcherSettingsCache.notificationsEnabled !== false);
     
     const delay = launcherSettingsCache.autoStartDelay || 5;
     autoStartDelaySlider.value = delay;
@@ -440,10 +482,20 @@ settingsButton.addEventListener('click', async () => {
     themeSelect.value = savedTheme === 'default' ? 'skypixel' : savedTheme;
 
     const serverConfig = await window.electronAPI.getServerConfig();
-    await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version, 'papermc');
+    const currentType = serverConfig.serverType || 'papermc';
+    populateServerTypeSelect(serverTypeSettingsSelect, currentType);
+    serverTypeSettingsSelect.onchange = async () => {
+        await populateMcVersionSelect(mcVersionSettingsSelect, null, serverTypeSettingsSelect.value);
+    };
+    await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version, currentType);
     ramAllocationSettingsSelect.value = serverConfig.ram || 'auto';
     javaArgumentsSettingsSelect.value = serverConfig.javaArgs || 'Default';
     await populateServerProperties();
+    // Update Plugins button label in main UI based on server type
+    try {
+        const labelSpan = pluginsFolderButton.querySelector('span');
+        if (labelSpan) labelSpan.textContent = (serverConfig.serverType === 'fabric') ? 'Mods' : (currentTranslations['pluginsButton'] || 'Plugins');
+    } catch (_) {}
     showModal(settingsModal, settingsModalContent);
 });
 
@@ -454,6 +506,7 @@ saveSettingsButton.addEventListener('click', () => {
     launcherSettingsCache.autoStartServer = autoStartServerCheckbox.checked;
     launcherSettingsCache.autoStartDelay = parseInt(autoStartDelaySlider.value, 10);
     launcherSettingsCache.language = languageSettingsSelect.value;
+    launcherSettingsCache.notificationsEnabled = desktopNotificationsCheckbox.checked;
     
     window.electronAPI.setSettings(launcherSettingsCache);
     
@@ -463,10 +516,11 @@ saveSettingsButton.addEventListener('click', () => {
     });
     if (Object.keys(newProperties).length > 0) window.electronAPI.setServerProperties(newProperties);
     
+    const newServerType = serverTypeSettingsSelect?.value || 'papermc';
     const newMcVersion = mcVersionSettingsSelect.value;
     const newRam = ramAllocationSettingsSelect.value;
     const newJavaArgs = javaArgumentsSettingsSelect.value;
-    window.electronAPI.configureServer({ mcVersion: newMcVersion, ramAllocation: newRam, javaArgs: newJavaArgs });
+    window.electronAPI.configureServer({ serverType: newServerType, mcVersion: newMcVersion, ramAllocation: newRam, javaArgs: newJavaArgs });
     
     addToConsole("Settings saved and applied.", "SUCCESS");
     hideModal(settingsModal, settingsModalContent);
@@ -493,10 +547,12 @@ stopButton.addEventListener('click', () => {
 });
 
 sendCommandButton.addEventListener('click', () => {
-    const command = commandInput.value.trim();
-    if (command && localIsServerRunning) {
-        addToConsole(`> ${command}`, 'CMD');
-        window.electronAPI.sendCommand(command);
+    const raw = commandInput.value.trim();
+    if (raw && localIsServerRunning) {
+        // If command starts with a single leading '/', strip it; keep any other '/' inside
+        const sanitized = raw.startsWith('/') ? raw.slice(1) : raw;
+        addToConsole(`> ${sanitized}`, 'CMD');
+        window.electronAPI.sendCommand(sanitized);
         commandInput.value = '';
     }
 });
@@ -594,7 +650,7 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         await fetchAndDisplayIPs(false);
         memoryUsageSpan.textContent = '0 / 0 GB';
         memoryUsageSpan.style.color = '';
-        serverTpsSpan.textContent = '0.0 / 20.0';
+        serverTpsSpan.textContent = '0 ms';
         serverTpsSpan.style.color = '';
         allocatedRamCache = '0'; 
     }
@@ -604,7 +660,7 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
     }
 });
 
-window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, tps }) => {
+window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, tps, latencyMs }) => {
     if (allocatedRamGB) {
         allocatedRamCache = allocatedRamGB;
     }
@@ -629,15 +685,15 @@ window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, tps }) 
         }
     }
 
-    if (typeof tps !== 'undefined') {
-        const tpsValue = parseFloat(tps);
-        serverTpsSpan.textContent = tpsValue.toFixed(1) + ' / 20.0';
-        if (tpsValue < 15) {
-            serverTpsSpan.style.color = '#ef4444'; // Roșu
-        } else if (tpsValue < 19) {
-            serverTpsSpan.style.color = '#facc15'; // Galben
+    if (typeof latencyMs !== 'undefined') {
+        const ms = Math.max(0, parseInt(latencyMs, 10) || 0);
+        serverTpsSpan.textContent = `${ms} ms`;
+        if (ms >= 300) {
+            serverTpsSpan.style.color = '#ef4444'; // Red
+        } else if (ms >= 150) {
+            serverTpsSpan.style.color = '#facc15'; // Yellow
         } else {
-            serverTpsSpan.style.color = '#4ade80'; // Verde
+            serverTpsSpan.style.color = '#4ade80'; // Green
         }
     }
 });
@@ -824,8 +880,48 @@ window.electronAPI.onJavaInstallStatus((status, progress) => {
     }
 });
 
+// --- Play sound from main (start/crash notifications) ---
+window.electronAPI.onPlaySound((soundPath) => {
+    try {
+        if (soundPath) {
+            const audio = new Audio(soundPath);
+            audio.volume = 1.0;
+            audio.play().catch(() => { /* fallback below */ });
+            return;
+        }
+    } catch (_) {}
+    // Fallback beep using WebAudio if file missing or blocked
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 880; // A5
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.2);
+        osc.connect(gain).connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.22);
+    } catch (_) {}
+});
+
 // --- Plugins & Worlds Modal Logic ---
 async function openPluginsModal() {
+    // Adjust labels based on server type
+    const isFabric = (currentServerConfig?.serverType === 'fabric');
+    const headerH2 = pluginsModalContent.querySelector('h2');
+    if (headerH2) headerH2.textContent = isFabric ? 'Mods & Worlds' : 'Plugins & Worlds';
+    const sections = pluginsModalContent.querySelectorAll('section');
+    if (sections && sections[0]) {
+        const h3 = sections[0].querySelector('h3');
+        if (h3) h3.textContent = isFabric ? 'Mods' : 'Plugins';
+    }
+    const uploadBtn = document.getElementById('upload-plugin-button');
+    if (uploadBtn) uploadBtn.innerHTML = `<i class="fas fa-upload mr-1"></i>${isFabric ? 'Upload Mods' : 'Upload'}`;
+    const openFolderBtn = document.getElementById('open-plugins-folder-button');
+    if (openFolderBtn) openFolderBtn.innerHTML = `<i class="fas fa-folder-open mr-1"></i>${isFabric ? 'Open Mods Folder' : 'Open Folder'}`;
+
     await refreshPluginsList();
     await refreshWorldsInfo();
     showModal(pluginsModal, pluginsModalContent);
@@ -838,7 +934,8 @@ async function refreshPluginsList() {
         if (!plugins || plugins.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'text-gray-400 text-sm';
-            empty.textContent = 'No plugins found.';
+            const isFabric = (currentServerConfig?.serverType === 'fabric');
+            empty.textContent = isFabric ? 'No mods found.' : 'No plugins found.';
             pluginsList.appendChild(empty);
             return;
         }
@@ -861,12 +958,13 @@ async function refreshPluginsList() {
             delBtn.innerHTML = '<i class="fas fa-trash"></i>';
             delBtn.addEventListener('click', async () => {
                 if (localIsServerRunning) {
-                    addToConsole('Stop the server before deleting plugins.', 'WARN');
+                    const isFabric = (currentServerConfig?.serverType === 'fabric');
+                    addToConsole(isFabric ? 'Stop the server before deleting mods.' : 'Stop the server before deleting plugins.', 'WARN');
                     return;
                 }
                 const res = await window.electronAPI.deletePlugin(p.name);
                 if (!res.ok) addToConsole(`Delete failed: ${res.error}`, 'ERROR');
-                else addToConsole(`Deleted plugin ${p.name}`, 'SUCCESS');
+                else addToConsole(`Deleted ${ (currentServerConfig?.serverType === 'fabric') ? 'mod' : 'plugin' } ${p.name}`, 'SUCCESS');
                 await refreshPluginsList();
             });
             actions.appendChild(delBtn);

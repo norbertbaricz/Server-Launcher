@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Notification } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 const { version } = require('./package.json');
@@ -14,6 +14,93 @@ const find = require('find-process');
 
 let javaExecutablePath = 'java';
 let MINIMUM_JAVA_VERSION = 21;
+
+// Set a friendly app name as early as possible (helps Linux notifications / WM_CLASS)
+try { app.setName('Server Launcher'); } catch (_) {}
+
+function getCleanEnvForJava() {
+  // Avoid host/snap library injection that can break JVM
+  const env = { ...process.env };
+  delete env.LD_LIBRARY_PATH;
+  delete env.SNAP;
+  delete env.SNAP_NAME;
+  delete env.SNAP_VERSION;
+  delete env.SNAP_REVISION;
+  delete env.SNAP_ARCH;
+  delete env.SNAP_LIBRARY_PATH;
+  return env;
+}
+
+async function ensureBundledJavaLinux() {
+  if (process.platform !== 'linux') return false;
+  try {
+    const userDataPath = app.getPath('userData');
+    const jdkBaseDir = path.join(userDataPath, 'embedded-jdk-21');
+    if (!fs.existsSync(jdkBaseDir)) fs.mkdirSync(jdkBaseDir, { recursive: true });
+
+    const findJava = (base) => {
+      try {
+        const entries = fs.readdirSync(base, { withFileTypes: true });
+        for (const e of entries) {
+          if (!e.isDirectory()) continue;
+          const p = path.join(base, e.name, 'bin', 'java');
+          if (fs.existsSync(p)) return p;
+        }
+      } catch (_) {}
+      return null;
+    };
+
+    let existingJava = findJava(jdkBaseDir);
+    if (existingJava) {
+      javaExecutablePath = existingJava;
+      return true;
+    }
+
+    const archMap = { x64: 'x64', arm64: 'aarch64' };
+    const arch = archMap[process.arch] || 'x64';
+    const apiUrl = `https://api.adoptium.net/v3/assets/latest/21/hotspot?os=linux&architecture=${arch}&image_type=jdk`;
+    const win = getMainWindow();
+    if (win) win.webContents.send('java-install-status', 'Downloading embedded Java for Linux...', 0);
+
+    const apiResponse = await new Promise((resolve, reject) => {
+      https.get(apiUrl, { headers: { 'User-Agent': 'Server-Launcher-Electron' } }, (res) => {
+        if (res.statusCode !== 200) { res.resume(); return reject(new Error(`Adoptium API error ${res.statusCode}`)); }
+        let data=''; res.on('data', c=>data+=c); res.on('end', ()=>{ try { resolve(JSON.parse(data)); } catch(e){ reject(e);} });
+      }).on('error', reject);
+    });
+    const asset = Array.isArray(apiResponse) ? apiResponse[0] : null;
+    const pkg = asset?.binary?.package;
+    if (!pkg?.link || !pkg?.name || !pkg.name.endsWith('.tar.gz')) {
+      throw new Error('No suitable Linux JDK tar.gz found from Adoptium.');
+    }
+    const tmpPath = path.join(app.getPath('temp'), pkg.name);
+    await new Promise((resolve, reject) => {
+      const fileStream = fs.createWriteStream(tmpPath);
+      https.get(pkg.link, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
+        if (response.statusCode !== 200) return reject(new Error(`JDK download failed ${response.statusCode}`));
+        response.pipe(fileStream);
+        fileStream.on('finish', () => fileStream.close(resolve));
+      }).on('error', err => fs.unlink(tmpPath, () => reject(err)));
+    });
+
+    await new Promise((resolve, reject) => {
+      const args = ['-xzf', tmpPath, '-C', jdkBaseDir];
+      const proc = spawn('tar', args, { stdio: ['ignore','ignore','pipe'] });
+      let err = '';
+      proc.stderr.on('data', d => err += d.toString());
+      proc.on('close', code => code === 0 ? resolve() : reject(new Error(`tar failed: ${err || code}`)));
+      proc.on('error', reject);
+    });
+
+    existingJava = findJava(jdkBaseDir);
+    if (!existingJava) throw new Error('Embedded JDK extraction: java binary not found.');
+    javaExecutablePath = existingJava;
+    return true;
+  } catch (e) {
+    sendConsole(`Embedded Java install (Linux) failed: ${e.message}`, 'ERROR');
+    return false;
+  }
+}
 
 process.on('uncaughtException', (error) => {
   log.error('UNCAUGHT EXCEPTION:', error);
@@ -42,6 +129,19 @@ let rpcStartTime;
 let serverFilesDir;
 const paperJarName = 'paper.jar';
 let serverProcess = null;
+const fabricJarName = 'fabric-server-launch.jar';
+const fabricInstallerJarName = 'fabric-installer.jar';
+
+function getConfiguredServerType() {
+  try {
+    const cfg = readServerConfig();
+    return (cfg && (cfg.serverType === 'fabric' || cfg.serverType === 'papermc')) ? cfg.serverType : 'papermc';
+  } catch (_) { return 'papermc'; }
+}
+
+function getServerJarNameForType(serverType) {
+  return serverType === 'fabric' ? fabricJarName : paperJarName;
+}
 
 let serverConfigFilePath;
 const serverConfigFileName = 'config.json';
@@ -53,8 +153,10 @@ const serverPropertiesFileName = 'server.properties';
 let localIsServerRunningGlobal = false;
 let mainWindow;
 let performanceStatsInterval = null;
-let manualTpsCheck = false; // Flag pentru comanda /tps manuală
+let manualTpsCheck = false; // Deprecated: no longer used for TPS
 let manualListCheck = false; 
+let latencyProbeActive = false; // internal '/list' latency probe for Fabric
+let latencyProbeStart = 0;
 
 // Enforce single-instance to avoid duplicate servers/processes
 const gotTheLock = app.requestSingleInstanceLock();
@@ -73,10 +175,11 @@ if (!gotTheLock) {
 async function killStrayServerProcess() {
     try {
         const processes = await find('name', 'java', true);
-        const serverJarPath = path.join(serverFilesDir, paperJarName);
+        const serverJarPaper = path.join(serverFilesDir, paperJarName);
+        const serverJarFabric = path.join(serverFilesDir, fabricJarName);
 
         for (const p of processes) {
-            if (p.cmd.includes(serverJarPath)) {
+            if (p.cmd.includes(serverJarPaper) || p.cmd.includes(serverJarFabric)) {
                 log.warn(`Found a stray server process with PID ${p.pid}. Attempting to kill it.`);
                 sendConsole(`Found a stray server process (PID: ${p.pid}). Terminating...`, 'WARN');
                 process.kill(p.pid);
@@ -91,7 +194,7 @@ async function killStrayServerProcess() {
 async function checkJava() {
     return new Promise((resolve) => {
         const verifyJavaVersion = (javaPath, callback) => {
-            exec(`"${javaPath}" -version`, (error, stdout, stderr) => {
+            exec(`"${javaPath}" -version`, { env: getCleanEnvForJava() }, (error, stdout, stderr) => {
                 const output = stderr || stdout;
                 if (error) {
                     return callback(false);
@@ -409,6 +512,60 @@ function getLocalIPv4() {
     return '-';
 }
 
+function getNotificationIconPath() {
+    try {
+        const platform = process.platform;
+        const resources = process.resourcesPath;
+        const buildDir = path.join(__dirname, 'build');
+        if (platform === 'win32') {
+            const icoRes = path.join(resources, 'icon.ico');
+            const icoBuild = path.join(buildDir, 'icon.ico');
+            return fs.existsSync(icoRes) ? icoRes : (fs.existsSync(icoBuild) ? icoBuild : undefined);
+        } else if (platform === 'darwin') {
+            const icnsRes = path.join(resources, 'icon.icns');
+            const icnsBuild = path.join(buildDir, 'icon.icns');
+            return fs.existsSync(icnsRes) ? icnsRes : (fs.existsSync(icnsBuild) ? icnsBuild : undefined);
+        } else {
+            const pngRes = path.join(resources, 'icon.png');
+            const pngBuild = path.join(buildDir, 'icon.png');
+            return fs.existsSync(pngRes) ? pngRes : (fs.existsSync(pngBuild) ? pngBuild : undefined);
+        }
+    } catch (_) { return undefined; }
+}
+
+function showDesktopNotification(title, body) {
+    try {
+        if (!Notification || !Notification.isSupported()) return;
+        const settings = readLauncherSettings();
+        if (settings && settings.notificationsEnabled === false) return;
+        const iconPath = getNotificationIconPath();
+        const notif = new Notification({ title, body, icon: iconPath, silent: false });
+        notif.show();
+    } catch (_) { /* ignore notification errors */ }
+}
+
+function getNotificationSoundPath() {
+    try {
+        const resources = process.resourcesPath;
+        const buildDir = path.join(__dirname, 'build');
+        const fromRes = path.join(resources, 'notification.wav');
+        const fromBuild = path.join(buildDir, 'notification.wav');
+        if (fs.existsSync(fromRes)) return fromRes;
+        if (fs.existsSync(fromBuild)) return fromBuild;
+    } catch (_) {}
+    return null;
+}
+
+function playNotificationSound() {
+    try {
+        const settings = readLauncherSettings();
+        if (settings && settings.notificationsEnabled === false) return;
+        const soundPath = getNotificationSoundPath();
+        const win = getMainWindow();
+        if (win && !win.isDestroyed()) win.webContents.send('play-sound', soundPath);
+    } catch (_) {}
+}
+
 async function getPublicIP() {
     return new Promise((resolve, reject) => {
         const request = https.get('https://api.ipify.org?format=json', { headers: {'User-Agent': 'MyMinecraftLauncher/1.0'} }, (res) => {
@@ -438,6 +595,27 @@ async function getPublicIP() {
 }
 
 function createWindow () {
+  // Resolve icon for window and notifications
+  const resolveIconForWindow = () => {
+    try {
+      const resBase = process.resourcesPath;
+      const buildBase = path.join(__dirname, 'build');
+      if (process.platform === 'win32') {
+        const icoRes = path.join(resBase, 'icon.ico');
+        const icoBuild = path.join(buildBase, 'icon.ico');
+        return fs.existsSync(icoRes) ? icoRes : (fs.existsSync(icoBuild) ? icoBuild : undefined);
+      } else if (process.platform === 'darwin') {
+        const icnsRes = path.join(resBase, 'icon.icns');
+        const icnsBuild = path.join(buildBase, 'icon.icns');
+        return fs.existsSync(icnsRes) ? icnsRes : (fs.existsSync(icnsBuild) ? icnsBuild : undefined);
+      } else {
+        const pngRes = path.join(resBase, 'icon.png');
+        const pngBuild = path.join(buildBase, 'icon.png');
+        return fs.existsSync(pngRes) ? pngRes : (fs.existsSync(pngBuild) ? pngBuild : undefined);
+      }
+    } catch (_) { return undefined; }
+  };
+
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
@@ -445,6 +623,7 @@ function createWindow () {
     fullscreenable: true,
     frame: false,
     show: false,
+    icon: resolveIconForWindow(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -489,6 +668,7 @@ function createWindow () {
 
 app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData');
+  try { if (typeof app.setDesktopName === 'function') app.setDesktopName('server-launcher.desktop'); } catch (_) {}
   serverFilesDir = path.join(userDataPath, 'MinecraftServer');
   serverConfigFilePath = path.join(serverFilesDir, serverConfigFileName);
   launcherSettingsFilePath = path.join(userDataPath, launcherSettingsFileName);
@@ -504,6 +684,9 @@ app.whenReady().then(async () => {
   }
   await killStrayServerProcess();
   createWindow();
+
+  // Ensure Windows toast notifications work
+  try { if (process.platform === 'win32') app.setAppUserModelId('com.server.launcher'); } catch (_) {}
 
   rpc = new RPC.Client({ transport: 'ipc' });
   rpc.on('ready', () => {
@@ -589,7 +772,8 @@ ipcMain.handle('get-settings', () => {
         autoStartServer: settings.autoStartServer || false,
         autoStartDelay: settings.autoStartDelay || 5,
         language: settings.language || 'en',
-        theme: settings.theme || 'default'
+        theme: settings.theme || 'default',
+        notificationsEnabled: (settings.notificationsEnabled !== false)
     };
 });
 
@@ -678,26 +862,57 @@ ipcMain.on('set-server-properties', (event, newProperties) => {
 });
 ipcMain.handle('get-app-path', () => app.getAppPath());
 ipcMain.handle('check-initial-setup', async () => {
-    const jarExists = fs.existsSync(path.join(serverFilesDir, paperJarName));
     const configExists = fs.existsSync(serverConfigFilePath);
+    let jarExists = false;
+    if (configExists) {
+        const cfg = readServerConfig();
+        const t = (cfg.serverType === 'fabric') ? 'fabric' : 'papermc';
+        jarExists = fs.existsSync(path.join(serverFilesDir, getServerJarNameForType(t)));
+    }
     const needsSetup = !jarExists || !configExists;
     if (!needsSetup) sendConsole(`Setup check OK.`, 'INFO');
     return { needsSetup, config: configExists ? readServerConfig() : {} };
 });
-ipcMain.handle('get-available-versions', async (event, serverType) => {
+ipcMain.handle('get-available-versions', async (_event, serverType) => {
+    const type = serverType === 'fabric' ? 'fabric' : 'papermc';
     try {
-        const projectApiUrl = 'https://api.papermc.io/v2/projects/paper';
-        const projectResponseData = await new Promise((resolve, reject) => {
-            https.get(projectApiUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
-                if (res.statusCode !== 200) { res.resume(); return reject(new Error(`API Error (Status ${res.statusCode})`)); }
-                let data = ''; res.on('data', chunk => data += chunk);
-                res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse JSON.')); }});
-            }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
-        });
-        if (projectResponseData.versions?.length > 0) return projectResponseData.versions.reverse();
-        throw new Error('No versions found.');
+        if (type === 'papermc') {
+            const projectApiUrl = 'https://api.papermc.io/v2/projects/paper';
+            const projectResponseData = await new Promise((resolve, reject) => {
+                https.get(projectApiUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
+                    if (res.statusCode !== 200) { res.resume(); return reject(new Error(`API Error (Status ${res.statusCode})`)); }
+                    let data = ''; res.on('data', chunk => data += chunk);
+                    res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse JSON.')); }});
+                }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
+            });
+            if (projectResponseData.versions?.length > 0) return projectResponseData.versions.reverse();
+            throw new Error('No versions found.');
+        } else {
+            // Fabric: list supported game versions (stable)
+            const fabricGameUrl = 'https://meta.fabricmc.net/v2/versions/game';
+            const response = await new Promise((resolve, reject) => {
+                https.get(fabricGameUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
+                    if (res.statusCode !== 200) { res.resume(); return reject(new Error(`API Error (Status ${res.statusCode})`)); }
+                    let data = ''; res.on('data', chunk => data += chunk);
+                    res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse JSON.')); }});
+                }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
+            });
+            const stable = Array.isArray(response) ? response.filter(v => v && v.version && v.stable) : [];
+            const versions = stable.map(v => v.version);
+            // sort desc by semantic components
+            versions.sort((a,b) => {
+                const pa = a.split('.').map(n=>parseInt(n,10));
+                const pb = b.split('.').map(n=>parseInt(n,10));
+                for (let i=0;i<3;i++) {
+                    const da = pa[i]||0, db = pb[i]||0;
+                    if (da!==db) return db-da;
+                }
+                return 0;
+            });
+            return versions;
+        }
     } catch (error) {
-        sendConsole(`Could not fetch PaperMC versions: ${error.message}`, 'ERROR');
+        sendConsole(`Could not fetch ${type === 'fabric' ? 'Fabric' : 'PaperMC'} versions: ${error.message}`, 'ERROR');
         return [];
     }
 });
@@ -705,15 +920,17 @@ ipcMain.handle('get-available-versions', async (event, serverType) => {
 // --- Plugins management ---
 ipcMain.handle('get-plugins', async () => {
     try {
-        const pluginsDir = path.join(serverFilesDir, 'plugins');
-        if (!fs.existsSync(pluginsDir)) return [];
-        const files = fs.readdirSync(pluginsDir).filter(f => f.toLowerCase().endsWith('.jar'));
+        const cfg = readServerConfig();
+        const isFabric = (cfg.serverType === 'fabric');
+        const baseDir = path.join(serverFilesDir, isFabric ? 'mods' : 'plugins');
+        if (!fs.existsSync(baseDir)) return [];
+        const files = fs.readdirSync(baseDir).filter(f => f.toLowerCase().endsWith('.jar'));
         return files.map(name => {
-            const stat = fs.statSync(path.join(pluginsDir, name));
+            const stat = fs.statSync(path.join(baseDir, name));
             return { name, size: stat.size, mtime: stat.mtimeMs };
         }).sort((a, b) => a.name.localeCompare(b.name));
     } catch (e) {
-        sendConsole(`Failed to list plugins: ${e.message}`, 'ERROR');
+        sendConsole(`Failed to list add-ons: ${e.message}`, 'ERROR');
         return [];
     }
 });
@@ -726,9 +943,11 @@ ipcMain.handle('delete-plugin', async (_event, name) => {
         if (typeof name !== 'string' || !name || name.includes('..') || name.includes('/') || name.includes('\\') || !name.toLowerCase().endsWith('.jar')) {
             return { ok: false, error: 'Invalid plugin name.' };
         }
-        const pluginsDir = path.join(serverFilesDir, 'plugins');
-        const resolvedBase = path.resolve(pluginsDir) + path.sep;
-        const target = path.resolve(pluginsDir, name);
+        const cfg = readServerConfig();
+        const isFabric = (cfg.serverType === 'fabric');
+        const baseDir = path.join(serverFilesDir, isFabric ? 'mods' : 'plugins');
+        const resolvedBase = path.resolve(baseDir) + path.sep;
+        const target = path.resolve(baseDir, name);
         if (!target.startsWith(resolvedBase)) return { ok: false, error: 'Invalid path.' };
         if (fs.existsSync(target)) fs.unlinkSync(target);
         return { ok: true };
@@ -741,19 +960,21 @@ ipcMain.handle('upload-plugins', async () => {
     try {
         const win = getMainWindow();
         if (!win) return { ok: false, error: 'No window' };
+        const cfg = readServerConfig();
+        const isFabric = (cfg.serverType === 'fabric');
         const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-            title: 'Select plugin JAR files',
+            title: isFabric ? 'Select mod JAR files' : 'Select plugin JAR files',
             properties: ['openFile', 'multiSelections'],
-            filters: [{ name: 'Plugins', extensions: ['jar'] }]
+            filters: [{ name: isFabric ? 'Mods' : 'Plugins', extensions: ['jar'] }]
         });
         if (canceled || !filePaths?.length) return { ok: true, added: [] };
-        const pluginsDir = path.join(serverFilesDir, 'plugins');
-        if (!fs.existsSync(pluginsDir)) fs.mkdirSync(pluginsDir, { recursive: true });
+        const baseDir = path.join(serverFilesDir, isFabric ? 'mods' : 'plugins');
+        if (!fs.existsSync(baseDir)) fs.mkdirSync(baseDir, { recursive: true });
         const added = [];
         for (const src of filePaths) {
             const base = path.basename(src);
             if (!base.toLowerCase().endsWith('.jar')) continue;
-            const dest = path.join(pluginsDir, base);
+            const dest = path.join(baseDir, base);
             fs.copyFileSync(src, dest);
             added.push(base);
         }
@@ -827,17 +1048,19 @@ ipcMain.handle('set-level-name', async (_event, newName) => {
     }
 });
 ipcMain.on('open-plugins-folder', () => {
-    const pluginsDir = path.join(serverFilesDir, 'plugins');
-    if (!fs.existsSync(pluginsDir)) {
+    const cfg = readServerConfig();
+    const isFabric = (cfg.serverType === 'fabric');
+    const baseDir = path.join(serverFilesDir, isFabric ? 'mods' : 'plugins');
+    if (!fs.existsSync(baseDir)) {
         try {
-            fs.mkdirSync(pluginsDir, { recursive: true });
-            sendConsole('Plugins directory created.', 'INFO');
+            fs.mkdirSync(baseDir, { recursive: true });
+            sendConsole(`${isFabric ? 'Mods' : 'Plugins'} directory created.`, 'INFO');
         } catch (error) {
             sendConsole(`Failed to create plugins directory: ${error.message}`, 'ERROR');
             return;
         }
     }
-    shell.openPath(pluginsDir).catch(err => sendConsole(`Failed to open plugins folder: ${err.message}`, 'ERROR'));
+    shell.openPath(baseDir).catch(err => sendConsole(`Failed to open folder: ${err.message}`, 'ERROR'));
 });
 
 ipcMain.handle('get-available-languages', () => {
@@ -882,11 +1105,13 @@ ipcMain.handle('get-translations', async (event, lang) => {
   return null;
 });
 
-ipcMain.on('configure-server', async (event, { mcVersion, ramAllocation, javaArgs }) => {
-    sendConsole(`Configuring: Version ${mcVersion}, RAM ${ramAllocation}`, 'INFO');
+ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocation, javaArgs }) => {
+    const chosenType = serverType === 'fabric' ? 'fabric' : 'papermc';
+    sendConsole(`Configuring: Type ${chosenType}, Version ${mcVersion}, RAM ${ramAllocation}`, 'INFO');
     const currentConfig = readServerConfig();
     const oldVersion = currentConfig.version;
-    currentConfig.version = mcVersion;
+    const oldType = currentConfig.serverType || 'papermc';
+    // Update only RAM and Java args immediately
     currentConfig.javaArgs = javaArgs || 'Default';
     if (ramAllocation?.toLowerCase() !== 'auto') {
         currentConfig.ram = ramAllocation;
@@ -896,63 +1121,150 @@ ipcMain.on('configure-server', async (event, { mcVersion, ramAllocation, javaArg
     writeServerConfig(currentConfig);
     // Adjust minimum Java requirement based on selected version
     MINIMUM_JAVA_VERSION = requiredJavaForVersion(mcVersion);
-
-    const serverJarPath = path.join(serverFilesDir, paperJarName);
-
-    if (fs.existsSync(serverJarPath) && oldVersion !== mcVersion) {
-        sendConsole(`Removing old paper.jar for version ${oldVersion}...`, 'INFO');
-        try {
-            fs.unlinkSync(serverJarPath);
-            sendConsole('Old paper.jar removed successfully.', 'SUCCESS');
-        } catch (error) {
-            sendConsole(`Error removing old paper.jar: ${error.message}`, 'ERROR');
-            sendStatus('Error updating version.', false, 'error');
-            getMainWindow()?.webContents.send('setup-finished');
-            return;
-        }
-    } else if (fs.existsSync(serverJarPath) && oldVersion === mcVersion) {
-        sendStatus('Configuration saved! Version is already up to date.', false, 'configSaved');
-        getMainWindow()?.webContents.send('setup-finished');
-        
-        setTimeout(async () => {
-            const hasJava = await checkJava();
-            if (!hasJava && app.isPackaged) {
-                getMainWindow()?.webContents.send('java-install-required');
-            }
-        }, 2000);
-        return;
-    }
     
-    sendStatus(`Downloading PaperMC ${mcVersion}...`, true, 'downloading');
     try {
-        const buildsApiUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds`;
-        const buildsResponseData = await new Promise((resolve, reject) => {
-             https.get(buildsApiUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
-                if (res.statusCode !== 200) { res.resume(); return reject(new Error(`API Error (Status ${res.statusCode})`)); }
-                let data = ''; res.on('data', chunk => data += chunk);
-                res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse JSON.')); }});
-            }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
-        });
-        if (!buildsResponseData.builds?.length > 0) throw new Error('No builds found.');
-        const latestBuild = buildsResponseData.builds.pop();
-        const downloadUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds/${latestBuild.build}/downloads/${latestBuild.downloads.application.name}`;
-        
-        const fileStream = fs.createWriteStream(path.join(serverFilesDir, paperJarName));
-        await new Promise((resolve, reject) => {
-            https.get(downloadUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (response) => {
-                if (response.statusCode !== 200) return reject(new Error(`Download failed (Status ${response.statusCode})`));
-                response.pipe(fileStream);
-                fileStream.on('finish', () => fileStream.close(resolve));
-            }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
-        });
-        
-        sendStatus('PaperMC downloaded successfully!', false, 'downloadSuccess');
-        sendConsole(`${paperJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
+        if (chosenType === 'papermc') {
+            sendStatus(`Downloading PaperMC ${mcVersion}...`, true, 'downloading');
+            const buildsApiUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds`;
+            const buildsResponseData = await new Promise((resolve, reject) => {
+                https.get(buildsApiUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
+                    if (res.statusCode !== 200) { res.resume(); return reject(new Error(`API Error (Status ${res.statusCode})`)); }
+                    let data = ''; res.on('data', chunk => data += chunk);
+                    res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse JSON.')); }});
+                }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
+            });
+            if (!buildsResponseData.builds?.length > 0) throw new Error('No builds found.');
+            const latestBuild = buildsResponseData.builds.pop();
+            const downloadUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds/${latestBuild.build}/downloads/${latestBuild.downloads.application.name}`;
+            sendStatus(`Downloading (0%)`, true, 'downloading');
+
+            const paperDest = path.join(serverFilesDir, paperJarName);
+            await new Promise((resolve, reject) => {
+                const doDownload = (url) => {
+                    https.get(url, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (response) => {
+                        if ([301,302,303,307,308].includes(response.statusCode) && response.headers.location) {
+                            response.resume();
+                            return doDownload(response.headers.location);
+                        }
+                        if (response.statusCode !== 200) return reject(new Error(`Download failed (Status ${response.statusCode})`));
+                        const total = parseInt(response.headers['content-length'] || '0', 10);
+                        let downloaded = 0;
+                        let lastPercent = -1, lastMB = -1;
+                        const fileStream = fs.createWriteStream(paperDest);
+                        response.on('data', chunk => {
+                            downloaded += chunk.length;
+                            if (total > 0) {
+                                const percent = Math.round((downloaded / total) * 100);
+                                if (percent !== lastPercent) {
+                                    lastPercent = percent;
+                                    sendStatus(`Downloading (${percent}%)`, true, 'downloading');
+                                }
+                            } else {
+                                const mb = Math.floor(downloaded / (1024*1024));
+                                if (mb !== lastMB) {
+                                    lastMB = mb;
+                                    sendStatus(`Downloading (${mb} MB)`, true, 'downloading');
+                                }
+                            }
+                        });
+                        response.pipe(fileStream);
+                        fileStream.on('finish', () => fileStream.close(resolve));
+                    }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
+                };
+                doDownload(downloadUrl);
+            });
+            // Use legacy key 'downloadSuccess' to keep existing translations working
+            sendStatus('PaperMC downloaded successfully!', false, 'downloadSuccess');
+            sendConsole(`${paperJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
+            // Persist type+version only after successful install
+            const updated = readServerConfig();
+            updated.serverType = chosenType;
+            updated.version = mcVersion;
+            writeServerConfig(updated);
+        } else {
+            // Fabric path: directly download the loader server jar (no Java needed at setup)
+            sendStatus(`Preparing Fabric ${mcVersion}...`, true, 'downloading');
+
+            // 1) Find a compatible loader for this MC version
+            const loaderListUrl = `https://meta.fabricmc.net/v2/versions/loader/${mcVersion}`;
+            const loaderData = await new Promise((resolve, reject) => {
+                https.get(loaderListUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
+                    if (res.statusCode !== 200) { res.resume(); return reject(new Error(`API Error (Status ${res.statusCode})`)); }
+                    let data = ''; res.on('data', c => data += c);
+                    res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse JSON.')); }});
+                }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
+            });
+            if (!Array.isArray(loaderData) || loaderData.length === 0) throw new Error('No Fabric loader found for this version.');
+            const pick = loaderData.find(x => x?.loader?.stable) || loaderData[0];
+            const loaderVersion = pick?.loader?.version;
+            if (!loaderVersion) throw new Error('Fabric loader version missing.');
+
+            // 2) Pick installer version (latest stable)
+            const installerMetaUrl = 'https://meta.fabricmc.net/v2/versions/installer';
+            const installers = await new Promise((resolve, reject) => {
+                https.get(installerMetaUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
+                    if (res.statusCode !== 200) { res.resume(); return reject(new Error(`API Error (Status ${res.statusCode})`)); }
+                    let data = ''; res.on('data', chunk => data += chunk);
+                    res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse JSON.')); }});
+                }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
+            });
+            if (!Array.isArray(installers) || installers.length === 0) throw new Error('No Fabric installers found.');
+            const pickedInstaller = installers.find(x => x.stable) || installers[0];
+            const installerVersion = pickedInstaller?.version;
+            if (!installerVersion) throw new Error('Fabric installer version missing.');
+
+            // 3) Compose direct server JAR URL and download
+            const downloadUrl = `https://meta.fabricmc.net/v2/versions/loader/${mcVersion}/${loaderVersion}/${installerVersion}/server/jar`;
+            sendStatus(`Downloading (0%)`, true, 'downloading');
+            const fabricDest = path.join(serverFilesDir, fabricJarName);
+            await new Promise((resolve, reject) => {
+                const doDownload = (url) => {
+                    https.get(url, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (response) => {
+                        if ([301,302,303,307,308].includes(response.statusCode) && response.headers.location) {
+                            response.resume();
+                            return doDownload(response.headers.location);
+                        }
+                        if (response.statusCode !== 200) return reject(new Error(`Download failed (Status ${response.statusCode})`));
+                        const total = parseInt(response.headers['content-length'] || '0', 10);
+                        let downloaded = 0;
+                        let lastPercent = -1, lastMB = -1;
+                        const fileStream = fs.createWriteStream(fabricDest);
+                        response.on('data', chunk => {
+                            downloaded += chunk.length;
+                            if (total > 0) {
+                                const percent = Math.round((downloaded / total) * 100);
+                                if (percent !== lastPercent) {
+                                    lastPercent = percent;
+                                    sendStatus(`Downloading (${percent}%)`, true, 'downloading');
+                                }
+                            } else {
+                                const mb = Math.floor(downloaded / (1024*1024));
+                                if (mb !== lastMB) {
+                                    lastMB = mb;
+                                    sendStatus(`Downloading (${mb} MB)`, true, 'downloading');
+                                }
+                            }
+                        });
+                        response.pipe(fileStream);
+                        fileStream.on('finish', () => fileStream.close(resolve));
+                    }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
+                };
+                doDownload(downloadUrl);
+            });
+
+            sendStatus('Fabric Server installed successfully!', false, 'downloadSuccessFabric');
+            sendConsole(`${fabricJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
+            // Persist type+version only after successful download
+            const updated = readServerConfig();
+            updated.serverType = chosenType;
+            updated.version = mcVersion;
+            writeServerConfig(updated);
+        }
+
         getMainWindow()?.webContents.send('setup-finished');
-        
         setTimeout(async () => {
-            const hasJava = await checkJava();
-            if (!hasJava && app.isPackaged) {
+            const hasJava2 = await checkJava();
+            if (!hasJava2 && app.isPackaged) {
                 const win = getMainWindow();
                 if (win && !win.isDestroyed()) {
                     win.webContents.send('java-install-required');
@@ -972,13 +1284,15 @@ ipcMain.on('start-server', async () => {
         sendConsole('Server is already running.', 'WARN');
         return;
     }
-    const serverJarPath = path.join(serverFilesDir, paperJarName);
+    const serverConfig = readServerConfig();
+    const serverType = serverConfig.serverType || 'papermc';
+    const jarName = getServerJarNameForType(serverType);
+    const serverJarPath = path.join(serverFilesDir, jarName);
     if (!fs.existsSync(serverJarPath)) {
-        sendConsole(`${paperJarName} not found.`, 'ERROR');
-        sendStatus(`${paperJarName} not found.`, false, 'paperJarNotFound');
+        sendConsole(`${jarName} not found.`, 'ERROR');
+        sendStatus('Server JAR not found.', false, 'serverJarNotFound');
         return;
     }
-    const serverConfig = readServerConfig();
     if (!serverConfig.version) {
         sendConsole('Server version missing in config.', 'ERROR');
         sendStatus('Config error.', false, 'configError');
@@ -1005,8 +1319,8 @@ ipcMain.on('start-server', async () => {
         ramToUseForJava = `${autoRamMB}M`;
     }
     const javaArgsProfile = serverConfig.javaArgs || 'Default';
-    const performanceArgs = ['-Xms' + ramToUseForJava, '-Xmx' + ramToUseForJava, '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-XX:MaxGCPauseMillis=200', '-XX:+UnlockExperimentalVMOptions', '-XX:+DisableExplicitGC', '-XX:+AlwaysPreTouch', '-XX:G1NewSizePercent=40', '-XX:G1MaxNewSizePercent=50', '-XX:G1HeapRegionSize=16M', '-XX:G1ReservePercent=15', '-XX:G1HeapWastePercent=5', '-XX:InitiatingHeapOccupancyPercent=20', '-XX:G1MixedGCLiveThresholdPercent=90', '-XX:G1RSetUpdatingPauseTimePercent=5', '-XX:SurvivorRatio=32', '-XX:MaxTenuringThreshold=1', '-Dusing.aikars.flags=https://mcflags.emc.gs', '-Daikars.new.flags=true', '-jar', paperJarName, 'nogui'];
-    const defaultArgs = ['-Xms' + ramToUseForJava, '-Xmx' + ramToUseForJava, '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-XX:+UnlockExperimentalVMOptions', '-XX:MaxGCPauseMillis=200', '-XX:G1NewSizePercent=30', '-XX:G1MaxNewSizePercent=40', '-XX:G1HeapRegionSize=8M', '-XX:G1ReservePercent=20', '-XX:InitiatingHeapOccupancyPercent=45', '-jar', paperJarName, 'nogui'];
+    const performanceArgs = ['-Xms' + ramToUseForJava, '-Xmx' + ramToUseForJava, '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-XX:MaxGCPauseMillis=200', '-XX:+UnlockExperimentalVMOptions', '-XX:+DisableExplicitGC', '-XX:+AlwaysPreTouch', '-XX:G1NewSizePercent=40', '-XX:G1MaxNewSizePercent=50', '-XX:G1HeapRegionSize=16M', '-XX:G1ReservePercent=15', '-XX:G1HeapWastePercent=5', '-XX:InitiatingHeapOccupancyPercent=20', '-XX:G1MixedGCLiveThresholdPercent=90', '-XX:G1RSetUpdatingPauseTimePercent=5', '-XX:SurvivorRatio=32', '-XX:MaxTenuringThreshold=1', '-Dusing.aikars.flags=https://mcflags.emc.gs', '-Daikars.new.flags=true', '-jar', jarName, 'nogui'];
+    const defaultArgs = ['-Xms' + ramToUseForJava, '-Xmx' + ramToUseForJava, '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-XX:+UnlockExperimentalVMOptions', '-XX:MaxGCPauseMillis=200', '-XX:G1NewSizePercent=30', '-XX:G1MaxNewSizePercent=40', '-XX:G1HeapRegionSize=8M', '-XX:G1ReservePercent=20', '-XX:InitiatingHeapOccupancyPercent=45', '-jar', jarName, 'nogui'];
     const javaArgs = (javaArgsProfile === 'Performance') ? performanceArgs : defaultArgs;
     sendConsole(`Using ${javaArgsProfile} Java arguments.`, 'INFO');
     sendConsole(`Starting server with ${ramToUseForJava} RAM...`, 'INFO');
@@ -1027,7 +1341,7 @@ ipcMain.on('start-server', async () => {
         const allocatedRamGB = parseRamToGB(ramToUseForJava);
         getMainWindow()?.webContents.send('update-performance-stats', { allocatedRamGB });
 
-        serverProcess = spawn(javaExecutablePath, javaArgs, { cwd: serverFilesDir, stdio: ['pipe', 'pipe', 'pipe'] });
+        serverProcess = spawn(javaExecutablePath, javaArgs, { cwd: serverFilesDir, stdio: ['pipe', 'pipe', 'pipe'], env: getCleanEnvForJava() });
         serverProcess.killedInternally = false;
         let serverIsFullyStarted = false;
 
@@ -1042,8 +1356,16 @@ ipcMain.on('start-server', async () => {
                 const stats = await pidusage(serverProcess.pid);
                 const memoryGB = stats.memory / (1024 * 1024 * 1024);
                 getMainWindow()?.webContents.send('update-performance-stats', { memoryGB });
-                if (serverProcess && serverProcess.stdin && serverProcess.stdin.writable) {
-                    serverProcess.stdin.write("tps\n");
+                if (serverIsFullyStarted && serverProcess && serverProcess.stdin && serverProcess.stdin.writable) {
+                    // Send '/list' as a latency probe if none pending and not a manual '/list'
+                    if (latencyProbeActive && Date.now() - latencyProbeStart > 5000) {
+                        latencyProbeActive = false;
+                    }
+                    if (!latencyProbeActive && !manualListCheck) {
+                        latencyProbeActive = true;
+                        latencyProbeStart = Date.now();
+                        serverProcess.stdin.write("list\n");
+                    }
                 }
             } catch (e) {
                 clearInterval(performanceStatsInterval);
@@ -1059,25 +1381,36 @@ ipcMain.on('start-server', async () => {
             const rawOutput = data.toString();
             const cleanOutput = stripAnsiCodes(rawOutput).trimEnd();
             
-            const tpsMatch = cleanOutput.match(/TPS from last 1m, 5m, 15m: (\*?\d+\.\d+)/);
-            if (tpsMatch) {
-                const tps = tpsMatch[1].replace('*', '');
-                getMainWindow()?.webContents.send('update-performance-stats', { tps: parseFloat(tps) });
-                if (manualTpsCheck) {
+            const playersRegex = /players online:?/i;
+            if (playersRegex.test(cleanOutput)) {
+                if (manualListCheck) {
                     sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
-                    manualTpsCheck = false;
+                    manualListCheck = false;
+                } else if (latencyProbeActive) {
+                    const latencyMs = Math.max(0, Date.now() - latencyProbeStart);
+                    getMainWindow()?.webContents.send('update-performance-stats', { latencyMs });
+                    latencyProbeActive = false;
+                    // Do not log probe response to console to avoid spam
+                } else {
+                    sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
                 }
-            } else if (manualListCheck && cleanOutput.includes('players online:')) {
-                sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
-                manualListCheck = false;
             } else {
                 sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
             }
 
             if (!serverIsFullyStarted && /Done \([^)]+\)! For help, type "help"/.test(cleanOutput)) {
+                // Mark fully started; enable probes from now on and clear any stale state
+                latencyProbeActive = false; latencyProbeStart = 0;
                 serverIsFullyStarted = true;
                 sendServerStateChange(true);
                 setDiscordActivity();
+                try {
+                    const cfg = readServerConfig();
+                    const type = (cfg.serverType === 'fabric') ? 'Modded' : 'Vanilla';
+                    const ver = cfg.version || '';
+                    showDesktopNotification('Server Started', `${type} ${ver} is now running.`);
+                    playNotificationSound();
+                } catch (_) {}
             }
         });
 
@@ -1096,15 +1429,35 @@ ipcMain.on('start-server', async () => {
             if (killedInternally) {
                 sendConsole('Server process stopped normally.', 'INFO');
                 sendStatus('Server stopped.', false, 'serverStopped');
+                try {
+                    const cfg = readServerConfig();
+                    const type = (cfg.serverType === 'fabric') ? 'Modded' : 'Vanilla';
+                    const ver = cfg.version || '';
+                    showDesktopNotification('Server Stopped', `${type} ${ver} was stopped manually.`);
+                } catch (_) {}
             } else {
                 const launcherSettings = readLauncherSettings();
                 if (launcherSettings.autoStartServer) {
                     sendConsole('Server stopped unexpectedly. Attempting to auto-restart...', 'WARN');
                     const delay = launcherSettings.autoStartDelay || 5;
                     mainWindow.webContents.send('start-countdown', 'restart', delay);
+                    try {
+                        const cfg = readServerConfig();
+                        const type = (cfg.serverType === 'fabric') ? 'Modded' : 'Vanilla';
+                        const ver = cfg.version || '';
+                        showDesktopNotification('Server Crashed', `${type} ${ver} crashed. Auto-restarting in ${delay}s...`);
+                        playNotificationSound();
+                    } catch (_) {}
                 } else {
                     sendStatus('Server stopped unexpectedly.', false, 'serverStoppedUnexpectedly');
                     sendConsole(`Server process exited unexpectedly with code ${code}.`, 'ERROR');
+                    try {
+                        const cfg = readServerConfig();
+                        const type = (cfg.serverType === 'fabric') ? 'Modded' : 'Vanilla';
+                        const ver = cfg.version || '';
+                        showDesktopNotification('Server Crashed', `${type} ${ver} exited unexpectedly (code ${code ?? 'unknown'}).`);
+                        playNotificationSound();
+                    } catch (_) {}
                 }
             }
         });
@@ -1128,6 +1481,7 @@ ipcMain.on('start-server', async () => {
 ipcMain.on('stop-server', async () => {
     if (!serverProcess || serverProcess.killed) { sendConsole('Server not running.', 'WARN'); return; }
     if (performanceStatsInterval) clearInterval(performanceStatsInterval);
+    latencyProbeActive = false; latencyProbeStart = 0;
     sendConsole('Stopping server...', 'INFO');
     sendStatus('Stopping server...', true, 'serverStopping');
     serverProcess.killedInternally = true;
@@ -1147,11 +1501,14 @@ ipcMain.on('send-command', (event, command) => {
     const trimmedCommand = command.trim().toLowerCase();
     if (trimmedCommand === 'list' || trimmedCommand === '/list') {
         manualListCheck = true;
-    } else if (trimmedCommand === 'tps' || trimmedCommand === '/tps') {
-        manualTpsCheck = true;
+        // Cancel internal probe if about to overlap; next interval will reschedule
+        latencyProbeActive = false; latencyProbeStart = 0;
     }
+    // Sanitize only a single leading slash; keep inner slashes intact
+    let outgoing = command;
+    if (outgoing.startsWith('/')) outgoing = outgoing.slice(1);
     if (serverProcess && serverProcess.stdin.writable) {
-        try { serverProcess.stdin.write(command + '\n'); }
+        try { serverProcess.stdin.write(outgoing + '\n'); }
         catch (error) { sendConsole(`Error writing to stdin: ${error.message}`, 'ERROR'); }
     } else { sendConsole('Cannot send command: Server not running.', 'ERROR'); }
 });

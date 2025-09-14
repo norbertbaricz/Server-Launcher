@@ -1,6 +1,6 @@
 {
   "name": "server-launcher",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "A simple and powerful launcher to create, manage, and run your own Minecraft server directly from your computer. Get started in minutes!",
   "main": "main.js",
   "scripts": {

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; img-src 'self' data: file:; connect-src 'self' https://api.ipify.org https://api.papermc.io; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; img-src 'self' data: file:; media-src 'self' file:; connect-src 'self' https://api.ipify.org https://api.papermc.io https://meta.fabricmc.net; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Server Launcher</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -91,8 +91,8 @@
             <div class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
                 <i class="fas fa-tachometer-alt accent-text text-xl w-6 text-center"></i>
                 <div>
-                    <p class="text-xs text-gray-400 font-medium" data-key="tpsLabel">TPS</p>
-                    <p id="server-tps" class="text-sm font-semibold text-gray-200 truncate">20.0 / 20.0</p>
+                    <p class="text-xs text-gray-400 font-medium" data-key="tpsLabel">Latency (ms)</p>
+                    <p id="server-tps" class="text-sm font-semibold text-gray-200 truncate">0 ms</p>
                 </div>
             </div>
         </div>
@@ -143,6 +143,12 @@
                 Please select options and click "Download / Configure".
             </p>
             <div id="modal-setup-form-controls" class="space-y-5">
+                <div>
+                    <label for="server-type-modal" class="block text-sm font-medium text-gray-300 mb-1" data-key="serverTypeLabel">Server Type:</label>
+                    <select id="server-type-modal" name="server-type-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
+                        <!-- populated by script.js -->
+                    </select>
+                </div>
                 <div>
                     <label for="mc-version-modal" class="block text-sm font-medium text-gray-300 mb-1" data-key="mcVersionLabel">Minecraft Version:</label>
                     <select id="mc-version-modal" name="mc-version-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
@@ -235,11 +241,10 @@
                 
                 <div>
                     <h3 class="text-lg font-medium accent-text mb-3" data-key="serverConfigHeader">Server Configuration</h3>
-                    <!-- Future: Server Model selector (disabled placeholder) -->
                     <div class="mb-4">
-                        <label for="server-model-select" class="block text-sm font-medium text-gray-300 mb-1" data-key="serverModelLabel">Server Model</label>
-                        <select id="server-model-select" class="w-full bg-gray-700 border border-gray-600 text-gray-400 text-sm rounded-md p-2.5 cursor-not-allowed" disabled title="Coming soon">
-                            <option value="vanilla" selected data-key="serverModelVanilla">Vanilla</option>
+                        <label for="server-type-settings" class="block text-sm font-medium text-gray-300 mb-1" data-key="serverTypeLabel">Server Type:</label>
+                        <select id="server-type-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
+                            <!-- populated by script.js -->
                         </select>
                     </div>
                     <div>
@@ -295,7 +300,14 @@
                             <option value="neon">Neon</option>
                         </select>
                     </div>
-                    <label for="start-with-system-checkbox" class="flex items-center justify-between p-3 bg-gray-700 rounded-md cursor-pointer hover:bg-gray-600 transition-colors">
+                    <label for="notifications-checkbox" class="flex items-center justify-between p-3 bg-gray-700 rounded-md cursor-pointer hover:bg-gray-600 transition-colors">
+                        <span class="text-gray-300" data-key="showNotificationsLabel">Show desktop notifications</span>
+                        <div class="switch">
+                            <input type="checkbox" id="notifications-checkbox" class="sr-only" checked>
+                            <div class="switch-track"><div class="switch-thumb"></div></div>
+                        </div>
+                    </label>
+                    <label for="start-with-system-checkbox" class="flex items-center justify-between p-3 bg-gray-700 rounded-md cursor-pointer hover:bg-gray-600 transition-colors mt-3">
                         <span class="text-gray-300" data-key="startWithSystemLabel">Start with Operating System</span>
                         <div class="switch">
                             <input type="checkbox" id="start-with-system-checkbox" class="sr-only">
