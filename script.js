@@ -732,7 +732,12 @@ async function initializeApp() {
         const iconPath = await window.electronAPI.getIconPath();
         document.getElementById('app-icon').src = iconPath;
         const version = await window.electronAPI.getAppVersion();
-        const titleText = `Server Launcher v${version}`;
+        let isDev = false;
+        try {
+            // Graceful fallback if API missing
+            isDev = await (window.electronAPI.isDev ? window.electronAPI.isDev() : Promise.resolve(false));
+        } catch (_) { isDev = false; }
+        const titleText = `Server Launcher v${version}${isDev ? ' — Development Version' : ''}`;
         document.title = titleText;
         document.getElementById('app-title-version').textContent = titleText;
         // Keep loading overlay simple; no dynamic title/version on overlay
@@ -1024,6 +1029,23 @@ pluginsRefreshButton?.addEventListener('click', async () => {
 const closePlugins = () => hideModal(pluginsModal, pluginsModalContent);
 closePluginsButton?.addEventListener('click', closePlugins);
 pluginsCloseFooter?.addEventListener('click', closePlugins);
+
+// Close popups when clicking outside their content (acts like Cancel)
+settingsModal.addEventListener('click', (e) => {
+    if (!settingsModalContent.contains(e.target)) {
+        hideModal(settingsModal, settingsModalContent);
+    }
+});
+pluginsModal.addEventListener('click', (e) => {
+    if (!pluginsModalContent.contains(e.target)) {
+        closePlugins();
+    }
+});
+javaInstallModal.addEventListener('click', (e) => {
+    if (!javaInstallModalContent.contains(e.target)) {
+        hideModal(javaInstallModal, javaInstallModalContent);
+    }
+});
 function applyThemeClass(theme) {
     const classes = ['theme-skypixel','theme-nord','theme-aurora','theme-midnight','theme-emerald','theme-sunset','theme-crimson','theme-ocean','theme-grape','theme-neon'];
     document.body.classList.remove(...classes);

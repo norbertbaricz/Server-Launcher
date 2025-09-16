@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
     // --- Renderer to Main (invoke) ---
     getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+    isDev: () => ipcRenderer.invoke('is-dev'),
     getSettings: () => ipcRenderer.invoke('get-settings'),
     getServerConfig: () => ipcRenderer.invoke('get-server-config'),
     getServerProperties: () => ipcRenderer.invoke('get-server-properties'),

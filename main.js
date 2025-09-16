@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const { version } = require('./package.json');
 const https = require('node:https');
 const { spawn, exec } = require('node:child_process');
+const { promisify } = require('node:util');
 const os = require('node:os');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
@@ -13,7 +14,8 @@ const AnsiToHtml = require('ansi-to-html');
 const find = require('find-process');
 
 let javaExecutablePath = 'java';
-let MINIMUM_JAVA_VERSION = 21;
+let MINIMUM_JAVA_VERSION = 17;
+const execAsync = promisify(exec);
 
 // Set a friendly app name as early as possible (helps Linux notifications / WM_CLASS)
 try { app.setName('Server Launcher'); } catch (_) {}
@@ -32,7 +34,7 @@ function getCleanEnvForJava() {
 }
 
 async function ensureBundledJavaLinux() {
-  if (process.platform !== 'linux') return false;
+  if (process.platform !== 'linux' || !app.isPackaged) return false;
   try {
     const userDataPath = app.getPath('userData');
     const jdkBaseDir = path.join(userDataPath, 'embedded-jdk-21');
@@ -192,129 +194,98 @@ async function killStrayServerProcess() {
 }
 
 async function checkJava() {
-    return new Promise((resolve) => {
-        const verifyJavaVersion = (javaPath, callback) => {
-            exec(`"${javaPath}" -version`, { env: getCleanEnvForJava() }, (error, stdout, stderr) => {
-                const output = stderr || stdout;
-                if (error) {
-                    return callback(false);
-                }
-                const versionMatch = output.match(/version "(\d+)/);
-                if (versionMatch && parseInt(versionMatch[1], 10) >= MINIMUM_JAVA_VERSION) {
-                    log.info(`Java >= ${MINIMUM_JAVA_VERSION} verified at: ${javaPath}`);
-                    javaExecutablePath = javaPath;
-                    callback(true);
-                } else {
-                    callback(false);
-                }
-            });
-        };
-
-        const checkRegistry = (onComplete) => {
-            if (process.platform !== 'win32') {
-                return onComplete(null);
+    const verifyJavaVersion = async (javaPath) => {
+        try {
+            const { stdout, stderr } = await execAsync(`"${javaPath}" -version`, { env: getCleanEnvForJava() });
+            const output = (stderr || stdout || '').toString();
+            const versionMatch = output.match(/version "(\d+)/);
+            if (versionMatch && parseInt(versionMatch[1], 10) >= MINIMUM_JAVA_VERSION) {
+                javaExecutablePath = javaPath;
+                return true;
             }
-            const keysToQuery = [
-                'HKEY_LOCAL_MACHINE\\SOFTWARE\\Eclipse Adoptium\\JDK',
-                'HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\JDK',
-                'HKEY_LOCAL_MACHINE\\SOFTWARE\\Amazon Corretto\\JDK'
-            ];
-            let foundValidPath = null;
-            let keysProcessed = 0;
+        } catch (_) {
+            return false;
+        }
+        return false;
+    };
 
-            keysToQuery.forEach(key => {
-                exec(`reg query "${key}" /s`, (error, stdout) => {
-                    if (!error && stdout) {
-                        const lines = stdout.trim().split(/[\r\n]+/).filter(line => line.trim().startsWith('HKEY_'));
-                        let checkedSubKeys = 0;
-                        if (lines.length === 0) {
-                           keysProcessed++;
-                           if (keysProcessed === keysToQuery.length && !foundValidPath) onComplete(null);
-                           return;
+    const checkWindowsRegistry = async () => {
+        if (process.platform !== 'win32') return null;
+        const keysToQuery = [
+            'HKEY_LOCAL_MACHINE\\SOFTWARE\\Eclipse Adoptium\\JDK',
+            'HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\JDK',
+            'HKEY_LOCAL_MACHINE\\SOFTWARE\\Amazon Corretto\\JDK'
+        ];
+        for (const key of keysToQuery) {
+            let stdout;
+            try {
+                ({ stdout } = await execAsync(`reg query "${key}" /s`));
+            } catch (_) {
+                continue;
+            }
+            const lines = stdout.trim().split(/[\r\n]+/).filter(line => line.trim().startsWith('HKEY_'));
+            for (const line of lines) {
+                try {
+                    const { stdout: homeStdout } = await execAsync(`reg query "${line.trim()}" /v JavaHome`);
+                    const match = homeStdout.match(/JavaHome\s+REG_SZ\s+(.*)/);
+                    if (match && match[1]) {
+                        const javaExe = path.join(match[1].trim(), 'bin', 'java.exe');
+                        if (fs.existsSync(javaExe) && await verifyJavaVersion(javaExe)) {
+                            return javaExe;
                         }
-
-                        lines.forEach(line => {
-                            if (foundValidPath) return;
-                            exec(`reg query "${line.trim()}" /v JavaHome`, (homeError, homeStdout) => {
-                                checkedSubKeys++;
-                                if (!homeError && homeStdout) {
-                                    const match = homeStdout.match(/JavaHome\s+REG_SZ\s+(.*)/);
-                                    if (match && match[1]) {
-                                        const javaExe = path.join(match[1].trim(), 'bin', 'java.exe');
-                                        if (fs.existsSync(javaExe)) {
-                                            verifyJavaVersion(javaExe, (isValid) => {
-                                                if (isValid && !foundValidPath) {
-                                                    foundValidPath = javaExe;
-                                                    onComplete(foundValidPath);
-                                                }
-                                            });
-                                        }
-                                    }
-                                }
-                                if (checkedSubKeys === lines.length) {
-                                    keysProcessed++;
-                                    if (keysProcessed === keysToQuery.length && !foundValidPath) onComplete(null);
-                                }
-                            });
-                        });
-                    } else {
-                        keysProcessed++;
-                        if (keysProcessed === keysToQuery.length && !foundValidPath) onComplete(null);
                     }
-                });
-            });
-        };
-
-        const checkPath = () => {
-            verifyJavaVersion('java', (isValid) => {
-                if (isValid) {
-                    log.info(`Java >= ${MINIMUM_JAVA_VERSION} found in system PATH.`);
-                    javaExecutablePath = 'java';
-                    resolve(true);
-                } else {
-                    log.warn('No compatible Java version found in registry or PATH.');
-                    resolve(false);
-                }
-            });
-        };
-
-        const checkMacJavaHome = (onComplete) => {
-            if (process.platform !== 'darwin') return onComplete(null);
-            // Try macOS helper to find a JDK 21 home
-            exec('/usr/libexec/java_home -v 21', (error, stdout) => {
-                if (error || !stdout) return onComplete(null);
-                const home = stdout.toString().trim();
-                const javaExe = path.join(home, 'bin', 'java');
-                if (!fs.existsSync(javaExe)) return onComplete(null);
-                verifyJavaVersion(javaExe, (isValid) => {
-                    if (isValid) {
-                        javaExecutablePath = javaExe;
-                        return onComplete(javaExe);
-                    }
-                    onComplete(null);
-                });
-            });
-        };
-        
-        log.info(`Checking for Java >= ${MINIMUM_JAVA_VERSION}...`);
-        checkRegistry(registryPath => {
-            if (registryPath) {
-                resolve(true);
-            } else {
-                if (process.platform === 'darwin') {
-                    log.info('No Java found in registry (not Windows). Checking macOS java_home...');
-                    checkMacJavaHome((macPath) => {
-                        if (macPath) return resolve(true);
-                        log.info('No compatible Java via macOS java_home. Checking system PATH.');
-                        checkPath();
-                    });
-                } else {
-                    log.info('No compatible Java version found in registry. Checking system PATH.');
-                    checkPath();
+                } catch (_) {
+                    continue;
                 }
             }
-        });
-    });
+        }
+        return null;
+    };
+
+    const checkMacJavaHome = async () => {
+        if (process.platform !== 'darwin') return null;
+        try {
+            const { stdout } = await execAsync(`/usr/libexec/java_home -v ${MINIMUM_JAVA_VERSION}`);
+            const home = stdout.toString().trim();
+            if (!home) return null;
+            const javaExe = path.join(home, 'bin', 'java');
+            if (fs.existsSync(javaExe) && await verifyJavaVersion(javaExe)) {
+                return javaExe;
+            }
+        } catch (_) {}
+        return null;
+    };
+
+    log.info(`Checking for Java >= ${MINIMUM_JAVA_VERSION}...`);
+
+    const registryPath = await checkWindowsRegistry();
+    if (registryPath) {
+        log.info(`Java >= ${MINIMUM_JAVA_VERSION} verified at: ${registryPath}`);
+        return true;
+    }
+
+    const macPath = await checkMacJavaHome();
+    if (macPath) {
+        log.info(`Java >= ${MINIMUM_JAVA_VERSION} verified at: ${macPath}`);
+        return true;
+    }
+
+    if (await verifyJavaVersion('java')) {
+        log.info(`Java >= ${MINIMUM_JAVA_VERSION} found in system PATH.`);
+        javaExecutablePath = 'java';
+        return true;
+    }
+
+    if (process.platform === 'linux' && app.isPackaged) {
+        const installed = await ensureBundledJavaLinux();
+        if (installed && await verifyJavaVersion(javaExecutablePath)) {
+            log.info(`Java >= ${MINIMUM_JAVA_VERSION} verified at: ${javaExecutablePath}`);
+            return true;
+        }
+    }
+
+    log.warn(`No compatible Java version found (requires ${MINIMUM_JAVA_VERSION}).`);
+    return false;
 }
 
 
@@ -485,10 +456,30 @@ function writeServerConfig(configObject) { writeJsonFile(serverConfigFilePath, c
 function readLauncherSettings() { return readJsonFile(launcherSettingsFilePath, launcherSettingsFileName); }
 function writeLauncherSettings(settingsObject) { writeJsonFile(launcherSettingsFilePath, settingsObject, launcherSettingsFileName); }
 
+function refreshMinimumJavaRequirementFromConfig() {
+    try {
+        if (!serverConfigFilePath || !fs.existsSync(serverConfigFilePath)) {
+            MINIMUM_JAVA_VERSION = 17;
+            return;
+        }
+        const cfg = readServerConfig();
+        MINIMUM_JAVA_VERSION = cfg?.version ? requiredJavaForVersion(cfg.version) : 17;
+    } catch (_) {
+        MINIMUM_JAVA_VERSION = 17;
+    }
+}
+
+function shouldCheckForUpdates() {
+    if (!app.isPackaged) return false;
+    if (process.platform === 'win32' || process.platform === 'darwin') return true;
+    if (process.platform === 'linux') return Boolean(process.env.APPIMAGE);
+    return false;
+}
+
 function requiredJavaForVersion(mcVersion) {
     // Rough heuristic: Paper recommends Java 21 for 1.20.5+, Java 17 for earlier modern versions
     try {
-        if (!mcVersion) return 21;
+        if (!mcVersion) return 17;
         const parts = mcVersion.split('.').map(x => parseInt(x, 10));
         const major = parts[0] || 1;
         const minor = parts[1] || 0;
@@ -673,6 +664,7 @@ app.whenReady().then(async () => {
   serverConfigFilePath = path.join(serverFilesDir, serverConfigFileName);
   launcherSettingsFilePath = path.join(userDataPath, launcherSettingsFileName);
   serverPropertiesFilePath = path.join(serverFilesDir, serverPropertiesFileName);
+  refreshMinimumJavaRequirementFromConfig();
 
   if (!fs.existsSync(serverFilesDir)) {
     try {
@@ -700,7 +692,7 @@ app.whenReady().then(async () => {
           sendConsole(`Discord RPC login error: ${err.message}`, 'ERROR');
       }
   });
-  if (app.isPackaged) {
+  if (shouldCheckForUpdates()) {
     autoUpdater.checkForUpdates();
   }
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow();});
@@ -824,6 +816,8 @@ ipcMain.on('restart-app', () => {
 });
 
 ipcMain.handle('get-app-version', () => version);
+// Expose whether the app is running in development (not packaged)
+ipcMain.handle('is-dev', () => !app.isPackaged);
 ipcMain.handle('get-server-config', () => readServerConfig());
 ipcMain.handle('get-server-properties', () => {
     if (!fs.existsSync(serverPropertiesFilePath)) return null;
