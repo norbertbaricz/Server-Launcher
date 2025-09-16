@@ -1,4 +1,3 @@
-// Selectoare DOM Standard
 const loadingScreen = document.getElementById('loading-screen');
 const statusMessageSpan = document.getElementById('status-message');
 const localIpAddressSpan = document.getElementById('local-ip-address');
@@ -16,16 +15,13 @@ const localIpWidget = document.getElementById('local-ip-widget');
 const publicIpWidget = document.getElementById('public-ip-widget');
 const serverVersionWidget = document.getElementById('server-version-widget');
 
-// Butoane de acțiune
 const pluginsFolderButton = document.getElementById('plugins-folder-button');
 const settingsButton = document.getElementById('settings-button');
 
-// Container
 const statusAndOpenFolderArea = document.getElementById('status-and-open-folder-area');
 const statusBarContent = document.getElementById('status-bar-content');
 const setupActivePlaceholderTop = document.getElementById('setup-active-placeholder-top');
 
-// Modal Setup
 const setupModal = document.getElementById('setup-modal');
 const setupModalContent = document.getElementById('setup-modal-content');
 const mcVersionModalSelect = document.getElementById('mc-version-modal');
@@ -36,7 +32,6 @@ const downloadModalButtonIcon = downloadModalButton.querySelector('i');
 const downloadModalButtonText = document.getElementById('download-button-text');
 const serverTypeModalSelect = document.getElementById('server-type-modal');
 
-// Modal Settings
 const settingsModal = document.getElementById('settings-modal');
 const settingsModalContent = document.getElementById('settings-modal-content');
 const mcVersionSettingsSelect = document.getElementById('mc-version-settings');
@@ -55,7 +50,6 @@ const autoStartDelayContainer = document.getElementById('auto-start-delay-contai
 const autoStartDelaySlider = document.getElementById('auto-start-delay-slider');
 const autoStartDelayValue = document.getElementById('auto-start-delay-value');
 
-// Modal Java Install
 const javaInstallModal = document.getElementById('java-install-modal');
 const javaInstallModalContent = document.getElementById('java-install-modal-content');
 const javaInstallMessage = document.getElementById('java-install-message');
@@ -64,7 +58,6 @@ const javaRestartButton = document.getElementById('java-restart-button');
 const javaInstallProgressBarContainer = document.getElementById('java-install-progress-bar-container');
 const javaInstallProgressBar = document.getElementById('java-install-progress-bar');
 
-// Plugins & Worlds Modal
 const pluginsModal = document.getElementById('plugins-modal');
 const pluginsModalContent = document.getElementById('plugins-modal-content');
 const closePluginsButton = document.getElementById('close-plugins-button');
@@ -81,9 +74,6 @@ const worldExistsOverworld = document.getElementById('world-exists-overworld');
 const worldExistsNether = document.getElementById('world-exists-nether');
 const worldExistsTheEnd = document.getElementById('world-exists-theend');
 
-// (Removed animated custom selects; using native selects)
-
-// Title Bar
 const minimizeBtn = document.getElementById('minimize-btn');
 const maximizeBtn = document.getElementById('maximize-btn');
 const closeBtn = document.getElementById('close-btn');
@@ -219,7 +209,6 @@ function addToConsole(message, type = 'INFO') {
     }
     
     consoleOutput.appendChild(line);
-    // Keep console memory bounded by limiting number of entries
     const MAX_CONSOLE_LINES = 1000;
     while (consoleOutput.childElementCount > MAX_CONSOLE_LINES) {
         consoleOutput.removeChild(consoleOutput.firstElementChild);
@@ -240,9 +229,7 @@ function setStatus(fallbackText, pulse = false, translationKey = null) {
     const key = translationKey || statusMessageSpan.dataset.key;
     let message = (key && currentTranslations[key]) ? currentTranslations[key] : fallbackText;
 
-    // If status is 'downloading', preserve translated label and append percent from fallback if present
     if (key === 'downloading' && typeof fallbackText === 'string') {
-        // Extract whatever is inside parentheses and append to translated base
         const m = fallbackText.match(/\(([^)]+)\)/);
         if (m && m[1]) {
             const base = currentTranslations['downloading'] || 'Downloading';
@@ -386,7 +373,6 @@ async function refreshUISetupState() {
             }
             updateButtonStates(localIsServerRunning);
             await fetchAndDisplayIPs();
-            // Update Plugins button text in main UI
             try {
                 const labelSpan = pluginsFolderButton.querySelector('span');
                 const label = (currentServerConfig?.serverType === 'fabric') ? 'Mods' : (currentTranslations['pluginsButton'] || 'Plugins');
@@ -491,7 +477,6 @@ settingsButton.addEventListener('click', async () => {
     ramAllocationSettingsSelect.value = serverConfig.ram || 'auto';
     javaArgumentsSettingsSelect.value = serverConfig.javaArgs || 'Default';
     await populateServerProperties();
-    // Update Plugins button label in main UI based on server type
     try {
         const labelSpan = pluginsFolderButton.querySelector('span');
         if (labelSpan) labelSpan.textContent = (serverConfig.serverType === 'fabric') ? 'Mods' : (currentTranslations['pluginsButton'] || 'Plugins');
@@ -549,7 +534,6 @@ stopButton.addEventListener('click', () => {
 sendCommandButton.addEventListener('click', () => {
     const raw = commandInput.value.trim();
     if (raw && localIsServerRunning) {
-        // If command starts with a single leading '/', strip it; keep any other '/' inside
         const sanitized = raw.startsWith('/') ? raw.slice(1) : raw;
         addToConsole(`> ${sanitized}`, 'CMD');
         window.electronAPI.sendCommand(sanitized);
@@ -689,11 +673,11 @@ window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, tps, la
         const ms = Math.max(0, parseInt(latencyMs, 10) || 0);
         serverTpsSpan.textContent = `${ms} ms`;
         if (ms >= 300) {
-            serverTpsSpan.style.color = '#ef4444'; // Red
+            serverTpsSpan.style.color = '#ef4444';
         } else if (ms >= 150) {
-            serverTpsSpan.style.color = '#facc15'; // Yellow
+            serverTpsSpan.style.color = '#facc15';
         } else {
-            serverTpsSpan.style.color = '#4ade80'; // Green
+            serverTpsSpan.style.color = '#4ade80';
         }
     }
 });
@@ -728,25 +712,20 @@ async function fetchAndDisplayIPs(showPort = false) {
 
 async function initializeApp() {
     try {
-        // Old behavior: simple overlay that hides after initialization completes
         const iconPath = await window.electronAPI.getIconPath();
         document.getElementById('app-icon').src = iconPath;
         const version = await window.electronAPI.getAppVersion();
         let isDev = false;
         try {
-            // Graceful fallback if API missing
             isDev = await (window.electronAPI.isDev ? window.electronAPI.isDev() : Promise.resolve(false));
         } catch (_) { isDev = false; }
         const titleText = `Server Launcher v${version}${isDev ? ' — Development Version' : ''}`;
         document.title = titleText;
         document.getElementById('app-title-version').textContent = titleText;
-        // Keep loading overlay simple; no dynamic title/version on overlay
 
         launcherSettingsCache = await window.electronAPI.getSettings();
-        // Apply saved theme as early as possible on startup
         const savedTheme = launcherSettingsCache.theme || 'skypixel';
         applyThemeClass(savedTheme);
-        // Keep the settings UI in sync with the applied theme
         themeSelect.value = savedTheme === 'default' ? 'skypixel' : savedTheme;
         
         await populateLanguageSelects();
@@ -885,7 +864,6 @@ window.electronAPI.onJavaInstallStatus((status, progress) => {
     }
 });
 
-// --- Play sound from main (start/crash notifications) ---
 window.electronAPI.onPlaySound((soundPath) => {
     try {
         if (soundPath) {
@@ -895,13 +873,12 @@ window.electronAPI.onPlaySound((soundPath) => {
             return;
         }
     } catch (_) {}
-    // Fallback beep using WebAudio if file missing or blocked
     try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'sine';
-        osc.frequency.value = 880; // A5
+        osc.frequency.value = 880;
         gain.gain.setValueAtTime(0.0001, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.2, ctx.currentTime + 0.01);
         gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.2);
@@ -911,9 +888,7 @@ window.electronAPI.onPlaySound((soundPath) => {
     } catch (_) {}
 });
 
-// --- Plugins & Worlds Modal Logic ---
 async function openPluginsModal() {
-    // Adjust labels based on server type
     const isFabric = (currentServerConfig?.serverType === 'fabric');
     const headerH2 = pluginsModalContent.querySelector('h2');
     if (headerH2) headerH2.textContent = isFabric ? 'Mods & Worlds' : 'Plugins & Worlds';
@@ -1029,8 +1004,6 @@ pluginsRefreshButton?.addEventListener('click', async () => {
 const closePlugins = () => hideModal(pluginsModal, pluginsModalContent);
 closePluginsButton?.addEventListener('click', closePlugins);
 pluginsCloseFooter?.addEventListener('click', closePlugins);
-
-// Close popups when clicking outside their content (acts like Cancel)
 settingsModal.addEventListener('click', (e) => {
     if (!settingsModalContent.contains(e.target)) {
         hideModal(settingsModal, settingsModalContent);

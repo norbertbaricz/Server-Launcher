@@ -1,7 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
-    // --- Main to Renderer (on) ---
     onWindowMaximized: (callback) => ipcRenderer.on('window-maximized', (_event, ...args) => callback(...args)),
     onUpdateConsole: (callback) => ipcRenderer.on('update-console', (_event, ...args) => callback(...args)),
     onUpdateStatus: (callback) => ipcRenderer.on('update-status', (_event, ...args) => callback(...args)),
@@ -15,14 +14,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onPlaySound: (callback) => ipcRenderer.on('play-sound', (_event, ...args) => callback(...args)),
 
 
-    // --- Renderer to Main (send) ---
     minimizeWindow: () => ipcRenderer.send('minimize-window'),
     maximizeWindow: () => ipcRenderer.send('maximize-window'),
     closeWindow: () => ipcRenderer.send('close-window'),
     appReadyToShow: () => ipcRenderer.send('app-ready-to-show'),
     setSettings: (settings) => ipcRenderer.send('set-settings', settings),
     openPluginsFolder: () => ipcRenderer.send('open-plugins-folder'),
-    // Plugins & Worlds management
     getPlugins: () => ipcRenderer.invoke('get-plugins'),
     deletePlugin: (name) => ipcRenderer.invoke('delete-plugin', name),
     uploadPlugins: () => ipcRenderer.invoke('upload-plugins'),
@@ -36,7 +33,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     startJavaInstall: () => ipcRenderer.send('start-java-install'),
     restartApp: () => ipcRenderer.send('restart-app'),
 
-    // --- Renderer to Main (invoke) ---
     getAppVersion: () => ipcRenderer.invoke('get-app-version'),
     isDev: () => ipcRenderer.invoke('is-dev'),
     getSettings: () => ipcRenderer.invoke('get-settings'),

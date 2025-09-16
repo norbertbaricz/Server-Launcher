@@ -17,11 +17,9 @@ let javaExecutablePath = 'java';
 let MINIMUM_JAVA_VERSION = 17;
 const execAsync = promisify(exec);
 
-// Set a friendly app name as early as possible (helps Linux notifications / WM_CLASS)
 try { app.setName('Server Launcher'); } catch (_) {}
 
 function getCleanEnvForJava() {
-  // Avoid host/snap library injection that can break JVM
   const env = { ...process.env };
   delete env.LD_LIBRARY_PATH;
   delete env.SNAP;
@@ -155,12 +153,11 @@ const serverPropertiesFileName = 'server.properties';
 let localIsServerRunningGlobal = false;
 let mainWindow;
 let performanceStatsInterval = null;
-let manualTpsCheck = false; // Deprecated: no longer used for TPS
+let manualTpsCheck = false;
 let manualListCheck = false; 
-let latencyProbeActive = false; // internal '/list' latency probe for Fabric
+let latencyProbeActive = false;
 let latencyProbeStart = 0;
 
-// Enforce single-instance to avoid duplicate servers/processes
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
     app.quit();
@@ -477,7 +474,6 @@ function shouldCheckForUpdates() {
 }
 
 function requiredJavaForVersion(mcVersion) {
-    // Rough heuristic: Paper recommends Java 21 for 1.20.5+, Java 17 for earlier modern versions
     try {
         if (!mcVersion) return 17;
         const parts = mcVersion.split('.').map(x => parseInt(x, 10));
@@ -586,7 +582,6 @@ async function getPublicIP() {
 }
 
 function createWindow () {
-  // Resolve icon for window and notifications
   const resolveIconForWindow = () => {
     try {
       const resBase = process.resourcesPath;
@@ -624,7 +619,6 @@ function createWindow () {
   });
 
   mainWindow.loadFile('index.html');
-  // Block unintended navigations and external window opens
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     try { shell.openExternal(url); } catch (_) {}
     return { action: 'deny' };
@@ -677,7 +671,6 @@ app.whenReady().then(async () => {
   await killStrayServerProcess();
   createWindow();
 
-  // Ensure Windows toast notifications work
   try { if (process.platform === 'win32') app.setAppUserModelId('com.server.launcher'); } catch (_) {}
 
   rpc = new RPC.Client({ transport: 'ipc' });
@@ -722,7 +715,6 @@ app.on('window-all-closed', () => {
             if (serverProcess.stdin && serverProcess.stdin.writable) {
                 serverProcess.stdin.write('stop\n');
             }
-            // Fallback hard kill after grace period
             setTimeout(() => {
                 if (serverProcess && !serverProcess.killed) {
                     serverProcess.kill('SIGKILL');
@@ -775,7 +767,6 @@ ipcMain.on('set-settings', (event, settings) => {
     app.setLoginItemSettings({ openAtLogin: newSettings.openAtLogin });
     writeJsonFile(launcherSettingsFilePath, newSettings, launcherSettingsFileName);
 
-    // Linux autostart via XDG .desktop fallback
     if (process.platform === 'linux') {
         try {
             const homeDir = os.homedir();
@@ -785,7 +776,7 @@ ipcMain.on('set-settings', (event, settings) => {
                 fs.mkdirSync(autostartDir, { recursive: true });
             }
             if (newSettings.openAtLogin) {
-                const execPath = app.isPackaged ? process.execPath : process.execPath; // In dev this points to electron
+                const execPath = app.isPackaged ? process.execPath : process.execPath;
                 const name = 'Server Launcher';
                 const desktopContent = [
                     '[Desktop Entry]',
@@ -816,7 +807,6 @@ ipcMain.on('restart-app', () => {
 });
 
 ipcMain.handle('get-app-version', () => version);
-// Expose whether the app is running in development (not packaged)
 ipcMain.handle('is-dev', () => !app.isPackaged);
 ipcMain.handle('get-server-config', () => readServerConfig());
 ipcMain.handle('get-server-properties', () => {
@@ -882,7 +872,6 @@ ipcMain.handle('get-available-versions', async (_event, serverType) => {
             if (projectResponseData.versions?.length > 0) return projectResponseData.versions.reverse();
             throw new Error('No versions found.');
         } else {
-            // Fabric: list supported game versions (stable)
             const fabricGameUrl = 'https://meta.fabricmc.net/v2/versions/game';
             const response = await new Promise((resolve, reject) => {
                 https.get(fabricGameUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
@@ -893,7 +882,6 @@ ipcMain.handle('get-available-versions', async (_event, serverType) => {
             });
             const stable = Array.isArray(response) ? response.filter(v => v && v.version && v.stable) : [];
             const versions = stable.map(v => v.version);
-            // sort desc by semantic components
             versions.sort((a,b) => {
                 const pa = a.split('.').map(n=>parseInt(n,10));
                 const pb = b.split('.').map(n=>parseInt(n,10));
@@ -910,8 +898,6 @@ ipcMain.handle('get-available-versions', async (_event, serverType) => {
         return [];
     }
 });
-
-// --- Plugins management ---
 ipcMain.handle('get-plugins', async () => {
     try {
         const cfg = readServerConfig();
@@ -977,8 +963,6 @@ ipcMain.handle('upload-plugins', async () => {
         return { ok: false, error: e.message };
     }
 });
-
-// --- Worlds management ---
 function readServerPropertiesObject() {
     if (!fs.existsSync(serverPropertiesFilePath)) return {};
     try {
@@ -1001,7 +985,6 @@ ipcMain.handle('get-worlds-info', async () => {
         const levelName = props['level-name'] || 'world';
         const entries = fs.readdirSync(serverFilesDir, { withFileTypes: true });
         const candidates = entries.filter(e => e.isDirectory()).map(e => e.name).filter(name => {
-            // world folders contain level.dat
             return fs.existsSync(path.join(serverFilesDir, name, 'level.dat'));
         });
         const exists = {
@@ -1082,7 +1065,7 @@ ipcMain.handle('get-available-languages', () => {
         return languages;
     } catch (error) {
         log.error('Could not read languages directory:', error);
-        return [{ code: 'en', name: 'English' }]; // Fallback
+        return [{ code: 'en', name: 'English' }];
     }
 });
 
@@ -1105,7 +1088,6 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
     const currentConfig = readServerConfig();
     const oldVersion = currentConfig.version;
     const oldType = currentConfig.serverType || 'papermc';
-    // Update only RAM and Java args immediately
     currentConfig.javaArgs = javaArgs || 'Default';
     if (ramAllocation?.toLowerCase() !== 'auto') {
         currentConfig.ram = ramAllocation;
@@ -1113,7 +1095,6 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
         delete currentConfig.ram;
     }
     writeServerConfig(currentConfig);
-    // Adjust minimum Java requirement based on selected version
     MINIMUM_JAVA_VERSION = requiredJavaForVersion(mcVersion);
     
     try {
@@ -1167,19 +1148,15 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
                 };
                 doDownload(downloadUrl);
             });
-            // Use legacy key 'downloadSuccess' to keep existing translations working
             sendStatus('PaperMC downloaded successfully!', false, 'downloadSuccess');
             sendConsole(`${paperJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
-            // Persist type+version only after successful install
             const updated = readServerConfig();
             updated.serverType = chosenType;
             updated.version = mcVersion;
             writeServerConfig(updated);
         } else {
-            // Fabric path: directly download the loader server jar (no Java needed at setup)
             sendStatus(`Preparing Fabric ${mcVersion}...`, true, 'downloading');
 
-            // 1) Find a compatible loader for this MC version
             const loaderListUrl = `https://meta.fabricmc.net/v2/versions/loader/${mcVersion}`;
             const loaderData = await new Promise((resolve, reject) => {
                 https.get(loaderListUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
@@ -1193,7 +1170,6 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
             const loaderVersion = pick?.loader?.version;
             if (!loaderVersion) throw new Error('Fabric loader version missing.');
 
-            // 2) Pick installer version (latest stable)
             const installerMetaUrl = 'https://meta.fabricmc.net/v2/versions/installer';
             const installers = await new Promise((resolve, reject) => {
                 https.get(installerMetaUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
@@ -1207,7 +1183,6 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
             const installerVersion = pickedInstaller?.version;
             if (!installerVersion) throw new Error('Fabric installer version missing.');
 
-            // 3) Compose direct server JAR URL and download
             const downloadUrl = `https://meta.fabricmc.net/v2/versions/loader/${mcVersion}/${loaderVersion}/${installerVersion}/server/jar`;
             sendStatus(`Downloading (0%)`, true, 'downloading');
             const fabricDest = path.join(serverFilesDir, fabricJarName);
@@ -1248,7 +1223,6 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
 
             sendStatus('Fabric Server installed successfully!', false, 'downloadSuccessFabric');
             sendConsole(`${fabricJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
-            // Persist type+version only after successful download
             const updated = readServerConfig();
             updated.serverType = chosenType;
             updated.version = mcVersion;
@@ -1351,7 +1325,6 @@ ipcMain.on('start-server', async () => {
                 const memoryGB = stats.memory / (1024 * 1024 * 1024);
                 getMainWindow()?.webContents.send('update-performance-stats', { memoryGB });
                 if (serverIsFullyStarted && serverProcess && serverProcess.stdin && serverProcess.stdin.writable) {
-                    // Send '/list' as a latency probe if none pending and not a manual '/list'
                     if (latencyProbeActive && Date.now() - latencyProbeStart > 5000) {
                         latencyProbeActive = false;
                     }
@@ -1384,7 +1357,6 @@ ipcMain.on('start-server', async () => {
                     const latencyMs = Math.max(0, Date.now() - latencyProbeStart);
                     getMainWindow()?.webContents.send('update-performance-stats', { latencyMs });
                     latencyProbeActive = false;
-                    // Do not log probe response to console to avoid spam
                 } else {
                     sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
                 }
@@ -1393,7 +1365,6 @@ ipcMain.on('start-server', async () => {
             }
 
             if (!serverIsFullyStarted && /Done \([^)]+\)! For help, type "help"/.test(cleanOutput)) {
-                // Mark fully started; enable probes from now on and clear any stale state
                 latencyProbeActive = false; latencyProbeStart = 0;
                 serverIsFullyStarted = true;
                 sendServerStateChange(true);
@@ -1491,14 +1462,12 @@ ipcMain.on('stop-server', async () => {
 
 ipcMain.on('send-command', (event, command) => {
     if (typeof command !== 'string') return;
-    if (command.length > 1000) return; // simple guard
+    if (command.length > 1000) return;
     const trimmedCommand = command.trim().toLowerCase();
     if (trimmedCommand === 'list' || trimmedCommand === '/list') {
         manualListCheck = true;
-        // Cancel internal probe if about to overlap; next interval will reschedule
         latencyProbeActive = false; latencyProbeStart = 0;
     }
-    // Sanitize only a single leading slash; keep inner slashes intact
     let outgoing = command;
     if (outgoing.startsWith('/')) outgoing = outgoing.slice(1);
     if (serverProcess && serverProcess.stdin.writable) {
