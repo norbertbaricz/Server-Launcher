@@ -82,6 +82,14 @@ body {
     line-height: 1;
 }
 
+.title-bar-btn .minimize-icon {
+    display: block;
+    width: 12px;
+    height: 2px;
+    border-radius: 9999px;
+    background-color: currentColor;
+}
+
 #main-content-area {
     flex-grow: 1;
     overflow-y: auto;

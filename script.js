@@ -16,6 +16,7 @@ const publicIpWidget = document.getElementById('public-ip-widget');
 const serverVersionWidget = document.getElementById('server-version-widget');
 
 const pluginsFolderButton = document.getElementById('plugins-folder-button');
+const pluginsFolderIcon = document.getElementById('plugins-folder-icon');
 const settingsButton = document.getElementById('settings-button');
 
 const statusAndOpenFolderArea = document.getElementById('status-and-open-folder-area');
@@ -60,19 +61,16 @@ const javaInstallProgressBar = document.getElementById('java-install-progress-ba
 
 const pluginsModal = document.getElementById('plugins-modal');
 const pluginsModalContent = document.getElementById('plugins-modal-content');
+const pluginsModalTitleText = document.getElementById('plugins-modal-title-text');
+const pluginsModalIcon = document.getElementById('plugins-modal-icon');
+const pluginsSectionTitle = document.getElementById('plugins-section-title');
+const pluginsSectionIcon = document.getElementById('plugins-section-icon');
 const closePluginsButton = document.getElementById('close-plugins-button');
 const pluginsRefreshButton = document.getElementById('plugins-refresh-button');
 const pluginsCloseFooter = document.getElementById('plugins-close-footer');
 const pluginsList = document.getElementById('plugins-list');
 const uploadPluginButton = document.getElementById('upload-plugin-button');
 const openPluginsFolderButton = document.getElementById('open-plugins-folder-button');
-const currentWorldNameSpan = document.getElementById('current-world-name');
-const worldNameInput = document.getElementById('world-name-input');
-const applyWorldNameButton = document.getElementById('apply-world-name-button');
-const worldsCandidates = document.getElementById('worlds-candidates');
-const worldExistsOverworld = document.getElementById('world-exists-overworld');
-const worldExistsNether = document.getElementById('world-exists-nether');
-const worldExistsTheEnd = document.getElementById('world-exists-theend');
 
 const minimizeBtn = document.getElementById('minimize-btn');
 const maximizeBtn = document.getElementById('maximize-btn');
@@ -89,6 +87,39 @@ let countdownInterval = null;
 let isDownloadingFromServer = false;
 let currentTranslations = {};
 let launcherSettingsCache = {};
+
+function updatePluginsButtonAppearance(serverType) {
+    const isFabric = serverType === 'fabric';
+    const label = isFabric ? (currentTranslations['modsLabel'] || 'Mods') : (currentTranslations['pluginsButton'] || 'Plugins');
+    if (pluginsFolderIcon) {
+        pluginsFolderIcon.className = `fas ${isFabric ? 'fa-flask' : 'fa-puzzle-piece'}`;
+    }
+    if (pluginsFolderButton) {
+        pluginsFolderButton.setAttribute('aria-label', label);
+        pluginsFolderButton.title = label;
+    }
+    const propsLabel = currentTranslations['serverPropsHeader'] || 'Server Properties';
+    if (pluginsModalIcon) {
+        pluginsModalIcon.className = `fas ${isFabric ? 'fa-flask' : 'fa-puzzle-piece'} accent-text text-xl`;
+    }
+    if (pluginsModalTitleText) {
+        pluginsModalTitleText.textContent = `${label} & ${propsLabel}`;
+    }
+    if (pluginsSectionIcon) {
+        pluginsSectionIcon.className = `fas ${isFabric ? 'fa-flask' : 'fa-puzzle-piece'} accent-text`;
+    }
+    if (pluginsSectionTitle) {
+        pluginsSectionTitle.textContent = label;
+    }
+    if (uploadPluginButton) {
+        const uploadLabel = isFabric ? (currentTranslations['uploadModsButton'] || 'Upload Mods') : (currentTranslations['uploadButton'] || 'Upload');
+        uploadPluginButton.innerHTML = `<i class="fas fa-upload mr-1"></i>${uploadLabel}`;
+    }
+    if (openPluginsFolderButton) {
+        const openFolderLabel = isFabric ? (currentTranslations['openModsFolderButton'] || 'Open Mods Folder') : (currentTranslations['openFolderButton'] || 'Open Folder');
+        openPluginsFolderButton.innerHTML = `<i class="fas fa-folder-open mr-1"></i>${openFolderLabel}`;
+    }
+}
 
 function populateServerTypeSelect(selectEl, currentType) {
     if (!selectEl) return;
@@ -129,10 +160,20 @@ async function setLanguage(lang) {
             }
         });
 
+        document.querySelectorAll('[data-key-aria-label]').forEach(element => {
+            const key = element.getAttribute('data-key-aria-label');
+            if (translations[key]) {
+                element.setAttribute('aria-label', translations[key]);
+                element.title = translations[key];
+            }
+        });
+
         const currentStatusKey = statusMessageSpan.dataset.key;
         if(currentStatusKey && translations[currentStatusKey]) {
             statusMessageSpan.textContent = translations[currentStatusKey];
         }
+
+        updatePluginsButtonAppearance(currentServerConfig?.serverType);
 
     } catch (error) {
         console.error("Language Error:", error);
@@ -355,6 +396,7 @@ async function refreshUISetupState() {
         return;
     }
     currentServerConfig = config || {};
+    updatePluginsButtonAppearance(currentServerConfig?.serverType);
     if (needsSetup) {
         hideModal(settingsModal, settingsModalContent);
         showModal(setupModal, setupModalContent);
@@ -373,11 +415,7 @@ async function refreshUISetupState() {
             }
             updateButtonStates(localIsServerRunning);
             await fetchAndDisplayIPs();
-            try {
-                const labelSpan = pluginsFolderButton.querySelector('span');
-                const label = (currentServerConfig?.serverType === 'fabric') ? 'Mods' : (currentTranslations['pluginsButton'] || 'Plugins');
-                if (labelSpan) labelSpan.textContent = label;
-            } catch (_) {}
+            updatePluginsButtonAppearance(currentServerConfig?.serverType);
         });
     }
 }
@@ -476,11 +514,7 @@ settingsButton.addEventListener('click', async () => {
     await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version, currentType);
     ramAllocationSettingsSelect.value = serverConfig.ram || 'auto';
     javaArgumentsSettingsSelect.value = serverConfig.javaArgs || 'Default';
-    await populateServerProperties();
-    try {
-        const labelSpan = pluginsFolderButton.querySelector('span');
-        if (labelSpan) labelSpan.textContent = (serverConfig.serverType === 'fabric') ? 'Mods' : (currentTranslations['pluginsButton'] || 'Plugins');
-    } catch (_) {}
+    updatePluginsButtonAppearance(serverConfig.serverType);
     showModal(settingsModal, settingsModalContent);
 });
 
@@ -889,21 +923,10 @@ window.electronAPI.onPlaySound((soundPath) => {
 });
 
 async function openPluginsModal() {
-    const isFabric = (currentServerConfig?.serverType === 'fabric');
-    const headerH2 = pluginsModalContent.querySelector('h2');
-    if (headerH2) headerH2.textContent = isFabric ? 'Mods & Worlds' : 'Plugins & Worlds';
-    const sections = pluginsModalContent.querySelectorAll('section');
-    if (sections && sections[0]) {
-        const h3 = sections[0].querySelector('h3');
-        if (h3) h3.textContent = isFabric ? 'Mods' : 'Plugins';
-    }
-    const uploadBtn = document.getElementById('upload-plugin-button');
-    if (uploadBtn) uploadBtn.innerHTML = `<i class="fas fa-upload mr-1"></i>${isFabric ? 'Upload Mods' : 'Upload'}`;
-    const openFolderBtn = document.getElementById('open-plugins-folder-button');
-    if (openFolderBtn) openFolderBtn.innerHTML = `<i class="fas fa-folder-open mr-1"></i>${isFabric ? 'Open Mods Folder' : 'Open Folder'}`;
+    updatePluginsButtonAppearance(currentServerConfig?.serverType);
 
     await refreshPluginsList();
-    await refreshWorldsInfo();
+    await populateServerProperties();
     showModal(pluginsModal, pluginsModalContent);
 }
 
@@ -913,29 +936,38 @@ async function refreshPluginsList() {
         const plugins = await window.electronAPI.getPlugins();
         if (!plugins || plugins.length === 0) {
             const empty = document.createElement('div');
-            empty.className = 'text-gray-400 text-sm';
             const isFabric = (currentServerConfig?.serverType === 'fabric');
+            empty.className = 'text-gray-400 text-sm text-center py-4 font-medium';
             empty.textContent = isFabric ? 'No mods found.' : 'No plugins found.';
             pluginsList.appendChild(empty);
             return;
         }
+        const isFabric = (currentServerConfig?.serverType === 'fabric');
+        const deleteLabel = currentTranslations['deleteButton'] || 'Delete';
         plugins.forEach(p => {
             const row = document.createElement('div');
-            row.className = 'flex items-center justify-between bg-gray-800 rounded px-3 py-2';
-            const left = document.createElement('div');
-            left.className = 'truncate';
+            row.className = 'flex items-center gap-3 rounded-md bg-gray-800/85 hover:bg-gray-800 transition-colors shadow-sm px-3 py-3';
+
+            const iconWrap = document.createElement('div');
+            iconWrap.className = 'flex items-center justify-center w-10 h-10 rounded-md bg-gray-700/80';
+            const icon = document.createElement('i');
+            icon.className = `fas ${isFabric ? 'fa-flask' : 'fa-puzzle-piece'} accent-text`;
+            iconWrap.appendChild(icon);
+
+            const info = document.createElement('div');
+            info.className = 'flex-1 min-w-0';
             const name = document.createElement('div');
             name.className = 'text-sm text-gray-200 truncate';
             name.textContent = p.name;
             const meta = document.createElement('div');
             meta.className = 'text-xs text-gray-400';
             meta.textContent = `${(p.size/1024/1024).toFixed(2)} MB`;
-            left.appendChild(name);
-            left.appendChild(meta);
-            const actions = document.createElement('div');
+            info.appendChild(name);
+            info.appendChild(meta);
+
             const delBtn = document.createElement('button');
-            delBtn.className = 'btn-danger px-2 py-1 rounded text-xs';
-            delBtn.innerHTML = '<i class="fas fa-trash"></i>';
+            delBtn.className = 'btn-danger px-5 py-2 text-sm font-semibold flex items-center gap-2 rounded-md flex-shrink-0';
+            delBtn.innerHTML = `<i class="fas fa-trash"></i><span>${deleteLabel}</span>`;
             delBtn.addEventListener('click', async () => {
                 if (localIsServerRunning) {
                     const isFabric = (currentServerConfig?.serverType === 'fabric');
@@ -947,34 +979,14 @@ async function refreshPluginsList() {
                 else addToConsole(`Deleted ${ (currentServerConfig?.serverType === 'fabric') ? 'mod' : 'plugin' } ${p.name}`, 'SUCCESS');
                 await refreshPluginsList();
             });
-            actions.appendChild(delBtn);
-            row.appendChild(left);
-            row.appendChild(actions);
+
+            row.appendChild(iconWrap);
+            row.appendChild(info);
+            row.appendChild(delBtn);
             pluginsList.appendChild(row);
         });
     } catch (e) {
         addToConsole(`Failed to load plugins: ${e.message}`, 'ERROR');
-    }
-}
-
-async function refreshWorldsInfo() {
-    try {
-        const info = await window.electronAPI.getWorldsInfo();
-        currentWorldNameSpan.textContent = info.levelName || 'world';
-        worldNameInput.value = info.levelName || 'world';
-        worldsCandidates.innerHTML = '';
-        (info.candidates || []).forEach(name => {
-            const tag = document.createElement('button');
-            tag.className = 'px-2 py-1 rounded bg-gray-800 text-gray-200 text-xs hover:bg-gray-700';
-            tag.textContent = name;
-            tag.addEventListener('click', () => { worldNameInput.value = name; });
-            worldsCandidates.appendChild(tag);
-        });
-        worldExistsOverworld.textContent = info.exists?.overworld ? 'Yes' : 'No';
-        worldExistsNether.textContent = info.exists?.nether ? 'Yes' : 'No';
-        worldExistsTheEnd.textContent = info.exists?.the_end ? 'Yes' : 'No';
-    } catch (e) {
-        addToConsole(`Failed to load worlds info: ${e.message}`, 'ERROR');
     }
 }
 
@@ -987,18 +999,9 @@ uploadPluginButton?.addEventListener('click', async () => {
 
 openPluginsFolderButton?.addEventListener('click', () => window.electronAPI.openPluginsFolder());
 
-applyWorldNameButton?.addEventListener('click', async () => {
-    const name = worldNameInput.value.trim();
-    if (!name) return;
-    const res = await window.electronAPI.setLevelName(name);
-    if (!res.ok) addToConsole(`Failed to apply level-name: ${res.error}`, 'ERROR');
-    else addToConsole(`Applied level-name=${name}`, 'SUCCESS');
-    await refreshWorldsInfo();
-});
-
 pluginsRefreshButton?.addEventListener('click', async () => {
     await refreshPluginsList();
-    await refreshWorldsInfo();
+    await populateServerProperties();
 });
 
 const closePlugins = () => hideModal(pluginsModal, pluginsModalContent);
