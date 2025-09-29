@@ -67,7 +67,7 @@ const pluginsSectionTitle = document.getElementById('plugins-section-title');
 const pluginsSectionIcon = document.getElementById('plugins-section-icon');
 const closePluginsButton = document.getElementById('close-plugins-button');
 const pluginsRefreshButton = document.getElementById('plugins-refresh-button');
-const pluginsCloseFooter = document.getElementById('plugins-close-footer');
+const pluginsSaveApplyButton = document.getElementById('plugins-save-apply-button');
 const pluginsList = document.getElementById('plugins-list');
 const uploadPluginButton = document.getElementById('upload-plugin-button');
 const openPluginsFolderButton = document.getElementById('open-plugins-folder-button');
@@ -1006,7 +1006,21 @@ pluginsRefreshButton?.addEventListener('click', async () => {
 
 const closePlugins = () => hideModal(pluginsModal, pluginsModalContent);
 closePluginsButton?.addEventListener('click', closePlugins);
-pluginsCloseFooter?.addEventListener('click', closePlugins);
+pluginsSaveApplyButton?.addEventListener('click', () => {
+    const inputs = serverPropertiesContainer?.querySelectorAll('input, select');
+    if (inputs && inputs.length > 0) {
+        const updatedProperties = {};
+        inputs.forEach(input => {
+            if (input.dataset?.key) {
+                updatedProperties[input.dataset.key] = input.value;
+            }
+        });
+        if (Object.keys(updatedProperties).length > 0) {
+            window.electronAPI.setServerProperties(updatedProperties);
+        }
+    }
+    closePlugins();
+});
 settingsModal.addEventListener('click', (e) => {
     if (!settingsModalContent.contains(e.target)) {
         hideModal(settingsModal, settingsModalContent);
