@@ -25,6 +25,7 @@
     "electron-builder": "^26.0.12"
   },
   "dependencies": {
+    "adm-zip": "^0.5.10",
     "ansi-to-html": "^0.7.2",
     "discord-rpc": "^4.0.1",
     "electron-log": "^5.4.1",

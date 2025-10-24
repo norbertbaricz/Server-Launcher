@@ -12,6 +12,76 @@ const RPC = require('discord-rpc');
 const pidusage = require('pidusage');
 const AnsiToHtml = require('ansi-to-html');
 const find = require('find-process');
+const AdmZip = require('adm-zip');
+
+const SERVER_TYPES = {
+  PAPER: 'papermc',
+  FABRIC: 'fabric',
+  BEDROCK: 'bedrock'
+};
+
+function normalizeServerType(type) {
+  if (type === SERVER_TYPES.FABRIC) return SERVER_TYPES.FABRIC;
+  if (type === SERVER_TYPES.BEDROCK) return SERVER_TYPES.BEDROCK;
+  return SERVER_TYPES.PAPER;
+}
+
+function isJavaServer(type) {
+  return type === SERVER_TYPES.PAPER || type === SERVER_TYPES.FABRIC;
+}
+
+function getBedrockExecutableName() {
+  return process.platform === 'win32' ? 'bedrock_server.exe' : 'bedrock_server';
+}
+
+function getBedrockPlatformFolder() {
+  if (process.platform === 'win32') return 'windows';
+  if (process.platform === 'linux') return 'linux';
+  return null;
+}
+
+function fetchJson(url, description = 'request') {
+  return new Promise((resolve, reject) => {
+    https.get(url, { headers: { 'User-Agent': 'Server-Launcher/1.0' } }, (res) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        return fetchJson(res.headers.location, description).then(resolve).catch(reject);
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        return reject(new Error(`${description} failed (${res.statusCode})`));
+      }
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch (e) { reject(new Error(`Failed to parse JSON from ${description}: ${e.message}`)); }
+      });
+    }).on('error', err => reject(new Error(`${description} error: ${err.message}`)));
+  });
+}
+
+function sortVersionsDesc(list) {
+  const copy = Array.isArray(list) ? [...list] : [];
+  copy.sort((a, b) => {
+    const pa = String(a).split('.').map(n => parseInt(n, 10) || 0);
+    const pb = String(b).split('.').map(n => parseInt(n, 10) || 0);
+    const len = Math.max(pa.length, pb.length);
+    for (let i = 0; i < len; i++) {
+      const da = pa[i] || 0;
+      const db = pb[i] || 0;
+      if (da !== db) return db - da;
+    }
+    return 0;
+  });
+  return copy;
+}
+
+function getServerFlavorLabel(type) {
+  if (type === SERVER_TYPES.FABRIC) return 'Modded';
+  if (type === SERVER_TYPES.BEDROCK) return 'Bedrock';
+  return 'Vanilla';
+}
 
 let javaExecutablePath = 'java';
 let MINIMUM_JAVA_VERSION = 17;
@@ -135,12 +205,12 @@ const fabricInstallerJarName = 'fabric-installer.jar';
 function getConfiguredServerType() {
   try {
     const cfg = readServerConfig();
-    return (cfg && (cfg.serverType === 'fabric' || cfg.serverType === 'papermc')) ? cfg.serverType : 'papermc';
-  } catch (_) { return 'papermc'; }
+    return normalizeServerType(cfg?.serverType);
+  } catch (_) { return SERVER_TYPES.PAPER; }
 }
 
 function getServerJarNameForType(serverType) {
-  return serverType === 'fabric' ? fabricJarName : paperJarName;
+  return serverType === SERVER_TYPES.FABRIC ? fabricJarName : paperJarName;
 }
 
 let serverConfigFilePath;
@@ -176,12 +246,25 @@ async function killStrayServerProcess() {
         const processes = await find('name', 'java', true);
         const serverJarPaper = path.join(serverFilesDir, paperJarName);
         const serverJarFabric = path.join(serverFilesDir, fabricJarName);
+        const bedrockExecutableName = getBedrockExecutableName();
+        const bedrockExecutablePath = path.join(serverFilesDir, bedrockExecutableName);
 
         for (const p of processes) {
             if (p.cmd.includes(serverJarPaper) || p.cmd.includes(serverJarFabric)) {
                 log.warn(`Found a stray server process with PID ${p.pid}. Attempting to kill it.`);
                 sendConsole(`Found a stray server process (PID: ${p.pid}). Terminating...`, 'WARN');
                 process.kill(p.pid);
+            }
+        }
+        if (bedrockExecutableName) {
+            const allProcesses = await find('name', bedrockExecutableName.replace('.exe', ''), true);
+            for (const proc of allProcesses) {
+                const cmd = (proc.cmd || '').toLowerCase();
+                if (cmd.includes('bedrock_server') || (bedrockExecutablePath && cmd.includes(path.basename(bedrockExecutablePath).toLowerCase()))) {
+                    log.warn(`Found a stray Bedrock server process with PID ${proc.pid}. Attempting to kill it.`);
+                    sendConsole(`Found a stray Bedrock server process (PID: ${proc.pid}). Terminating...`, 'WARN');
+                    process.kill(proc.pid);
+                }
             }
         }
     } catch (err) {
@@ -460,7 +543,12 @@ function refreshMinimumJavaRequirementFromConfig() {
             return;
         }
         const cfg = readServerConfig();
-        MINIMUM_JAVA_VERSION = cfg?.version ? requiredJavaForVersion(cfg.version) : 17;
+        const type = normalizeServerType(cfg?.serverType);
+        if (isJavaServer(type)) {
+            MINIMUM_JAVA_VERSION = cfg?.version ? requiredJavaForVersion(cfg.version) : 17;
+        } else {
+            MINIMUM_JAVA_VERSION = 0;
+        }
     } catch (_) {
         MINIMUM_JAVA_VERSION = 17;
     }
@@ -631,10 +719,15 @@ function createWindow () {
     }
   });
   mainWindow.webContents.on('did-finish-load', async () => {
-      const hasJava = await checkJava();
-      if (!hasJava && app.isPackaged) {
-          mainWindow.webContents.send('java-install-required');
-          return;
+      const cfg = readServerConfig();
+      const type = normalizeServerType(cfg?.serverType);
+      let hasJava = true;
+      if (isJavaServer(type)) {
+          hasJava = await checkJava();
+          if (!hasJava && app.isPackaged) {
+              mainWindow.webContents.send('java-install-required');
+              return;
+          }
       }
       
       sendServerStateChange(localIsServerRunningGlobal);
@@ -847,61 +940,62 @@ ipcMain.on('set-server-properties', (event, newProperties) => {
 ipcMain.handle('get-app-path', () => app.getAppPath());
 ipcMain.handle('check-initial-setup', async () => {
     const configExists = fs.existsSync(serverConfigFilePath);
-    let jarExists = false;
+    let installExists = false;
     if (configExists) {
         const cfg = readServerConfig();
-        const t = (cfg.serverType === 'fabric') ? 'fabric' : 'papermc';
-        jarExists = fs.existsSync(path.join(serverFilesDir, getServerJarNameForType(t)));
+        const t = normalizeServerType(cfg.serverType);
+        if (t === SERVER_TYPES.BEDROCK) {
+            installExists = fs.existsSync(path.join(serverFilesDir, getBedrockExecutableName()));
+        } else {
+            installExists = fs.existsSync(path.join(serverFilesDir, getServerJarNameForType(t)));
+        }
     }
-    const needsSetup = !jarExists || !configExists;
+    const needsSetup = !installExists || !configExists;
     if (!needsSetup) sendConsole(`Setup check OK.`, 'INFO');
     return { needsSetup, config: configExists ? readServerConfig() : {} };
 });
 ipcMain.handle('get-available-versions', async (_event, serverType) => {
-    const type = serverType === 'fabric' ? 'fabric' : 'papermc';
+    const type = normalizeServerType(serverType);
     try {
-        if (type === 'papermc') {
+        if (type === SERVER_TYPES.PAPER) {
             const projectApiUrl = 'https://api.papermc.io/v2/projects/paper';
-            const projectResponseData = await new Promise((resolve, reject) => {
-                https.get(projectApiUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
-                    if (res.statusCode !== 200) { res.resume(); return reject(new Error(`API Error (Status ${res.statusCode})`)); }
-                    let data = ''; res.on('data', chunk => data += chunk);
-                    res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse JSON.')); }});
-                }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
-            });
-            if (projectResponseData.versions?.length > 0) return projectResponseData.versions.reverse();
+            const projectResponseData = await fetchJson(projectApiUrl, 'PaperMC versions');
+            if (projectResponseData.versions?.length > 0) {
+                return sortVersionsDesc(projectResponseData.versions);
+            }
             throw new Error('No versions found.');
-        } else {
+        } else if (type === SERVER_TYPES.FABRIC) {
             const fabricGameUrl = 'https://meta.fabricmc.net/v2/versions/game';
-            const response = await new Promise((resolve, reject) => {
-                https.get(fabricGameUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
-                    if (res.statusCode !== 200) { res.resume(); return reject(new Error(`API Error (Status ${res.statusCode})`)); }
-                    let data = ''; res.on('data', chunk => data += chunk);
-                    res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse JSON.')); }});
-                }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
-            });
+            const response = await fetchJson(fabricGameUrl, 'Fabric game versions');
             const stable = Array.isArray(response) ? response.filter(v => v && v.version && v.stable) : [];
             const versions = stable.map(v => v.version);
-            versions.sort((a,b) => {
-                const pa = a.split('.').map(n=>parseInt(n,10));
-                const pb = b.split('.').map(n=>parseInt(n,10));
-                for (let i=0;i<3;i++) {
-                    const da = pa[i]||0, db = pb[i]||0;
-                    if (da!==db) return db-da;
-                }
-                return 0;
-            });
-            return versions;
+            return sortVersionsDesc(versions);
+        } else if (type === SERVER_TYPES.BEDROCK) {
+            const platformFolder = getBedrockPlatformFolder();
+            if (!platformFolder) throw new Error('Bedrock server downloads are available only on Windows and Linux.');
+            const manifestUrl = 'https://raw.githubusercontent.com/Bedrock-OSS/BDS-Versions/main/versions.json';
+            const manifest = await fetchJson(manifestUrl, 'Bedrock versions manifest');
+            const platformData = manifest?.[platformFolder];
+            const versions = Array.isArray(platformData?.versions) ? platformData.versions : [];
+            if (!versions.length) throw new Error('No Bedrock versions found.');
+            const sorted = sortVersionsDesc(versions);
+            return sorted;
         }
+        return [];
     } catch (error) {
-        sendConsole(`Could not fetch ${type === 'fabric' ? 'Fabric' : 'PaperMC'} versions: ${error.message}`, 'ERROR');
+        const label = type === SERVER_TYPES.FABRIC ? 'Fabric' : (type === SERVER_TYPES.BEDROCK ? 'Bedrock' : 'PaperMC');
+        sendConsole(`Could not fetch ${label} versions: ${error.message}`, 'ERROR');
         return [];
     }
 });
 ipcMain.handle('get-plugins', async () => {
     try {
         const cfg = readServerConfig();
-        const isFabric = (cfg.serverType === 'fabric');
+        const type = normalizeServerType(cfg.serverType);
+        if (type === SERVER_TYPES.BEDROCK) {
+            return [];
+        }
+        const isFabric = (type === SERVER_TYPES.FABRIC);
         const baseDir = path.join(serverFilesDir, isFabric ? 'mods' : 'plugins');
         if (!fs.existsSync(baseDir)) return [];
         const files = fs.readdirSync(baseDir).filter(f => f.toLowerCase().endsWith('.jar'));
@@ -920,11 +1014,15 @@ ipcMain.handle('delete-plugin', async (_event, name) => {
         if (localIsServerRunningGlobal) {
             return { ok: false, error: 'Stop the server before deleting plugins.' };
         }
+        const cfg = readServerConfig();
+        const type = normalizeServerType(cfg.serverType);
+        if (type === SERVER_TYPES.BEDROCK) {
+            return { ok: false, error: 'Bedrock servers do not support add-on management via this launcher yet.' };
+        }
         if (typeof name !== 'string' || !name || name.includes('..') || name.includes('/') || name.includes('\\') || !name.toLowerCase().endsWith('.jar')) {
             return { ok: false, error: 'Invalid plugin name.' };
         }
-        const cfg = readServerConfig();
-        const isFabric = (cfg.serverType === 'fabric');
+        const isFabric = (type === SERVER_TYPES.FABRIC);
         const baseDir = path.join(serverFilesDir, isFabric ? 'mods' : 'plugins');
         const resolvedBase = path.resolve(baseDir) + path.sep;
         const target = path.resolve(baseDir, name);
@@ -941,7 +1039,11 @@ ipcMain.handle('upload-plugins', async () => {
         const win = getMainWindow();
         if (!win) return { ok: false, error: 'No window' };
         const cfg = readServerConfig();
-        const isFabric = (cfg.serverType === 'fabric');
+        const type = normalizeServerType(cfg.serverType);
+        if (type === SERVER_TYPES.BEDROCK) {
+            return { ok: false, error: 'Bedrock servers do not support add-on uploads yet.' };
+        }
+        const isFabric = (type === SERVER_TYPES.FABRIC);
         const { canceled, filePaths } = await dialog.showOpenDialog(win, {
             title: isFabric ? 'Select mod JAR files' : 'Select plugin JAR files',
             properties: ['openFile', 'multiSelections'],
@@ -1026,7 +1128,12 @@ ipcMain.handle('set-level-name', async (_event, newName) => {
 });
 ipcMain.on('open-plugins-folder', () => {
     const cfg = readServerConfig();
-    const isFabric = (cfg.serverType === 'fabric');
+    const type = normalizeServerType(cfg.serverType);
+    if (type === SERVER_TYPES.BEDROCK) {
+        shell.openPath(serverFilesDir).catch(err => sendConsole(`Failed to open folder: ${err.message}`, 'ERROR'));
+        return;
+    }
+    const isFabric = (type === SERVER_TYPES.FABRIC);
     const baseDir = path.join(serverFilesDir, isFabric ? 'mods' : 'plugins');
     if (!fs.existsSync(baseDir)) {
         try {
@@ -1082,42 +1189,185 @@ ipcMain.handle('get-translations', async (event, lang) => {
   return null;
 });
 
+async function startBedrockServer(serverConfig) {
+    const execName = getBedrockExecutableName();
+    const execPath = path.join(serverFilesDir, execName);
+    if (!fs.existsSync(execPath)) {
+        sendConsole(`${execName} not found.`, 'ERROR');
+        sendStatus('Server executable not found.', false, 'serverJarNotFound');
+        return;
+    }
+    if (!serverConfig.version) {
+        sendConsole('Server version missing in config.', 'ERROR');
+        sendStatus('Config error.', false, 'configError');
+        return;
+    }
+
+    if (performanceStatsInterval) clearInterval(performanceStatsInterval);
+    latencyProbeActive = false; latencyProbeStart = 0; manualListCheck = false;
+
+    sendConsole('Starting Bedrock server...', 'INFO');
+    sendStatus('Starting server...', true, 'serverStarting');
+    getMainWindow()?.webContents.send('update-performance-stats', { allocatedRamGB: '-' });
+
+    const spawnOptions = {
+        cwd: serverFilesDir,
+        stdio: ['pipe', 'pipe', 'pipe']
+    };
+    if (process.platform !== 'win32') {
+        spawnOptions.env = { ...process.env, LD_LIBRARY_PATH: '.', ...spawnOptions.env };
+    }
+
+    try {
+        serverProcess = spawn(execPath, [], spawnOptions);
+    } catch (error) {
+        sendConsole(`Error spawning server: ${error.message}`, 'ERROR');
+        serverProcess = null;
+        sendServerStateChange(false);
+        sendStatus('Error starting server.', false, 'error');
+        return;
+    }
+
+    serverProcess.killedInternally = false;
+    let serverIsFullyStarted = false;
+
+    if (performanceStatsInterval) clearInterval(performanceStatsInterval);
+    performanceStatsInterval = setInterval(async () => {
+        if (!serverProcess || serverProcess.killed) {
+            clearInterval(performanceStatsInterval);
+            return;
+        }
+        try {
+            const stats = await pidusage(serverProcess.pid);
+            const memoryGB = stats.memory / (1024 * 1024 * 1024);
+            getMainWindow()?.webContents.send('update-performance-stats', { memoryGB });
+        } catch (e) {
+            clearInterval(performanceStatsInterval);
+            if (localIsServerRunningGlobal) {
+                log.error('Lost connection to server process (pidusage failed).', e);
+                sendConsole('Lost connection to the server process.', 'ERROR');
+                sendServerStateChange(false);
+            }
+        }
+    }, 2000);
+
+    const startedRegex = /server started\b/i;
+
+    serverProcess.stdout.on('data', (data) => {
+        const rawOutput = data.toString();
+        const cleanOutput = rawOutput.trimEnd();
+        sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
+
+        if (!serverIsFullyStarted && startedRegex.test(cleanOutput)) {
+            serverIsFullyStarted = true;
+            sendServerStateChange(true);
+            setDiscordActivity();
+            try {
+                const cfg = readServerConfig();
+                const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
+                const ver = cfg.version || '';
+                showDesktopNotification('Server Started', `${type} ${ver} is now running.`);
+                playNotificationSound();
+            } catch (_) {}
+        }
+    });
+
+    serverProcess.stderr.on('data', (data) => {
+        sendConsole(ansiConverter.toHtml(data.toString()), 'SERVER_LOG_HTML');
+    });
+
+    serverProcess.on('close', (code) => {
+        if (performanceStatsInterval) clearInterval(performanceStatsInterval);
+        const killedInternally = serverProcess?.killedInternally;
+        serverProcess = null;
+
+        sendServerStateChange(false);
+        setDiscordActivity();
+
+        if (killedInternally) {
+            sendConsole('Server process stopped normally.', 'INFO');
+            sendStatus('Server stopped.', false, 'serverStopped');
+            try {
+                const cfg = readServerConfig();
+                const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
+                const ver = cfg.version || '';
+                showDesktopNotification('Server Stopped', `${type} ${ver} was stopped manually.`);
+            } catch (_) {}
+        } else {
+            const launcherSettings = readLauncherSettings();
+            if (launcherSettings.autoStartServer) {
+                sendConsole('Server stopped unexpectedly. Attempting to auto-restart...', 'WARN');
+                const delay = launcherSettings.autoStartDelay || 5;
+                mainWindow.webContents.send('start-countdown', 'restart', delay);
+                try {
+                    const cfg = readServerConfig();
+                    const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
+                    const ver = cfg.version || '';
+                    showDesktopNotification('Server Crashed', `${type} ${ver} crashed. Auto-restarting in ${delay}s...`);
+                    playNotificationSound();
+                } catch (_) {}
+            } else {
+                sendStatus('Server stopped unexpectedly.', false, 'serverStoppedUnexpectedly');
+                sendConsole(`Server process exited unexpectedly with code ${code}.`, 'ERROR');
+                try {
+                    const cfg = readServerConfig();
+                    const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
+                    const ver = cfg.version || '';
+                    showDesktopNotification('Server Crashed', `${type} ${ver} exited unexpectedly (code ${code ?? 'unknown'}).`);
+                    playNotificationSound();
+                } catch (_) {}
+            }
+        }
+    });
+
+    serverProcess.on('error', (err) => {
+        if (performanceStatsInterval) clearInterval(performanceStatsInterval);
+        sendConsole(`Failed to start process: ${err.message}`, 'ERROR');
+        const isNotFound = err.message.includes('ENOENT');
+        const fallbackMsg = isNotFound ? 'Executable not found!' : 'Server start failed.';
+        sendStatus(fallbackMsg, false, isNotFound ? null : 'serverStartFailed');
+        serverProcess = null;
+        sendServerStateChange(false);
+    });
+}
+
 ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocation, javaArgs }) => {
-    const chosenType = serverType === 'fabric' ? 'fabric' : 'papermc';
-    sendConsole(`Configuring: Type ${chosenType}, Version ${mcVersion}, RAM ${ramAllocation}`, 'INFO');
+    const chosenType = normalizeServerType(serverType);
+    const typeLabel = chosenType === SERVER_TYPES.FABRIC ? 'Fabric' : (chosenType === SERVER_TYPES.BEDROCK ? 'Bedrock' : 'PaperMC');
+    sendConsole(`Configuring: Type ${typeLabel}, Version ${mcVersion || 'N/A'}, RAM ${ramAllocation || 'Auto'}`, 'INFO');
+
     const currentConfig = readServerConfig();
-    const oldVersion = currentConfig.version;
-    const oldType = currentConfig.serverType || 'papermc';
-    currentConfig.javaArgs = javaArgs || 'Default';
-    if (ramAllocation?.toLowerCase() !== 'auto') {
-        currentConfig.ram = ramAllocation;
+    if (isJavaServer(chosenType)) {
+        currentConfig.javaArgs = javaArgs || 'Default';
+        if (ramAllocation?.toLowerCase() !== 'auto') {
+            currentConfig.ram = ramAllocation;
+        } else {
+            delete currentConfig.ram;
+        }
     } else {
+        delete currentConfig.javaArgs;
         delete currentConfig.ram;
     }
     writeServerConfig(currentConfig);
-    MINIMUM_JAVA_VERSION = requiredJavaForVersion(mcVersion);
-    
+    MINIMUM_JAVA_VERSION = isJavaServer(chosenType) ? requiredJavaForVersion(mcVersion) : 0;
+
     try {
-        if (chosenType === 'papermc') {
+        if (chosenType === SERVER_TYPES.PAPER) {
             sendStatus(`Downloading PaperMC ${mcVersion}...`, true, 'downloading');
             const buildsApiUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds`;
-            const buildsResponseData = await new Promise((resolve, reject) => {
-                https.get(buildsApiUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
-                    if (res.statusCode !== 200) { res.resume(); return reject(new Error(`API Error (Status ${res.statusCode})`)); }
-                    let data = ''; res.on('data', chunk => data += chunk);
-                    res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse JSON.')); }});
-                }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
-            });
-            if (!buildsResponseData.builds?.length > 0) throw new Error('No builds found.');
-            const latestBuild = buildsResponseData.builds.pop();
+            const buildsResponseData = await fetchJson(buildsApiUrl, 'PaperMC builds list');
+            if (!Array.isArray(buildsResponseData.builds) || buildsResponseData.builds.length === 0) {
+                throw new Error('No builds found for this PaperMC version.');
+            }
+            const latestBuild = buildsResponseData.builds[buildsResponseData.builds.length - 1];
             const downloadUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds/${latestBuild.build}/downloads/${latestBuild.downloads.application.name}`;
             sendStatus(`Downloading (0%)`, true, 'downloading');
 
             const paperDest = path.join(serverFilesDir, paperJarName);
             await new Promise((resolve, reject) => {
                 const doDownload = (url) => {
-                    https.get(url, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (response) => {
-                        if ([301,302,303,307,308].includes(response.statusCode) && response.headers.location) {
+                    https.get(url, { headers: { 'User-Agent': 'Server-Launcher/1.0' } }, (response) => {
+                        if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
                             response.resume();
                             return doDownload(response.headers.location);
                         }
@@ -1135,7 +1385,7 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
                                     sendStatus(`Downloading (${percent}%)`, true, 'downloading');
                                 }
                             } else {
-                                const mb = Math.floor(downloaded / (1024*1024));
+                                const mb = Math.floor(downloaded / (1024 * 1024));
                                 if (mb !== lastMB) {
                                     lastMB = mb;
                                     sendStatus(`Downloading (${mb} MB)`, true, 'downloading');
@@ -1148,36 +1398,25 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
                 };
                 doDownload(downloadUrl);
             });
+
             sendStatus('PaperMC downloaded successfully!', false, 'downloadSuccess');
             sendConsole(`${paperJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
             const updated = readServerConfig();
             updated.serverType = chosenType;
             updated.version = mcVersion;
             writeServerConfig(updated);
-        } else {
+        } else if (chosenType === SERVER_TYPES.FABRIC) {
             sendStatus(`Preparing Fabric ${mcVersion}...`, true, 'downloading');
 
             const loaderListUrl = `https://meta.fabricmc.net/v2/versions/loader/${mcVersion}`;
-            const loaderData = await new Promise((resolve, reject) => {
-                https.get(loaderListUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
-                    if (res.statusCode !== 200) { res.resume(); return reject(new Error(`API Error (Status ${res.statusCode})`)); }
-                    let data = ''; res.on('data', c => data += c);
-                    res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse JSON.')); }});
-                }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
-            });
+            const loaderData = await fetchJson(loaderListUrl, 'Fabric loader versions');
             if (!Array.isArray(loaderData) || loaderData.length === 0) throw new Error('No Fabric loader found for this version.');
             const pick = loaderData.find(x => x?.loader?.stable) || loaderData[0];
             const loaderVersion = pick?.loader?.version;
             if (!loaderVersion) throw new Error('Fabric loader version missing.');
 
             const installerMetaUrl = 'https://meta.fabricmc.net/v2/versions/installer';
-            const installers = await new Promise((resolve, reject) => {
-                https.get(installerMetaUrl, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (res) => {
-                    if (res.statusCode !== 200) { res.resume(); return reject(new Error(`API Error (Status ${res.statusCode})`)); }
-                    let data = ''; res.on('data', chunk => data += chunk);
-                    res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(new Error('Failed to parse JSON.')); }});
-                }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
-            });
+            const installers = await fetchJson(installerMetaUrl, 'Fabric installer list');
             if (!Array.isArray(installers) || installers.length === 0) throw new Error('No Fabric installers found.');
             const pickedInstaller = installers.find(x => x.stable) || installers[0];
             const installerVersion = pickedInstaller?.version;
@@ -1188,8 +1427,8 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
             const fabricDest = path.join(serverFilesDir, fabricJarName);
             await new Promise((resolve, reject) => {
                 const doDownload = (url) => {
-                    https.get(url, { headers: { 'User-Agent': 'MyMinecraftLauncher/1.0' } }, (response) => {
-                        if ([301,302,303,307,308].includes(response.statusCode) && response.headers.location) {
+                    https.get(url, { headers: { 'User-Agent': 'Server-Launcher/1.0' } }, (response) => {
+                        if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
                             response.resume();
                             return doDownload(response.headers.location);
                         }
@@ -1207,7 +1446,7 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
                                     sendStatus(`Downloading (${percent}%)`, true, 'downloading');
                                 }
                             } else {
-                                const mb = Math.floor(downloaded / (1024*1024));
+                                const mb = Math.floor(downloaded / (1024 * 1024));
                                 if (mb !== lastMB) {
                                     lastMB = mb;
                                     sendStatus(`Downloading (${mb} MB)`, true, 'downloading');
@@ -1227,18 +1466,140 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
             updated.serverType = chosenType;
             updated.version = mcVersion;
             writeServerConfig(updated);
+        } else if (chosenType === SERVER_TYPES.BEDROCK) {
+            if (!mcVersion) throw new Error('Please select a Bedrock version.');
+            const platformFolder = getBedrockPlatformFolder();
+            if (!platformFolder) throw new Error('Bedrock server downloads are only supported on Windows and Linux.');
+            sendStatus(`Downloading Bedrock ${mcVersion}...`, true, 'downloading');
+
+            const manifestUrl = `https://raw.githubusercontent.com/Bedrock-OSS/BDS-Versions/main/${platformFolder}/${mcVersion}.json`;
+            const manifest = await fetchJson(manifestUrl, 'Bedrock version manifest');
+            const downloadUrl = manifest?.download_url;
+            if (!downloadUrl) throw new Error('Download URL not found for this Bedrock version.');
+
+            const zipDest = path.join(serverFilesDir, `bedrock-${mcVersion}.zip`);
+            await new Promise((resolve, reject) => {
+                const doDownload = (url) => {
+                    https.get(url, { headers: { 'User-Agent': 'Server-Launcher/1.0' } }, (response) => {
+                        if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
+                            response.resume();
+                            return doDownload(response.headers.location);
+                        }
+                        if (response.statusCode !== 200) return reject(new Error(`Download failed (Status ${response.statusCode})`));
+                        const total = parseInt(response.headers['content-length'] || '0', 10);
+                        let downloaded = 0;
+                        let lastPercent = -1, lastMB = -1;
+                        const fileStream = fs.createWriteStream(zipDest);
+                        response.on('data', chunk => {
+                            downloaded += chunk.length;
+                            if (total > 0) {
+                                const percent = Math.round((downloaded / total) * 100);
+                                if (percent !== lastPercent) {
+                                    lastPercent = percent;
+                                    sendStatus(`Downloading (${percent}%)`, true, 'downloading');
+                                }
+                            } else {
+                                const mb = Math.floor(downloaded / (1024 * 1024));
+                                if (mb !== lastMB) {
+                                    lastMB = mb;
+                                    sendStatus(`Downloading (${mb} MB)`, true, 'downloading');
+                                }
+                            }
+                        });
+                        response.pipe(fileStream);
+                        fileStream.on('finish', () => fileStream.close(resolve));
+                    }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
+                };
+                doDownload(downloadUrl);
+            });
+
+            const preservedFiles = {};
+            const filesToPreserve = ['server.properties', 'permissions.json', 'allowlist.json', 'whitelist.json'];
+            for (const rel of filesToPreserve) {
+                const abs = path.join(serverFilesDir, rel);
+                if (fs.existsSync(abs)) {
+                    try {
+                        preservedFiles[rel] = fs.readFileSync(abs);
+                    } catch (err) {
+                        log.warn(`Failed to back up ${rel}: ${err.message}`);
+                    }
+                }
+            }
+
+            const worldsDir = path.join(serverFilesDir, 'worlds');
+            let worldsBackupPath = null;
+            if (fs.existsSync(worldsDir)) {
+                worldsBackupPath = path.join(serverFilesDir, '__worlds_backup__');
+                try {
+                    if (fs.existsSync(worldsBackupPath)) fs.rmSync(worldsBackupPath, { recursive: true, force: true });
+                    fs.renameSync(worldsDir, worldsBackupPath);
+                } catch (err) {
+                    log.warn(`Failed to back up existing Bedrock worlds: ${err.message}`);
+                    worldsBackupPath = null;
+                }
+            }
+
+            let extractionSucceeded = false;
+            try {
+                const zip = new AdmZip(zipDest);
+                zip.extractAllTo(serverFilesDir, true);
+                extractionSucceeded = true;
+            } finally {
+                try { fs.unlinkSync(zipDest); } catch (_) {}
+                if (worldsBackupPath && fs.existsSync(worldsBackupPath)) {
+                    try {
+                        if (extractionSucceeded) {
+                            const extractedWorlds = path.join(serverFilesDir, 'worlds');
+                            if (fs.existsSync(extractedWorlds)) {
+                                fs.rmSync(extractedWorlds, { recursive: true, force: true });
+                            }
+                        }
+                        fs.renameSync(worldsBackupPath, path.join(serverFilesDir, 'worlds'));
+                    } catch (err) {
+                        log.warn(`Failed to restore Bedrock worlds: ${err.message}`);
+                    }
+                }
+                for (const [rel, content] of Object.entries(preservedFiles)) {
+                    try {
+                        fs.writeFileSync(path.join(serverFilesDir, rel), content);
+                    } catch (err) {
+                        log.warn(`Failed to restore ${rel}: ${err.message}`);
+                    }
+                }
+            }
+
+            if (process.platform !== 'win32') {
+                const execPath = path.join(serverFilesDir, getBedrockExecutableName());
+                if (fs.existsSync(execPath)) {
+                    try {
+                        fs.chmodSync(execPath, 0o755);
+                    } catch (err) {
+                        log.warn(`Failed to set execute permissions on Bedrock server: ${err.message}`);
+                    }
+                }
+            }
+
+            const updated = readServerConfig();
+            updated.serverType = chosenType;
+            updated.version = mcVersion;
+            writeServerConfig(updated);
+
+            sendStatus('Bedrock server ready!', false, 'downloadSuccess');
+            sendConsole(`Bedrock server ${mcVersion} downloaded and extracted.`, 'SUCCESS');
         }
 
         getMainWindow()?.webContents.send('setup-finished');
-        setTimeout(async () => {
-            const hasJava2 = await checkJava();
-            if (!hasJava2 && app.isPackaged) {
-                const win = getMainWindow();
-                if (win && !win.isDestroyed()) {
-                    win.webContents.send('java-install-required');
+        if (isJavaServer(chosenType)) {
+            setTimeout(async () => {
+                const hasJava2 = await checkJava();
+                if (!hasJava2 && app.isPackaged) {
+                    const win = getMainWindow();
+                    if (win && !win.isDestroyed()) {
+                        win.webContents.send('java-install-required');
+                    }
                 }
-            }
-        }, 2000);
+            }, 2000);
+        }
 
     } catch (error) {
         sendStatus('Download failed.', false, 'downloadFailed');
@@ -1253,7 +1614,11 @@ ipcMain.on('start-server', async () => {
         return;
     }
     const serverConfig = readServerConfig();
-    const serverType = serverConfig.serverType || 'papermc';
+    const serverType = normalizeServerType(serverConfig.serverType);
+    if (serverType === SERVER_TYPES.BEDROCK) {
+        await startBedrockServer(serverConfig);
+        return;
+    }
     const jarName = getServerJarNameForType(serverType);
     const serverJarPath = path.join(serverFilesDir, jarName);
     if (!fs.existsSync(serverJarPath)) {
@@ -1371,7 +1736,7 @@ ipcMain.on('start-server', async () => {
                 setDiscordActivity();
                 try {
                     const cfg = readServerConfig();
-                    const type = (cfg.serverType === 'fabric') ? 'Modded' : 'Vanilla';
+                    const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                     const ver = cfg.version || '';
                     showDesktopNotification('Server Started', `${type} ${ver} is now running.`);
                     playNotificationSound();
@@ -1396,7 +1761,7 @@ ipcMain.on('start-server', async () => {
                 sendStatus('Server stopped.', false, 'serverStopped');
                 try {
                     const cfg = readServerConfig();
-                    const type = (cfg.serverType === 'fabric') ? 'Modded' : 'Vanilla';
+                    const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                     const ver = cfg.version || '';
                     showDesktopNotification('Server Stopped', `${type} ${ver} was stopped manually.`);
                 } catch (_) {}
@@ -1408,7 +1773,7 @@ ipcMain.on('start-server', async () => {
                     mainWindow.webContents.send('start-countdown', 'restart', delay);
                     try {
                         const cfg = readServerConfig();
-                        const type = (cfg.serverType === 'fabric') ? 'Modded' : 'Vanilla';
+                        const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                         const ver = cfg.version || '';
                         showDesktopNotification('Server Crashed', `${type} ${ver} crashed. Auto-restarting in ${delay}s...`);
                         playNotificationSound();
@@ -1418,7 +1783,7 @@ ipcMain.on('start-server', async () => {
                     sendConsole(`Server process exited unexpectedly with code ${code}.`, 'ERROR');
                     try {
                         const cfg = readServerConfig();
-                        const type = (cfg.serverType === 'fabric') ? 'Modded' : 'Vanilla';
+                        const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                         const ver = cfg.version || '';
                         showDesktopNotification('Server Crashed', `${type} ${ver} exited unexpectedly (code ${code ?? 'unknown'}).`);
                         playNotificationSound();
