@@ -8,6 +8,30 @@ body {
     flex-direction: column;
 }
 
+.equal-card-grid {
+    align-items: stretch;
+}
+
+@media (min-width: 1024px) {
+    #settings-page .equal-card-grid {
+        grid-auto-rows: 1fr;
+    }
+
+    #settings-page .equal-card-grid > section {
+        height: 100%;
+    }
+}
+
+@media (min-width: 1280px) {
+    #plugins-page .equal-card-grid {
+        grid-auto-rows: 1fr;
+    }
+
+    #plugins-page .equal-card-grid > section {
+        height: 100%;
+    }
+}
+
 /* Loading screen enhancements */
 .loading-card { box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
 .loading-progress { position: relative; }
