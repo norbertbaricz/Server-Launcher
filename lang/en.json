@@ -102,5 +102,10 @@
   "addonsUploadUnavailable": "Bedrock add-ons must be managed manually.",
   "stopBeforeDeletingMods": "Stop the server before deleting mods.",
   "stopBeforeDeletingPlugins": "Stop the server before deleting plugins.",
-  "pluginsPageDescription": "Manage plugins, mods, add-ons, and server.properties without leaving the launcher."
+  "pluginsPageDescription": "Manage plugins, mods, add-ons, and server.properties without leaving the launcher.",
+  "uploadButton": "Upload",
+  "uploadModsButton": "Upload Mods",
+  "openFolderButton": "Open Folder",
+  "openModsFolderButton": "Open Mods Folder",
+  "pluginsRefreshButton": "Refresh"
 }

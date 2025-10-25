@@ -12,24 +12,42 @@ body {
     align-items: stretch;
 }
 
+.equal-card-grid > section {
+    min-height: 0;
+}
+
+.card-divider {
+    border-top: 1px solid #374151;
+    margin-top: 0;
+    padding-top: 1.5rem;
+}
+
 @media (min-width: 1024px) {
-    #settings-page .equal-card-grid {
-        grid-auto-rows: 1fr;
+    .equal-card-grid {
+        grid-auto-rows: minmax(0, 1fr);
     }
 
-    #settings-page .equal-card-grid > section {
+    .equal-card-grid > section {
         height: 100%;
     }
 }
 
-@media (min-width: 1280px) {
-    #plugins-page .equal-card-grid {
-        grid-auto-rows: 1fr;
-    }
+/* Plugin / mod / addon list styling */
+.addon-list-row {
+    background: rgba(17, 24, 39, 0.88);
+    border: 1px solid rgba(55, 65, 81, 0.55);
+    border-radius: 0.9rem;
+    transition: background-color 0.18s ease, border-color 0.18s ease;
+}
 
-    #plugins-page .equal-card-grid > section {
-        height: 100%;
-    }
+.addon-list-row:hover {
+    background: rgba(17, 24, 39, 0.94);
+    border-color: rgba(75, 85, 99, 0.65);
+}
+
+.addon-icon-wrap {
+    background: rgba(30, 41, 59, 0.88);
+    border: 1px solid rgba(55, 65, 81, 0.55);
 }
 
 /* Loading screen enhancements */

@@ -1173,10 +1173,10 @@ async function refreshPluginsList() {
         const deleteLabel = currentTranslations['deleteButton'] || 'Delete';
         plugins.forEach(p => {
             const row = document.createElement('div');
-            row.className = 'flex items-center gap-3 rounded-md bg-gray-800/85 hover:bg-gray-800 transition-colors shadow-sm px-3 py-3';
+            row.className = 'addon-list-row flex items-center gap-3 rounded-xl px-3 py-3 transition-colors shadow-sm';
 
             const iconWrap = document.createElement('div');
-            iconWrap.className = 'flex items-center justify-center w-10 h-10 rounded-md bg-gray-700/80';
+            iconWrap.className = 'addon-icon-wrap flex items-center justify-center w-10 h-10 rounded-lg';
             const icon = document.createElement('i');
             icon.className = `fas ${getAddonIcon(type)} accent-text`;
             iconWrap.appendChild(icon);

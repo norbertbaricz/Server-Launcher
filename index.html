@@ -117,8 +117,8 @@
             </div>
         </div>
 
-        <div id="setup-page" class="flex flex-col gap-4 view-panel min-h-0" aria-hidden="true">
-            <div class="bg-gray-800 p-5 rounded-lg shadow-xl flex flex-col gap-6">
+        <div id="setup-page" class="flex flex-col gap-6 view-panel min-h-0" aria-hidden="true">
+            <div class="bg-gray-800 p-5 rounded-lg shadow-xl flex flex-col gap-6 flex-1 min-h-0">
                 <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
                     <div class="flex items-start gap-3">
                         <i class="fas fa-server accent-text text-xl"></i>
@@ -127,11 +127,8 @@
                             <p class="text-sm text-gray-400" data-key="setupDescription">Server files or configuration are missing. Please select options and click "Download / Configure".</p>
                         </div>
                     </div>
-                    <div class="bg-gray-900/60 border border-gray-800 rounded-md px-4 py-3 text-xs sm:text-sm text-gray-300 shadow-inner">
-                        <p data-key="setupBannerHint">Choose your preferred server flavour, version, and memory allocation before downloading.</p>
-                    </div>
                 </div>
-                <section class="bg-gray-900/50 border border-gray-800 rounded-lg p-5 space-y-4">
+                <section class="bg-gray-900/50 border border-gray-800 rounded-lg p-5 space-y-4 flex-1 min-h-0">
                     <h3 class="text-lg font-medium text-gray-200 flex items-center gap-2">
                         <i class="fas fa-sliders-h accent-text"></i>
                         <span data-key="setupConfigurationHeader">Server Configuration</span>
@@ -172,18 +169,7 @@
                         </div>
                     </div>
                 </section>
-                <div class="bg-gray-900/40 border border-gray-800 rounded-lg p-5 text-sm text-gray-300 space-y-2">
-                    <div class="flex items-center gap-2 text-gray-200 font-medium">
-                        <i class="fas fa-lightbulb accent-text"></i>
-                        <span data-key="setupTipsLabel">Tips</span>
-                    </div>
-                    <ul class="list-disc list-inside space-y-1 text-gray-400">
-                        <li data-key="setupTipChooseFlavour">Select the server flavour that matches the plugins or mods you want to use.</li>
-                        <li data-key="setupTipAdjustLater">You can adjust these options later from the settings menu.</li>
-                        <li data-key="setupTipMonitor">The download runs in the background—stay here to monitor progress.</li>
-                    </ul>
-                </div>
-                <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-t border-gray-700 pt-4">
+                <div class="card-divider flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mt-auto">
                     <p class="text-sm text-gray-400" data-key="setupFooterHint">Click the button to download and configure everything automatically.</p>
                     <button id="download-button-modal" class="btn-primary font-semibold py-3 px-5 rounded-md shadow-md flex items-center justify-center text-base">
                         <i class="fas fa-download mr-2"></i>
@@ -193,7 +179,7 @@
             </div>
         </div>
 
-        <div id="settings-page" class="flex flex-col gap-4 view-panel min-h-0" aria-hidden="true">
+        <div id="settings-page" class="flex flex-col gap-6 view-panel min-h-0" aria-hidden="true">
             <div class="bg-gray-800 p-5 rounded-lg shadow-xl flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 class="text-xl font-semibold text-gray-100 flex items-center gap-2">
@@ -213,8 +199,8 @@
                     </button>
                 </div>
             </div>
-            <div class="grid gap-4 lg:grid-cols-2 equal-card-grid">
-                <section class="bg-gray-800 p-5 rounded-lg shadow-xl space-y-4">
+            <div class="card-divider grid gap-4 lg:grid-cols-2 flex-1 min-h-0 equal-card-grid">
+                <section class="bg-gray-800 p-5 rounded-lg shadow-xl space-y-4 flex flex-col">
                     <div class="flex items-center gap-2">
                         <i class="fas fa-sliders-h accent-text"></i>
                         <h3 class="text-lg font-medium accent-text" data-key="serverConfigHeader">Server Configuration</h3>
@@ -257,7 +243,7 @@
                         </div>
                     </div>
                 </section>
-                <section class="bg-gray-800 p-5 rounded-lg shadow-xl space-y-4">
+                <section class="bg-gray-800 p-5 rounded-lg shadow-xl space-y-4 flex flex-col">
                     <div class="flex items-center gap-2">
                         <i class="fas fa-rocket accent-text"></i>
                         <h3 class="text-lg font-medium accent-text" data-key="launcherSettingsHeader">Launcher Settings</h3>
@@ -318,7 +304,7 @@
             </div>
         </div>
 
-        <div id="plugins-page" class="flex flex-col gap-4 view-panel min-h-0" aria-hidden="true">
+        <div id="plugins-page" class="flex flex-col gap-6 view-panel min-h-0" aria-hidden="true">
             <div class="bg-gray-800 p-5 rounded-lg shadow-xl flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 class="text-xl font-semibold text-gray-100 flex items-center gap-2">
@@ -334,7 +320,7 @@
                     </button>
                     <button id="plugins-refresh-button" class="btn-secondary font-semibold px-4 py-2 rounded-md shadow-md flex items-center gap-2">
                         <i class="fas fa-sync"></i>
-                        <span>Refresh</span>
+                        <span data-key="pluginsRefreshButton">Refresh</span>
                     </button>
                     <button id="plugins-save-apply-button" class="btn-primary font-semibold px-4 py-2 rounded-md shadow-md flex items-center gap-2" data-key="saveApplyButton" data-key-aria-label="saveApplyButton" aria-label="Save &amp; Apply" title="Save &amp; Apply">
                         <i class="fas fa-save"></i>
@@ -342,7 +328,7 @@
                     </button>
                 </div>
             </div>
-            <div class="grid gap-4 xl:grid-cols-2 flex-1 min-h-0 equal-card-grid">
+            <div class="card-divider grid gap-4 xl:grid-cols-2 flex-1 min-h-0 equal-card-grid">
                 <section class="bg-gray-800 p-5 rounded-lg shadow-xl flex flex-col gap-4 min-h-0">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <h3 class="accent-text font-medium flex items-center gap-2">
