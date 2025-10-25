@@ -23,8 +23,7 @@ const statusAndOpenFolderArea = document.getElementById('status-and-open-folder-
 const statusBarContent = document.getElementById('status-bar-content');
 const setupActivePlaceholderTop = document.getElementById('setup-active-placeholder-top');
 
-const setupModal = document.getElementById('setup-modal');
-const setupModalContent = document.getElementById('setup-modal-content');
+const setupPage = document.getElementById('setup-page');
 const mcVersionModalSelect = document.getElementById('mc-version-modal');
 const ramAllocationModalSelect = document.getElementById('ram-allocation-modal');
 const languageModalSelect = document.getElementById('language-modal-select');
@@ -33,8 +32,9 @@ const downloadModalButtonIcon = downloadModalButton.querySelector('i');
 const downloadModalButtonText = document.getElementById('download-button-text');
 const serverTypeModalSelect = document.getElementById('server-type-modal');
 
-const settingsModal = document.getElementById('settings-modal');
-const settingsModalContent = document.getElementById('settings-modal-content');
+const mainContentArea = document.getElementById('main-content-area');
+const dashboardView = document.getElementById('dashboard-view');
+const settingsPage = document.getElementById('settings-page');
 const mcVersionSettingsSelect = document.getElementById('mc-version-settings');
 const ramAllocationSettingsSelect = document.getElementById('ram-allocation-settings');
 const javaArgumentsSettingsSelect = document.getElementById('java-arguments-settings');
@@ -59,13 +59,12 @@ const javaRestartButton = document.getElementById('java-restart-button');
 const javaInstallProgressBarContainer = document.getElementById('java-install-progress-bar-container');
 const javaInstallProgressBar = document.getElementById('java-install-progress-bar');
 
-const pluginsModal = document.getElementById('plugins-modal');
-const pluginsModalContent = document.getElementById('plugins-modal-content');
+const pluginsPage = document.getElementById('plugins-page');
 const pluginsModalTitleText = document.getElementById('plugins-modal-title-text');
 const pluginsModalIcon = document.getElementById('plugins-modal-icon');
 const pluginsSectionTitle = document.getElementById('plugins-section-title');
 const pluginsSectionIcon = document.getElementById('plugins-section-icon');
-const closePluginsButton = document.getElementById('close-plugins-button');
+const closePluginsPageButton = document.getElementById('close-plugins-page-button');
 const pluginsRefreshButton = document.getElementById('plugins-refresh-button');
 const pluginsSaveApplyButton = document.getElementById('plugins-save-apply-button');
 const pluginsList = document.getElementById('plugins-list');
@@ -87,6 +86,18 @@ let countdownInterval = null;
 let isDownloadingFromServer = false;
 let currentTranslations = {};
 let launcherSettingsCache = {};
+let isSettingsViewOpen = false;
+let isPluginsViewOpen = false;
+let isSetupViewOpen = false;
+let setupRequired = false;
+let activeViewKey = dashboardView ? 'dashboard' : null;
+
+const viewMap = {
+    dashboard: dashboardView,
+    setup: setupPage,
+    settings: settingsPage,
+    plugins: pluginsPage
+};
 
 const ramAllocationModalContainer = ramAllocationModalSelect?.closest('div');
 const ramAllocationSettingsContainer = ramAllocationSettingsSelect?.closest('div');
@@ -361,7 +372,7 @@ function updateButtonStates(isRunning) {
     localIsServerRunning = isRunning;
     updatePluginsButtonAppearance(currentServerConfig?.serverType);
     applyServerTypeUiState(currentServerConfig?.serverType || 'papermc');
-    const setupComplete = setupModal.classList.contains('hidden');
+    const setupComplete = !setupRequired;
     
     startButton.disabled = isRunning || !setupComplete || autoStartIsActive || isDownloadingFromServer;
     
@@ -442,6 +453,125 @@ function hideModal(modal, content, callback) {
     }, { once: true });
 }
 
+function setActiveView(target, callback) {
+    if (!viewMap[target]) {
+        if (typeof callback === 'function') callback();
+        return;
+    }
+
+    if (activeViewKey === target) {
+        if (typeof callback === 'function') callback();
+        return;
+    }
+
+    const incoming = viewMap[target];
+    const outgoing = activeViewKey ? viewMap[activeViewKey] : null;
+
+    if (incoming) {
+        incoming.classList.add('active-view');
+        incoming.setAttribute('aria-hidden', 'false');
+        incoming.scrollTop = 0;
+    }
+
+    if (outgoing && outgoing !== incoming) {
+        outgoing.classList.remove('active-view');
+        outgoing.setAttribute('aria-hidden', 'true');
+    }
+
+    activeViewKey = target;
+    isSettingsViewOpen = target === 'settings';
+    isPluginsViewOpen = target === 'plugins';
+    isSetupViewOpen = target === 'setup';
+
+    if (mainContentArea) {
+        mainContentArea.scrollTop = 0;
+        mainContentArea.scrollLeft = 0;
+    }
+
+    const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (typeof callback === 'function') {
+        if (prefersReducedMotion) {
+            callback();
+        } else {
+            setTimeout(callback, 300);
+        }
+    }
+}
+
+function openSettingsView(callback) {
+    if (!settingsPage) return;
+    if (setupRequired) {
+        if (typeof callback === 'function') callback();
+        return;
+    }
+    if (isSettingsViewOpen) {
+        if (typeof callback === 'function') callback();
+        return;
+    }
+    if (isSetupViewOpen) {
+        closeSetupView(() => openSettingsView(callback));
+        return;
+    }
+    if (isPluginsViewOpen) {
+        closePluginsView(() => openSettingsView(callback));
+        return;
+    }
+    setActiveView('settings', callback);
+}
+
+function closeSettingsView(callback) {
+    if (!settingsPage) {
+        if (typeof callback === 'function') callback();
+        return;
+    }
+    if (!isSettingsViewOpen) {
+        if (typeof callback === 'function') callback();
+        return;
+    }
+    setActiveView('dashboard', callback);
+}
+
+function closePluginsView(callback) {
+    if (!pluginsPage) {
+        if (typeof callback === 'function') callback();
+        return;
+    }
+    if (!isPluginsViewOpen) {
+        if (typeof callback === 'function') callback();
+        return;
+    }
+    setActiveView('dashboard', callback);
+}
+
+function openSetupView(callback) {
+    if (!setupPage) return;
+    if (isSetupViewOpen) {
+        if (typeof callback === 'function') callback();
+        return;
+    }
+    if (isSettingsViewOpen) {
+        closeSettingsView(() => openSetupView(callback));
+        return;
+    }
+    if (isPluginsViewOpen) {
+        closePluginsView(() => openSetupView(callback));
+        return;
+    }
+    setActiveView('setup', callback);
+}
+
+function closeSetupView(callback) {
+    if (!setupPage) {
+        if (typeof callback === 'function') callback();
+        return;
+    }
+    if (!isSetupViewOpen) {
+        if (typeof callback === 'function') callback();
+        return;
+    }
+    setActiveView('dashboard', callback);
+}
+
 async function refreshUISetupState() {
     const { needsSetup, config, error } = await window.electronAPI.checkInitialSetup();
     if (error) {
@@ -451,11 +581,13 @@ async function refreshUISetupState() {
         return;
     }
     currentServerConfig = config || {};
+    setupRequired = !!needsSetup;
     updatePluginsButtonAppearance(currentServerConfig?.serverType);
     applyServerTypeUiState(currentServerConfig?.serverType || 'papermc');
     if (needsSetup) {
-        hideModal(settingsModal, settingsModalContent);
-        showModal(setupModal, setupModalContent);
+        if (isSettingsViewOpen) closeSettingsView();
+        if (isPluginsViewOpen) closePluginsView();
+        openSetupView();
         const serverType = currentServerConfig.serverType || 'papermc';
         populateServerTypeSelect(serverTypeModalSelect, serverType);
         applyServerTypeUiState(serverType);
@@ -468,13 +600,20 @@ async function refreshUISetupState() {
         ramAllocationModalSelect.value = currentServerConfig.ram || 'auto';
         updateButtonStates(localIsServerRunning);
     } else {
-        hideModal(setupModal, setupModalContent, async () => {
+        if (isSettingsViewOpen) closeSettingsView();
+        if (isPluginsViewOpen) closePluginsView();
+
+        const afterClose = async () => {
             if (!localIsServerRunning && !autoStartIsActive) {
                 setStatus(currentTranslations['serverReady'] || "Server ready.", false, 'serverReady');
             }
             updateButtonStates(localIsServerRunning);
             await fetchAndDisplayIPs();
             updatePluginsButtonAppearance(currentServerConfig?.serverType);
+        };
+
+        closeSetupView(async () => {
+            await afterClose();
         });
     }
 }
@@ -539,7 +678,7 @@ downloadModalButton.addEventListener('click', () => {
 
 pluginsFolderButton.addEventListener('click', async () => {
     if (pluginsFolderButton.disabled) return;
-    await openPluginsModal();
+    await openPluginsView();
 });
 
 settingsButton.addEventListener('click', async () => {
@@ -578,10 +717,10 @@ settingsButton.addEventListener('click', async () => {
     ramAllocationSettingsSelect.value = serverConfig.ram || 'auto';
     javaArgumentsSettingsSelect.value = serverConfig.javaArgs || 'Default';
     updatePluginsButtonAppearance(serverConfig.serverType);
-    showModal(settingsModal, settingsModalContent);
+    openSettingsView();
 });
 
-closeSettingsButton.addEventListener('click', () => hideModal(settingsModal, settingsModalContent));
+closeSettingsButton.addEventListener('click', () => closeSettingsView());
 
 saveSettingsButton.addEventListener('click', () => {
     launcherSettingsCache.openAtLogin = startWithSystemCheckbox.checked;
@@ -605,7 +744,7 @@ saveSettingsButton.addEventListener('click', () => {
     window.electronAPI.configureServer({ serverType: newServerType, mcVersion: newMcVersion, ramAllocation: newRam, javaArgs: newJavaArgs });
     
     addToConsole("Settings saved and applied.", "SUCCESS");
-    hideModal(settingsModal, settingsModalContent);
+    closeSettingsView();
 });
 
 
@@ -690,7 +829,7 @@ window.electronAPI.onUpdateStatus(async (fallbackMessage, pulse, translationKey)
         settingsButton.classList.add('btn-disabled');
     }
 
-    if ((lowerMessage.includes('failed') || lowerMessage.includes('error')) && !setupModal.classList.contains('hidden')) {
+    if ((lowerMessage.includes('failed') || lowerMessage.includes('error')) && isSetupViewOpen) {
         hideDownloadLoading();
     }
 });
@@ -723,13 +862,17 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         publicIpWidget.addEventListener('animationend', () => removeAnimation(publicIpWidget), { once: true });
         serverVersionWidget.addEventListener('animationend', () => removeAnimation(serverVersionWidget), { once: true });
 
-        memoryUsageSpan.textContent = `— / ${allocatedRamCache !== '-' ? allocatedRamCache : '...'} GB`;
+        const allocatedNumeric = !Number.isNaN(parseFloat(allocatedRamCache)) && parseFloat(allocatedRamCache) > 0;
+        memoryUsageSpan.textContent = allocatedNumeric
+            ? `— / ${allocatedRamCache} GB`
+            : '— GB';
+        memoryUsageSpan.style.color = '';
     } else {
         if (!autoStartIsActive) {
             setStatus(currentTranslations['serverStopped'] || "Server stopped.", false, 'serverStopped');
         }
         await fetchAndDisplayIPs(false);
-        memoryUsageSpan.textContent = '0 / 0 GB';
+        memoryUsageSpan.textContent = '0 GB';
         memoryUsageSpan.style.color = '';
         serverTpsSpan.textContent = '0 ms';
         serverTpsSpan.style.color = '';
@@ -748,20 +891,24 @@ window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, tps, la
     
     if (typeof memoryGB !== 'undefined') {
         const memUsage = parseFloat(memoryGB);
-        const allocatedRam = parseFloat(allocatedRamCache);
-
-        if (!isNaN(memUsage) && !isNaN(allocatedRam) && allocatedRam > 0) {
+        if (!Number.isNaN(memUsage)) {
             const finalMemUsage = Math.max(0, memUsage);
-            memoryUsageSpan.textContent = `${finalMemUsage.toFixed(1)} / ${allocatedRamCache} GB`;
+            const allocatedRam = parseFloat(allocatedRamCache);
+            if (!Number.isNaN(allocatedRam) && allocatedRam > 0) {
+                memoryUsageSpan.textContent = `${finalMemUsage.toFixed(1)} / ${allocatedRamCache} GB`;
 
-            const usagePercent = (finalMemUsage / allocatedRam) * 100;
+                const usagePercent = (finalMemUsage / allocatedRam) * 100;
 
-            if (usagePercent >= 90) {
-                memoryUsageSpan.style.color = '#ef4444';
-            } else if (usagePercent >= 70) {
-                memoryUsageSpan.style.color = '#facc15';
+                if (usagePercent >= 90) {
+                    memoryUsageSpan.style.color = '#ef4444';
+                } else if (usagePercent >= 70) {
+                    memoryUsageSpan.style.color = '#facc15';
+                } else {
+                    memoryUsageSpan.style.color = '#4ade80';
+                }
             } else {
-                memoryUsageSpan.style.color = '#4ade80';
+                memoryUsageSpan.textContent = `${finalMemUsage.toFixed(1)} GB`;
+                memoryUsageSpan.style.color = '';
             }
         }
     }
@@ -985,12 +1132,24 @@ window.electronAPI.onPlaySound((soundPath) => {
     } catch (_) {}
 });
 
-async function openPluginsModal() {
-    updatePluginsButtonAppearance(currentServerConfig?.serverType);
+async function openPluginsView() {
+    if (!pluginsPage) return;
+    if (setupRequired) return;
+    if (isPluginsViewOpen) return;
+    if (isSettingsViewOpen) {
+        closeSettingsView(() => openPluginsView());
+        return;
+    }
+    if (isSetupViewOpen) {
+        closeSetupView(() => openPluginsView());
+        return;
+    }
 
+    updatePluginsButtonAppearance(currentServerConfig?.serverType);
     await refreshPluginsList();
     await populateServerProperties();
-    showModal(pluginsModal, pluginsModalContent);
+
+    setActiveView('plugins');
 }
 
 async function refreshPluginsList() {
@@ -1086,8 +1245,7 @@ pluginsRefreshButton?.addEventListener('click', async () => {
     await populateServerProperties();
 });
 
-const closePlugins = () => hideModal(pluginsModal, pluginsModalContent);
-closePluginsButton?.addEventListener('click', closePlugins);
+closePluginsPageButton?.addEventListener('click', () => closePluginsView());
 pluginsSaveApplyButton?.addEventListener('click', () => {
     const inputs = serverPropertiesContainer?.querySelectorAll('input, select');
     if (inputs && inputs.length > 0) {
@@ -1101,17 +1259,7 @@ pluginsSaveApplyButton?.addEventListener('click', () => {
             window.electronAPI.setServerProperties(updatedProperties);
         }
     }
-    closePlugins();
-});
-settingsModal.addEventListener('click', (e) => {
-    if (!settingsModalContent.contains(e.target)) {
-        hideModal(settingsModal, settingsModalContent);
-    }
-});
-pluginsModal.addEventListener('click', (e) => {
-    if (!pluginsModalContent.contains(e.target)) {
-        closePlugins();
-    }
+    closePluginsView();
 });
 javaInstallModal.addEventListener('click', (e) => {
     if (!javaInstallModalContent.contains(e.target)) {

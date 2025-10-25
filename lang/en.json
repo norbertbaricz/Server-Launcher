@@ -73,9 +73,17 @@
   "serverTypeLabel": "Server Type:",
   "settingsButton": "Settings",
   "settingsTitle": "Settings",
+  "settingsPageDescription": "Adjust your server and launcher configuration in one place.",
   "setupDescription": "Server files or configuration are missing. Please select options and click 'Download / Configure'.",
-  "setupPlaceholder": "Please complete server configuration in the popup.",
+  "setupPlaceholder": "Complete server configuration in the setup panel to unlock controls.",
   "setupTitle": "Server Setup Required",
+  "setupBannerHint": "Choose your preferred server flavour, version, and memory allocation before downloading.",
+  "setupConfigurationHeader": "Server Configuration",
+  "setupTipsLabel": "Tips",
+  "setupTipChooseFlavour": "Select the server flavour that matches the plugins or mods you want to use.",
+  "setupTipAdjustLater": "You can adjust these options later from the settings menu.",
+  "setupTipMonitor": "The download runs in the background—stay here to monitor progress.",
+  "setupFooterHint": "Click the button to download and configure everything automatically.",
   "showNotificationsLabel": "Show desktop notifications",
   "startButton": "Start Server",
   "startWithSystemLabel": "Start with Operating System",
@@ -93,5 +101,6 @@
   "addonsDeleteUnavailable": "Launcher cannot delete Bedrock add-ons automatically.",
   "addonsUploadUnavailable": "Bedrock add-ons must be managed manually.",
   "stopBeforeDeletingMods": "Stop the server before deleting mods.",
-  "stopBeforeDeletingPlugins": "Stop the server before deleting plugins."
+  "stopBeforeDeletingPlugins": "Stop the server before deleting plugins.",
+  "pluginsPageDescription": "Manage plugins, mods, add-ons, and server.properties without leaving the launcher."
 }

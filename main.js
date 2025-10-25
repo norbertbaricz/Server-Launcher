@@ -5,6 +5,7 @@ const { version } = require('./package.json');
 const https = require('node:https');
 const { spawn, exec } = require('node:child_process');
 const { promisify } = require('node:util');
+const { pathToFileURL } = require('node:url');
 const os = require('node:os');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
@@ -13,6 +14,17 @@ const pidusage = require('pidusage');
 const AnsiToHtml = require('ansi-to-html');
 const find = require('find-process');
 const AdmZip = require('adm-zip');
+
+const SOUND_CANDIDATES = {
+  error: ['error.mp3', 'error.wav'],
+  startup: ['startup.mp3', 'startup.wav'],
+  status: ['status.mp3', 'status.wav'],
+  success: ['success.mp3', 'success.wav']
+};
+const DEFAULT_SOUND_TYPE = 'status';
+const SOUND_SEARCH_DIRS = ['', 'sounds'];
+const ERROR_SOUND_KEYWORDS = ['error', 'failed', 'fail', 'not found', 'crash', 'stopped unexpectedly', 'timed out', 'unavailable', 'unable'];
+const SUCCESS_SOUND_KEYWORDS = ['success', 'successfully', 'ready', 'completed', 'installed', 'configured', 'downloaded', 'server started', 'server ready', 'done'];
 
 const SERVER_TYPES = {
   PAPER: 'papermc',
@@ -195,6 +207,9 @@ autoUpdater.logger.transports.file.level = 'info';
 const clientId = '1397585400553541682';
 let rpc;
 let rpcStartTime;
+let startupSoundPlayed = false;
+let lastStatusSoundSignature = null;
+let lastStatusSoundAt = 0;
 
 let serverFilesDir;
 const paperJarName = 'paper.jar';
@@ -476,6 +491,7 @@ function getMainWindow() { return mainWindow; }
 function sendStatus(fallbackMessage, pulse = false, translationKey = null) {
     const win = getMainWindow();
     if (win && !win.isDestroyed()) win.webContents.send('update-status', fallbackMessage, pulse, translationKey);
+    handleStatusSound(fallbackMessage, translationKey, pulse);
 }
 function sendConsole(message, type = 'INFO') {
     const win = getMainWindow();
@@ -619,25 +635,89 @@ function showDesktopNotification(title, body) {
     } catch (_) { /* ignore notification errors */ }
 }
 
-function getNotificationSoundPath() {
+function resolveAssetFile(relativePath) {
     try {
         const resources = process.resourcesPath;
         const buildDir = path.join(__dirname, 'build');
-        const fromRes = path.join(resources, 'notification.wav');
-        const fromBuild = path.join(buildDir, 'notification.wav');
-        if (fs.existsSync(fromRes)) return fromRes;
-        if (fs.existsSync(fromBuild)) return fromBuild;
+        const candidateFromResources = path.join(resources, relativePath);
+        if (fs.existsSync(candidateFromResources)) return candidateFromResources;
+        const candidateFromBuild = path.join(buildDir, relativePath);
+        if (fs.existsSync(candidateFromBuild)) return candidateFromBuild;
     } catch (_) {}
     return null;
 }
 
-function playNotificationSound() {
+function getSoundFilePath(type) {
+    const canonicalType = SOUND_CANDIDATES[type] ? type : DEFAULT_SOUND_TYPE;
+    const candidates = SOUND_CANDIDATES[canonicalType] || [];
+    for (const candidate of candidates) {
+        for (const dir of SOUND_SEARCH_DIRS) {
+            const relativePath = dir ? path.join(dir, candidate) : candidate;
+            const resolved = resolveAssetFile(relativePath);
+            if (resolved) return resolved;
+        }
+    }
+    if (canonicalType !== DEFAULT_SOUND_TYPE) {
+        return getSoundFilePath(DEFAULT_SOUND_TYPE);
+    }
+    return null;
+}
+
+function playSoundEffect(requestedType = DEFAULT_SOUND_TYPE) {
+    const type = SOUND_CANDIDATES[requestedType] ? requestedType : DEFAULT_SOUND_TYPE;
+    let win = null;
     try {
         const settings = readLauncherSettings();
         if (settings && settings.notificationsEnabled === false) return;
-        const soundPath = getNotificationSoundPath();
-        const win = getMainWindow();
-        if (win && !win.isDestroyed()) win.webContents.send('play-sound', soundPath);
+        const soundPath = getSoundFilePath(type);
+        win = getMainWindow();
+        if (!win || win.isDestroyed()) return;
+        const payload = soundPath ? pathToFileURL(soundPath).href : null;
+        win.webContents.send('play-sound', payload);
+    } catch (_) {
+        if (!win) win = getMainWindow();
+        if (win && !win.isDestroyed()) win.webContents.send('play-sound', null);
+    }
+}
+
+function stringContainsKeyword(text, keywords) {
+    if (!text) return false;
+    return keywords.some(keyword => text.includes(keyword));
+}
+
+function isProgressStatusMessage(message, key) {
+    if (!message && !key) return false;
+    if (message && /\d{1,3}%/.test(message)) return true;
+    if (message && /\b\d+(\.\d+)?\s?(kb|mb|gb)(\/s)?\b/.test(message)) return true;
+    if (message && message.includes('download speed')) return true;
+    return false;
+}
+
+function handleStatusSound(fallbackMessage, translationKey, pulse) {
+    try {
+        const message = (fallbackMessage || '').toLowerCase();
+        const key = (translationKey || '').toLowerCase();
+        if (!message && !key) return;
+        if (isProgressStatusMessage(message, key)) return;
+
+        const signature = key || message;
+        const now = Date.now();
+        if (signature && signature === lastStatusSoundSignature && (now - lastStatusSoundAt) < 1500) {
+            return;
+        }
+
+        if (stringContainsKeyword(key, ERROR_SOUND_KEYWORDS) || stringContainsKeyword(message, ERROR_SOUND_KEYWORDS)) {
+            playSoundEffect('error');
+        } else if (stringContainsKeyword(key, SUCCESS_SOUND_KEYWORDS) || stringContainsKeyword(message, SUCCESS_SOUND_KEYWORDS)) {
+            playSoundEffect('success');
+        } else {
+            playSoundEffect('status');
+        }
+
+        if (signature) {
+            lastStatusSoundSignature = signature;
+            lastStatusSoundAt = now;
+        }
     } catch (_) {}
 }
 
@@ -737,6 +817,10 @@ function createWindow () {
       if (launcherSettings.autoStartServer) {
           const delay = launcherSettings.autoStartDelay || 5;
           mainWindow.webContents.send('start-countdown', 'initial', delay);
+      }
+      if (!startupSoundPlayed) {
+          startupSoundPlayed = true;
+          playSoundEffect('startup');
       }
   });
 
@@ -1267,7 +1351,7 @@ async function startBedrockServer(serverConfig) {
                 const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                 const ver = cfg.version || '';
                 showDesktopNotification('Server Started', `${type} ${ver} is now running.`);
-                playNotificationSound();
+                playSoundEffect('success');
             } catch (_) {}
         }
     });
@@ -1304,7 +1388,7 @@ async function startBedrockServer(serverConfig) {
                     const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                     const ver = cfg.version || '';
                     showDesktopNotification('Server Crashed', `${type} ${ver} crashed. Auto-restarting in ${delay}s...`);
-                    playNotificationSound();
+                    playSoundEffect('error');
                 } catch (_) {}
             } else {
                 sendStatus('Server stopped unexpectedly.', false, 'serverStoppedUnexpectedly');
@@ -1314,7 +1398,7 @@ async function startBedrockServer(serverConfig) {
                     const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                     const ver = cfg.version || '';
                     showDesktopNotification('Server Crashed', `${type} ${ver} exited unexpectedly (code ${code ?? 'unknown'}).`);
-                    playNotificationSound();
+                    playSoundEffect('error');
                 } catch (_) {}
             }
         }
@@ -1739,7 +1823,7 @@ ipcMain.on('start-server', async () => {
                     const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                     const ver = cfg.version || '';
                     showDesktopNotification('Server Started', `${type} ${ver} is now running.`);
-                    playNotificationSound();
+                    playSoundEffect('success');
                 } catch (_) {}
             }
         });
@@ -1776,7 +1860,7 @@ ipcMain.on('start-server', async () => {
                         const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                         const ver = cfg.version || '';
                         showDesktopNotification('Server Crashed', `${type} ${ver} crashed. Auto-restarting in ${delay}s...`);
-                        playNotificationSound();
+                        playSoundEffect('error');
                     } catch (_) {}
                 } else {
                     sendStatus('Server stopped unexpectedly.', false, 'serverStoppedUnexpectedly');
@@ -1786,7 +1870,7 @@ ipcMain.on('start-server', async () => {
                         const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                         const ver = cfg.version || '';
                         showDesktopNotification('Server Crashed', `${type} ${ver} exited unexpectedly (code ${code ?? 'unknown'}).`);
-                        playNotificationSound();
+                        playSoundEffect('error');
                     } catch (_) {}
                 }
             }

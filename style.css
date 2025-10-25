@@ -92,7 +92,10 @@ body {
 
 #main-content-area {
     flex-grow: 1;
-    overflow-y: auto;
+    overflow: hidden;
+    min-height: 0; /* allow children to size/scroll correctly in flex layouts */
+    position: relative; /* anchor overlayed panels */
+    contain: paint; /* reduce repaint/flicker during transitions */
 }
 
 *::-webkit-scrollbar {
@@ -251,8 +254,43 @@ input:focus, select:focus, textarea:focus {
     will-change: transform, opacity;
 }
 
-#setup-modal.hidden, #settings-modal.hidden {
-    display: none;
+.view-stack {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.view-panel {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    z-index: 0;
+}
+
+.view-panel.active-view {
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 1;
+}
+
+#plugins-page #plugins-list,
+#plugins-page #server-properties-container {
+    overscroll-behavior: contain;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .view-panel {
+        transition: none !important;
+    }
 }
 
 @keyframes spin {
@@ -326,10 +364,6 @@ input:checked + .switch-track .switch-thumb {
     opacity: 1;
     margin-top: 0.75rem;
     border-color: #4a5568;
-}
-
-#settings-modal-content {
-    max-height: 90vh;
 }
 
 select:disabled {

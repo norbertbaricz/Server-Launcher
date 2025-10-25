@@ -61,6 +61,22 @@
       {
         "from": "build/sidebar.bmp",
         "to": "sidebar.bmp"
+      },
+      {
+        "from": "build/error.mp3",
+        "to": "sounds/error.mp3"
+      },
+      {
+        "from": "build/startup.mp3",
+        "to": "sounds/startup.mp3"
+      },
+      {
+        "from": "build/status.mp3",
+        "to": "sounds/status.mp3"
+      },
+      {
+        "from": "build/success.mp3",
+        "to": "sounds/success.mp3"
       }
     ],
     "directories": { "output": "release" },
