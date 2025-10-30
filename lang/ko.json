@@ -92,5 +92,7 @@
   "addonsManagedManually": "Bedrock 애드온은 서버 폴더에서 직접 수동으로 관리하세요.",
   "openBedrockFolderButton": "서버 폴더 열기",
   "uploadUnavailable": "업로드를 사용할 수 없습니다",
-  "addonsUploadUnavailable": "Bedrock 애드온은 수동으로 관리해야 합니다."
+  "addonsUploadUnavailable": "Bedrock 애드온은 수동으로 관리해야 합니다.",
+  "setupNgrokTip": "전 세계 어디서나 작동하는 Minecraft LAN을 호스트하고 싶나요?\n공식 웹사이트 (ngrok.com)에서 ngrok을 다운로드하고 로그인하여 authtoken을 복사하세요.\nngrok이 설치된 터미널을 열고 authtoken을 추가하는 명령을 실행하세요.\nngrok 설정이 끝나면 Minecraft 서버를 실행하면 됩니다—런처가 자동으로 공유 가능한 안전한 TCP 주소를 만들어 줍니다.\n포트 포워딩 없음, IP 공유 없음, 골치 아픔도 없음.",
+  "setupNgrokCta": "ngrok 받기"
 }

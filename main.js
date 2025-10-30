@@ -3,6 +3,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const { version } = require('./package.json');
 const https = require('node:https');
+const http = require('node:http');
 const { spawn, exec } = require('node:child_process');
 const { promisify } = require('node:util');
 const { pathToFileURL } = require('node:url');
@@ -25,6 +26,9 @@ const DEFAULT_SOUND_TYPE = 'status';
 const SOUND_SEARCH_DIRS = ['', 'sounds'];
 const ERROR_SOUND_KEYWORDS = ['error', 'failed', 'fail', 'not found', 'crash', 'stopped unexpectedly', 'timed out', 'unavailable', 'unable'];
 const SUCCESS_SOUND_KEYWORDS = ['success', 'successfully', 'ready', 'completed', 'installed', 'configured', 'downloaded', 'server started', 'server ready', 'done'];
+const NGROK_API_ENDPOINT = 'http://127.0.0.1:4040/api/tunnels';
+const PUBLIC_IP_USER_AGENT = 'MyMinecraftLauncher/1.0';
+const DEFAULT_JAVA_SERVER_PORT = 25565;
 
 const SERVER_TYPES = {
   PAPER: 'papermc',
@@ -95,8 +99,18 @@ function getServerFlavorLabel(type) {
   return 'Vanilla';
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 let javaExecutablePath = 'java';
 let MINIMUM_JAVA_VERSION = 17;
+let lastPublicAddressSource = null;
+let ngrokProcess = null;
+let ngrokTargetPort = null;
+let ngrokUnavailablePermanently = false;
+let ngrokStopRequested = false;
+let lastNgrokDiagnosticCode = null;
 const execAsync = promisify(exec);
 
 try { app.setName('Server Launcher'); } catch (_) {}
@@ -501,6 +515,13 @@ function sendServerStateChange(isRunning) {
     localIsServerRunningGlobal = isRunning;
     const win = getMainWindow();
     if (win && !win.isDestroyed()) win.webContents.send('server-state-change', isRunning);
+    if (isRunning) {
+        ensureNgrokTunnelForCurrentServerPort().catch((err) => {
+            if (err && typeof log.debug === 'function') log.debug(`Ngrok ensure failed: ${err.message}`);
+        });
+    } else {
+        stopNgrokTunnel();
+    }
 }
 
 function setDiscordActivity() {
@@ -721,32 +742,274 @@ function handleStatusSound(fallbackMessage, translationKey, pulse) {
     } catch (_) {}
 }
 
-async function getPublicIP() {
+function fetchNgrokTunnels() {
     return new Promise((resolve, reject) => {
-        const request = https.get('https://api.ipify.org?format=json', { headers: {'User-Agent': 'MyMinecraftLauncher/1.0'} }, (res) => {
+        const request = http.get(NGROK_API_ENDPOINT, (res) => {
             if (res.statusCode !== 200) {
                 res.resume();
-                return reject(new Error(`Failed to get public IP (Status: ${res.statusCode})`));
+                const error = new Error(`Ngrok API responded with status ${res.statusCode}`);
+                error.code = 'NGROK_BAD_STATUS';
+                return reject(error);
             }
-            let data = '';
-            res.on('data', (chunk) => { data += chunk; });
+            let raw = '';
+            res.on('data', (chunk) => { raw += chunk; });
             res.on('end', () => {
-                try {
-                    const jsonData = JSON.parse(data);
-                    resolve(jsonData.ip || '-');
-                } catch (e) {
-                    reject(new Error('Failed to parse public IP response.'));
+                try { resolve(JSON.parse(raw)); }
+                catch (err) {
+                    err.code = 'NGROK_BAD_JSON';
+                    reject(err);
                 }
             });
         });
+        request.setTimeout(2000, () => {
+            const timeoutError = new Error('Ngrok API request timed out');
+            timeoutError.code = 'NGROK_TIMEOUT';
+            request.destroy(timeoutError);
+        });
+        request.on('error', (err) => reject(err));
+    });
+}
+
+function extractPortFromAddress(addr) {
+    if (typeof addr !== 'string') return null;
+    const match = addr.trim().match(/:(\d{1,5})$/);
+    if (!match) return null;
+    const parsed = parseInt(match[1], 10);
+    if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535) return null;
+    return parsed;
+}
+
+async function getNgrokTcpTunnelInfo() {
+    try {
+        const payload = await fetchNgrokTunnels();
+        const tunnels = Array.isArray(payload?.tunnels) ? payload.tunnels : [];
+        if (!tunnels.length) return null;
+
+        const tcpTunnels = tunnels.filter((tunnel) => {
+            if (!tunnel || typeof tunnel !== 'object') return false;
+            if (typeof tunnel.public_url !== 'string') return false;
+            if (!tunnel.public_url.startsWith('tcp://')) return false;
+            if (tunnel.proto && tunnel.proto !== 'tcp') return false;
+            return true;
+        });
+        if (!tcpTunnels.length) return null;
+
+        const preferredTunnel = tcpTunnels.find((tunnel) => {
+            const addr = tunnel.config?.addr;
+            if (typeof addr !== 'string') return false;
+            return addr.includes('25565') || addr.includes('25575');
+        });
+        const selectedTunnel = preferredTunnel || tcpTunnels[0];
+        const publicUrl = typeof selectedTunnel.public_url === 'string' ? selectedTunnel.public_url : null;
+        if (!publicUrl) return null;
+        lastNgrokDiagnosticCode = null;
+        return {
+            publicUrl,
+            configAddr: typeof selectedTunnel.config?.addr === 'string' ? selectedTunnel.config.addr : null
+        };
+    } catch (error) {
+        const ignorableCodes = new Set(['ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH', 'NGROK_BAD_STATUS', 'NGROK_TIMEOUT', 'NGROK_BAD_JSON']);
+        const code = error.code || 'UNKNOWN';
+        if (ignorableCodes.has(code)) {
+            const shouldLog = (code !== 'ECONNREFUSED') || !!ngrokProcess;
+            if (shouldLog && typeof log.debug === 'function') {
+                if (code !== lastNgrokDiagnosticCode) {
+                    log.debug(`Ngrok tunnel not available: ${error.message}`);
+                    lastNgrokDiagnosticCode = code;
+                }
+            }
+        } else {
+            if (code !== lastNgrokDiagnosticCode) {
+                log.warn(`Ngrok tunnel check failed: ${error.message}`);
+                lastNgrokDiagnosticCode = code;
+            }
+        }
+        return null;
+    }
+}
+
+async function fetchPublicIPFromIpify() {
+    return new Promise((resolve, reject) => {
+        const request = https.get(
+            'https://api.ipify.org?format=json',
+            { headers: { 'User-Agent': PUBLIC_IP_USER_AGENT } },
+            (res) => {
+                if (res.statusCode !== 200) {
+                    res.resume();
+                    return reject(new Error(`Failed to get public IP (Status: ${res.statusCode})`));
+                }
+                let data = '';
+                res.on('data', (chunk) => { data += chunk; });
+                res.on('end', () => {
+                    try {
+                        const jsonData = JSON.parse(data);
+                        resolve(jsonData.ip || '-');
+                    } catch (e) {
+                        reject(new Error('Failed to parse public IP response.'));
+                    }
+                });
+            }
+        );
         request.setTimeout(5000, () => {
             request.destroy(new Error('Timeout while fetching public IP'));
         });
         request.on('error', (err) => {
             reject(new Error(`Error fetching public IP: ${err.message}`));
         });
-        request.end();
     });
+}
+
+async function resolvePublicAddress() {
+    let ngrokInfo = await getNgrokTcpTunnelInfo();
+    if ((!ngrokInfo || !ngrokInfo.publicUrl) && localIsServerRunningGlobal) {
+        const started = await ensureNgrokTunnelForCurrentServerPort(ngrokInfo);
+        if (started) {
+            await delay(800);
+            ngrokInfo = await getNgrokTcpTunnelInfo();
+        }
+    }
+    if (ngrokInfo?.publicUrl) {
+        const ngrokAddress = ngrokInfo.publicUrl.replace(/^tcp:\/\//, '');
+        if (lastPublicAddressSource !== 'ngrok') {
+            log.info('Using ngrok TCP tunnel for public address.');
+        }
+        lastPublicAddressSource = 'ngrok';
+        return { address: ngrokAddress, includeServerPort: false, source: 'ngrok' };
+    }
+    const directIp = await fetchPublicIPFromIpify();
+    if (lastPublicAddressSource !== 'direct') {
+        log.info('Using direct public IP fallback.');
+    }
+    lastPublicAddressSource = 'direct';
+    return { address: directIp, includeServerPort: true, source: 'direct' };
+}
+
+function getConfiguredJavaServerPort() {
+    const props = readServerPropertiesObject();
+    const raw = props['server-port'];
+    const parsed = parseInt(raw, 10);
+    if (Number.isInteger(parsed) && parsed > 0 && parsed <= 65535) return parsed;
+    return DEFAULT_JAVA_SERVER_PORT;
+}
+
+function handleNgrokProcessOutput(data) {
+    const text = data.toString().trim();
+    if (!text) return;
+    const lower = text.toLowerCase();
+    if (lower.includes('error') || lower.includes('fail') || lower.includes('failed')) {
+        sendConsole(`[ngrok] ${text}`, 'ERROR');
+    } else if (lower.includes('warn')) {
+        sendConsole(`[ngrok] ${text}`, 'WARN');
+    } else if (lower.includes('url') || lower.includes('forwarding')) {
+        sendConsole(`[ngrok] ${text}`, 'INFO');
+    } else {
+        log.info(`[ngrok] ${text}`);
+    }
+}
+
+function startNgrokTunnel(port) {
+    if (ngrokUnavailablePermanently) return false;
+    try {
+        if (ngrokProcess && !ngrokProcess.killed) {
+            if (ngrokTargetPort === port) return true;
+            stopNgrokTunnel();
+        }
+        const args = ['tcp', String(port)];
+        ngrokStopRequested = false;
+        sendConsole(`Attempting to start ngrok TCP tunnel on port ${port}...`, 'INFO');
+        log.info(`Attempting to start ngrok TCP tunnel on port ${port}`);
+        const proc = spawn('ngrok', args, { cwd: serverFilesDir, stdio: ['ignore', 'pipe', 'pipe'] });
+        ngrokProcess = proc;
+        ngrokTargetPort = port;
+
+        proc.stdout.on('data', handleNgrokProcessOutput);
+        proc.stderr.on('data', handleNgrokProcessOutput);
+
+        proc.once('error', (err) => {
+            if (err.code === 'ENOENT') {
+                ngrokUnavailablePermanently = true;
+                sendConsole('Ngrok executable not found. Install ngrok and ensure it is available in PATH.', 'WARN');
+            } else {
+                sendConsole(`Ngrok failed to start: ${err.message}`, 'ERROR');
+            }
+            if (ngrokProcess === proc) {
+                ngrokProcess = null;
+                ngrokTargetPort = null;
+                lastNgrokDiagnosticCode = null;
+            }
+        });
+
+        proc.once('exit', (code, signal) => {
+            const manual = ngrokStopRequested;
+            if (ngrokProcess === proc) {
+                ngrokProcess = null;
+                ngrokTargetPort = null;
+                lastNgrokDiagnosticCode = null;
+            }
+            ngrokStopRequested = false;
+            if (manual) {
+                sendConsole('Ngrok tunnel stopped.', 'INFO');
+            } else {
+                const reason = code !== null ? `code ${code}` : `signal ${signal || 'unknown'}`;
+                sendConsole(`Ngrok process exited (${reason}).`, code === 0 ? 'INFO' : 'WARN');
+            }
+        });
+        return true;
+    } catch (error) {
+        sendConsole(`Failed to launch ngrok: ${error.message}`, 'ERROR');
+        log.warn(`Failed to launch ngrok: ${error.message}`);
+        ngrokProcess = null;
+        ngrokTargetPort = null;
+        return false;
+    }
+}
+
+function stopNgrokTunnel() {
+    if (!ngrokProcess) return;
+    try {
+        if (ngrokProcess.killed) {
+            ngrokProcess = null;
+            ngrokTargetPort = null;
+            ngrokStopRequested = false;
+            lastNgrokDiagnosticCode = null;
+            return;
+        }
+        ngrokStopRequested = true;
+        const killed = ngrokProcess.kill();
+        if (!killed && process.platform === 'win32') {
+            const killer = spawn('taskkill', ['/pid', String(ngrokProcess.pid), '/f', '/t'], { stdio: 'ignore' });
+            killer.on('error', (err) => log.warn(`Failed to taskkill ngrok process: ${err.message}`));
+            killer.unref();
+        }
+    } catch (error) {
+        log.warn(`Failed to stop ngrok process: ${error.message}`);
+        ngrokProcess = null;
+        ngrokTargetPort = null;
+        ngrokStopRequested = false;
+        lastNgrokDiagnosticCode = null;
+    }
+}
+
+async function ensureNgrokTunnelForCurrentServerPort(existingInfo = null) {
+    if (ngrokUnavailablePermanently) return false;
+    if (!localIsServerRunningGlobal) return false;
+
+    const serverConfig = readServerConfig();
+    const serverType = normalizeServerType(serverConfig.serverType);
+    if (!isJavaServer(serverType)) return false;
+
+    const desiredPort = getConfiguredJavaServerPort();
+    if (!desiredPort) return false;
+
+    const tunnelInfo = existingInfo ?? await getNgrokTcpTunnelInfo();
+    if (tunnelInfo?.configAddr) {
+        const activePort = extractPortFromAddress(tunnelInfo.configAddr);
+        if (activePort === desiredPort) {
+            return true;
+        }
+    }
+
+    return startNgrokTunnel(desiredPort);
 }
 
 function createWindow () {
@@ -883,6 +1146,10 @@ autoUpdater.on('update-downloaded', (info) => {
   }).then(({ response }) => {
     if (response === 0) autoUpdater.quitAndInstall();
   });
+});
+
+app.on('before-quit', () => {
+    stopNgrokTunnel();
 });
 
 app.on('window-all-closed', () => {
@@ -1927,9 +2194,10 @@ ipcMain.on('send-command', (event, command) => {
 
 ipcMain.handle('get-local-ip', () => getLocalIPv4());
 ipcMain.handle('get-public-ip', async () => {
-    try { return await getPublicIP(); }
-    catch (error) {
+    try {
+        return await resolvePublicAddress();
+    } catch (error) {
         sendConsole(`Could not fetch Public IP: ${error.message}`, 'ERROR');
-        return '- (Error)';
+        return { address: '- (Error)', includeServerPort: true, source: 'error' };
     }
 });

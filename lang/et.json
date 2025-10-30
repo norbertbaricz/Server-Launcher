@@ -92,5 +92,7 @@
   "addonsManagedManually": "Halda Bedrocki lisasid käsitsi otse serveri kaustast.",
   "openBedrockFolderButton": "Ava serveri kaust",
   "uploadUnavailable": "Üleslaadimine pole saadaval",
-  "addonsUploadUnavailable": "Bedrocki lisasid tuleb hallata käsitsi."
+  "addonsUploadUnavailable": "Bedrocki lisasid tuleb hallata käsitsi.",
+  "setupNgrokTip": "Unistad Minecraft LAN'ist, mis töötab kõikjal maailmas?\nLaadi ngrok alla ametlikult saidilt (ngrok.com), logi sisse ja kopeeri oma authtoken.\nAva terminal, kus ngrok on paigaldatud, ning käivita käsk authtokeni lisamiseks.\nKui ngrok on valmis, käivita Minecraft server—käivitaja loob automaatselt turvalise TCP-aadressi jagamiseks.\nPole vaja portide suunamist, IP jagamist ega peavalu.",
+  "setupNgrokCta": "Hangi ngrok"
 }

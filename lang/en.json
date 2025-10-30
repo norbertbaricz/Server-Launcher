@@ -83,6 +83,7 @@
   "setupTipChooseFlavour": "Select the server flavour that matches the plugins or mods you want to use.",
   "setupTipAdjustLater": "You can adjust these options later from the settings menu.",
   "setupTipMonitor": "The download runs in the background—stay here to monitor progress.",
+  "setupNgrokTip": "Dreaming of hosting a Minecraft LAN that works anywhere in the world?\nDownload ngrok from the official website (ngrok.com), log in, and copy your authtoken.\nOpen your terminal where ngrok is installed and run the command to add your authtoken.\nOnce ngrok is set up, launch your Minecraft server — the launcher will automatically generate a secure TCP address ready to share.\nNo port forwarding, no IP sharing, no headaches.",
   "setupFooterHint": "Click the button to download and configure everything automatically.",
   "showNotificationsLabel": "Show desktop notifications",
   "startButton": "Start Server",
@@ -107,5 +108,6 @@
   "uploadModsButton": "Upload Mods",
   "openFolderButton": "Open Folder",
   "openModsFolderButton": "Open Mods Folder",
-  "pluginsRefreshButton": "Refresh"
+  "pluginsRefreshButton": "Refresh",
+  "setupNgrokCta": "Get ngrok"
 }

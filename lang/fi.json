@@ -92,5 +92,7 @@
   "addonsManagedManually": "Hallinnoi Bedrock-lisäosia manuaalisesti suoraan palvelinkansiosta.",
   "openBedrockFolderButton": "Avaa palvelinkansio",
   "uploadUnavailable": "Lataus ei ole käytettävissä",
-  "addonsUploadUnavailable": "Bedrock-lisäosat on hallittava manuaalisesti."
+  "addonsUploadUnavailable": "Bedrock-lisäosat on hallittava manuaalisesti.",
+  "setupNgrokTip": "Haaveiletko Minecraft LAN -palvelimesta, joka toimii missä päin maailmaa tahansa?\nLataa ngrok viralliselta sivustolta (ngrok.com), kirjaudu sisään ja kopioi authtokenisi.\nAvaa terminaali, johon ngrok on asennettu, ja aja komento authtokenin lisäämiseksi.\nKun ngrok on valmis, käynnistä Minecraft-palvelin—launcher generoi automaattisesti turvallisen TCP-osoitteen jakamista varten.\nEi porttiohjauksia, ei IP:n jakamista, ei päänsärkyä.",
+  "setupNgrokCta": "Hanki ngrok"
 }

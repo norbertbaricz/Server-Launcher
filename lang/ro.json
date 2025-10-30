@@ -93,5 +93,7 @@
   "addonsManagedManually": "Gestionează manual add-on-urile Bedrock direct din folderul serverului.",
   "openBedrockFolderButton": "Deschide folderul serverului",
   "uploadUnavailable": "Încărcări indisponibile",
-  "addonsUploadUnavailable": "Add-on-urile Bedrock trebuie gestionate manual."
+  "addonsUploadUnavailable": "Add-on-urile Bedrock trebuie gestionate manual.",
+  "setupNgrokTip": "Visezi să găzduiești un Minecraft LAN care merge oriunde în lume?\nDescarcă ngrok de pe site-ul oficial (ngrok.com), conectează-te și copiază-ți authtokenul.\nDeschide terminalul în care ai instalat ngrok și rulează comanda pentru a adăuga authtokenul.\nDupă ce ngrok este configurat, pornește serverul Minecraft—launcherul va genera automat o adresă TCP sigură, gata de partajat.\nFără port forwarding, fără împărtășirea IP-ului, fără bătăi de cap.",
+  "setupNgrokCta": "Ia ngrok"
 }

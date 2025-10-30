@@ -92,5 +92,7 @@
   "addonsManagedManually": "Manu-manong pamahalaan ang mga Bedrock add-on direkta mula sa folder ng server.",
   "openBedrockFolderButton": "Buksan ang folder ng server",
   "uploadUnavailable": "Hindi available ang pag-upload",
-  "addonsUploadUnavailable": "Ang mga Bedrock add-on ay dapat pamahalaan nang manu-mano."
+  "addonsUploadUnavailable": "Ang mga Bedrock add-on ay dapat pamahalaan nang manu-mano.",
+  "setupNgrokTip": "Pangarap mong mag-host ng Minecraft LAN na gumagana saanman sa mundo?\nI-download ang ngrok mula sa opisyal na website (ngrok.com), mag-log in at kopyahin ang iyong authtoken.\nBuksan ang terminal kung saan naka-install ang ngrok at patakbuhin ang command upang idagdag ang authtoken.\nKapag naka-set up na ang ngrok, ilunsad ang iyong Minecraft server—awtomatikong gagawa ang launcher ng secure na TCP address na handang i-share.\nWalang port forwarding, walang IP sharing, walang sakit ng ulo.",
+  "setupNgrokCta": "Kunin ang ngrok"
 }

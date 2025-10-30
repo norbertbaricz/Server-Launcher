@@ -92,5 +92,7 @@
   "addonsManagedManually": "Hantera Bedrock-tillägg manuellt direkt från servermappen.",
   "openBedrockFolderButton": "Öppna servermapp",
   "uploadUnavailable": "Uppladdningar ej tillgängliga",
-  "addonsUploadUnavailable": "Bedrock-tillägg måste hanteras manuellt."
+  "addonsUploadUnavailable": "Bedrock-tillägg måste hanteras manuellt.",
+  "setupNgrokTip": "Drömmer du om att hosta ett Minecraft-LAN som funkar var som helst i världen?\nLadda ner ngrok från den officiella webbplatsen (ngrok.com), logga in och kopiera ditt authtoken.\nÖppna terminalen där ngrok är installerat och kör kommandot för att lägga till authtokenet.\nNär ngrok är satt upp, starta din Minecraft-server—launchern skapar automatiskt en säker TCP-adress redo att dela.\nIngen port forwarding, ingen IP-delning, inga bekymmer.",
+  "setupNgrokCta": "Hämta ngrok"
 }

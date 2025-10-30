@@ -92,5 +92,7 @@
   "addonsManagedManually": "Upravljajte Bedrock dodacima ručno iz mape poslužitelja.",
   "openBedrockFolderButton": "Otvori mapu poslužitelja",
   "uploadUnavailable": "Prijenos nije dostupan",
-  "addonsUploadUnavailable": "Bedrock dodacima mora se upravljati ručno."
+  "addonsUploadUnavailable": "Bedrock dodacima mora se upravljati ručno.",
+  "setupNgrokTip": "Sanjaš o Minecraft LAN-u koji radi bilo gdje na svijetu?\nPreuzmi ngrok s službene stranice (ngrok.com), prijavi se i kopiraj svoj authtoken.\nOtvori terminal gdje je ngrok instaliran i pokreni naredbu za dodavanje authtokena.\nKad je ngrok spreman, pokreni Minecraft server—pokretač automatski generira siguran TCP adresu spremnu za dijeljenje.\nBez port forwardinga, bez dijeljenja IP-a, bez glavobolja.",
+  "setupNgrokCta": "Preuzmi ngrok"
 }

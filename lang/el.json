@@ -92,5 +92,7 @@
   "addonsManagedManually": "Διαχειριστείτε τα Bedrock add-ons χειροκίνητα απευθείας από τον φάκελο του διακομιστή.",
   "openBedrockFolderButton": "Άνοιγμα φακέλου διακομιστή",
   "uploadUnavailable": "Η μεταφόρτωση δεν είναι διαθέσιμη",
-  "addonsUploadUnavailable": "Τα Bedrock add-ons πρέπει να διαχειρίζονται χειροκίνητα."
+  "addonsUploadUnavailable": "Τα Bedrock add-ons πρέπει να διαχειρίζονται χειροκίνητα.",
+  "setupNgrokTip": "Ονειρεύεσαι να φιλοξενήσεις ένα Minecraft LAN που λειτουργεί παντού στον κόσμο;\nΚατέβασε το ngrok από την επίσημη ιστοσελίδα (ngrok.com), συνδέσου και αντέγραψε το authtoken σου.\nΆνοιξε το τερματικό όπου έχει εγκατασταθεί το ngrok και εκτέλεσε την εντολή για να προσθέσεις το authtoken.\nΜόλις ρυθμιστεί το ngrok, εκκίνησε τον Minecraft server—ο launcher δημιουργεί αυτόματα μια ασφαλή TCP διεύθυνση έτοιμη για διαμοιρασμό.\nΚαμία προώθηση θυρών, καμία κοινοποίηση IP, κανένας πονοκέφαλος.",
+  "setupNgrokCta": "Λήψη ngrok"
 }

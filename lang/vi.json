@@ -92,5 +92,7 @@
   "addonsManagedManually": "Quản lý thủ công tiện ích bổ sung Bedrock trực tiếp từ thư mục máy chủ.",
   "openBedrockFolderButton": "Mở thư mục máy chủ",
   "uploadUnavailable": "Không thể tải lên",
-  "addonsUploadUnavailable": "Tiện ích bổ sung Bedrock phải được quản lý thủ công."
+  "addonsUploadUnavailable": "Tiện ích bổ sung Bedrock phải được quản lý thủ công.",
+  "setupNgrokTip": "Mơ ước host một Minecraft LAN hoạt động ở mọi nơi trên thế giới?\nTải ngrok từ trang web chính thức (ngrok.com), đăng nhập và sao chép authtoken của bạn.\nMở terminal nơi đã cài ngrok và chạy lệnh để thêm authtoken.\nKhi ngrok được thiết lập xong, khởi động máy chủ Minecraft—launcher sẽ tự động tạo địa chỉ TCP an toàn sẵn sàng chia sẻ.\nKhông cần mở port, không chia sẻ IP, chẳng còn phiền phức.",
+  "setupNgrokCta": "Tải ngrok"
 }

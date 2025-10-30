@@ -949,8 +949,16 @@ async function fetchAndDisplayIPs(showPort = false) {
         localIpAddressSpan.textContent = (localIP !== '-' && localIP !== 'Error') ? `${localIP}${port}` : localIP;
     } catch (error) { localIpAddressSpan.textContent = 'Error'; }
     try {
-        const publicIP = await window.electronAPI.getPublicIP() || '-';
-        publicIpAddressSpan.textContent = (publicIP !== '-' && publicIP !== 'Error') ? `${publicIP}${port}` : publicIP;
+        const publicIpResponse = await window.electronAPI.getPublicIP();
+        let publicIP = publicIpResponse;
+        let appendServerPort = true;
+        if (publicIpResponse && typeof publicIpResponse === 'object') {
+            publicIP = publicIpResponse.address ?? '-';
+            appendServerPort = publicIpResponse.includeServerPort !== false;
+        }
+        publicIP = publicIP || '-';
+        const shouldAppendPort = appendServerPort && publicIP !== '-' && publicIP !== 'Error';
+        publicIpAddressSpan.textContent = shouldAppendPort ? `${publicIP}${port}` : publicIP;
     } catch (error) { publicIpAddressSpan.textContent = 'Error'; }
 }
 

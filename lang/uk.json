@@ -92,5 +92,7 @@
   "addonsManagedManually": "Керуйте додатками Bedrock вручну безпосередньо з папки сервера.",
   "openBedrockFolderButton": "Відкрити папку сервера",
   "uploadUnavailable": "Завантаження недоступні",
-  "addonsUploadUnavailable": "Додатки Bedrock потрібно керувати вручну."
+  "addonsUploadUnavailable": "Додатки Bedrock потрібно керувати вручну.",
+  "setupNgrokTip": "Мрієш розгорнути Minecraft LAN, який працює де завгодно у світі?\nЗавантаж ngrok з офіційного сайту (ngrok.com), увійди та скопіюй свій authtoken.\nВідкрий термінал, де встановлено ngrok, і виконай команду для додавання authtoken.\nКоли ngrok налаштований, запускай свій сервер Minecraft—лаунчер автоматично згенерує безпечну TCP-адресу, готову до поширення.\nЖодного порт-форвардингу, жодного обміну IP, жодних турбот.",
+  "setupNgrokCta": "Отримати ngrok"
 }

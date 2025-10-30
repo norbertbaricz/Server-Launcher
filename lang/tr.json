@@ -92,5 +92,7 @@
   "addonsManagedManually": "Bedrock eklentilerini sunucu klasöründen manuel olarak yönetin.",
   "openBedrockFolderButton": "Sunucu klasörünü aç",
   "uploadUnavailable": "Yükleme kullanılamıyor",
-  "addonsUploadUnavailable": "Bedrock eklentileri manuel olarak yönetilmelidir."
+  "addonsUploadUnavailable": "Bedrock eklentileri manuel olarak yönetilmelidir.",
+  "setupNgrokTip": "Dünyanın herhangi bir yerinde çalışacak bir Minecraft LAN sunucusu mu hayal ediyorsun?\nResmi siteden (ngrok.com) ngrok’u indir, giriş yap ve authtoken’ını kopyala.\nNgrok’un kurulu olduğu terminali aç ve authtoken eklemek için komutu çalıştır.\nNgrok hazır olduğunda Minecraft sunucunu başlat—başlatıcı paylaşmaya hazır güvenli bir TCP adresini otomatik olarak oluşturur.\nPort yönlendirme yok, IP paylaşımı yok, sorun yok.",
+  "setupNgrokCta": "ngrok edin"
 }

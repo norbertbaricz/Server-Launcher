@@ -92,5 +92,7 @@
   "addonsManagedManually": "Bestuur Bedrock-byvoegsels direk vanuit die bediener-lêergids.",
   "openBedrockFolderButton": "Open Bediener-gids",
   "uploadUnavailable": "Oplaai nie beskikbaar nie",
-  "addonsUploadUnavailable": "Bedrock-byvoegsels moet handmatig bestuur word."
+  "addonsUploadUnavailable": "Bedrock-byvoegsels moet handmatig bestuur word.",
+  "setupNgrokTip": "Droom jy daarvan om 'n Minecraft LAN te host wat oral in die wêreld werk?\nLaai ngrok af vanaf die amptelike webwerf (ngrok.com), meld aan en kopieer jou authtoken.\nMaak jou terminaal oop waar ngrok geïnstalleer is en voer die bevel uit om jou authtoken by te voeg.\nSodra ngrok gereed is, begin jou Minecraft-bediener—die lanseerder genereer outomaties 'n veilige TCP-adres om te deel.\nGeen poort-doorstuur, geen IP-deel, geen hoofpyne nie.",
+  "setupNgrokCta": "Skep ngrok"
 }

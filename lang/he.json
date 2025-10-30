@@ -92,5 +92,7 @@
   "addonsManagedManually": "נהל הרחבות Bedrock ידנית ישירות מתיקיית השרת.",
   "openBedrockFolderButton": "פתח תיקיית שרת",
   "uploadUnavailable": "העלאה אינה זמינה",
-  "addonsUploadUnavailable": "יש לנהל הרחבות Bedrock ידנית."
+  "addonsUploadUnavailable": "יש לנהל הרחבות Bedrock ידנית.",
+  "setupNgrokTip": "חולמים לארח שרת Minecraft LAN שעובד בכל מקום בעולם?\nהורידו את ngrok מהאתר הרשמי (ngrok.com), התחברו והעתיקו את ה-authtoken שלכם.\nפתחו את הטרמינל שבו מותקן ngrok והריצו את הפקודה להוספת ה-authtoken.\nלאחר שהגדרתם את ngrok, הפעילו את שרת ה-Minecraft—ה-launcher ייצור אוטומטית כתובת TCP מאובטחת לשיתוף.\nבלי פתיחת פורטים, בלי שיתוף IP, בלי כאבי ראש.",
+  "setupNgrokCta": "השג ngrok"
 }

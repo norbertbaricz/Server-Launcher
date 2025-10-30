@@ -92,5 +92,7 @@
   "addonsManagedManually": "A Bedrock bővítményeket manuálisan kell kezelni a szerver mappájában.",
   "openBedrockFolderButton": "Szervermappa megnyitása",
   "uploadUnavailable": "Feltöltés nem érhető el",
-  "addonsUploadUnavailable": "A Bedrock bővítményeket manuálisan kell kezelni."
+  "addonsUploadUnavailable": "A Bedrock bővítményeket manuálisan kell kezelni.",
+  "setupNgrokTip": "Arról álmodsz, hogy olyan Minecraft LAN-t üzemeltess, ami bárhol a világon működik?\nTöltsd le az ngrokot a hivatalos webhelyről (ngrok.com), jelentkezz be és másold ki az authtokened.\nNyisd meg azt a terminált, ahová az ngrok telepítve van, és futtasd a parancsot, hogy hozzáadd az authtokent.\nMiután az ngrok be van állítva, indítsd el a Minecraft szervert—a launcher automatikusan előállítja a megosztásra kész, biztonságos TCP-címet.\nNincs porttovábbítás, nincs IP-megosztás, nincs fejfájás.",
+  "setupNgrokCta": "ngrok letöltése"
 }

@@ -92,5 +92,7 @@
   "addonsManagedManually": "Gerencie manualmente os add-ons Bedrock diretamente na pasta do servidor.",
   "openBedrockFolderButton": "Abrir pasta do servidor",
   "uploadUnavailable": "Envios indisponíveis",
-  "addonsUploadUnavailable": "Os add-ons Bedrock devem ser gerenciados manualmente."
+  "addonsUploadUnavailable": "Os add-ons Bedrock devem ser gerenciados manualmente.",
+  "setupNgrokTip": "Sonhas em alojar um LAN de Minecraft que funcione em qualquer parte do mundo?\nDescarrega o ngrok através do site oficial (ngrok.com), inicia sessão e copia o teu authtoken.\nAbre o terminal onde tens o ngrok instalado e executa o comando para adicionar o authtoken.\nAssim que o ngrok estiver configurado, lança o teu servidor Minecraft—o launcher gera automaticamente um endereço TCP seguro pronto a ser partilhado.\nSem port forwarding, sem partilha de IP, sem dores de cabeça.",
+  "setupNgrokCta": "Obter ngrok"
 }

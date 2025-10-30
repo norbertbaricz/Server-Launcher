@@ -92,5 +92,7 @@
   "addonsManagedManually": "يمكن إدارة إضافات Bedrock يدويًا من مجلد الخادم.",
   "openBedrockFolderButton": "فتح مجلد الخادم",
   "uploadUnavailable": "الرفع غير متاح",
-  "addonsUploadUnavailable": "يجب إدارة إضافات Bedrock يدويًا."
+  "addonsUploadUnavailable": "يجب إدارة إضافات Bedrock يدويًا.",
+  "setupNgrokTip": "تحلم باستضافة خادم LAN لماينكرافت يعمل في أي مكان في العالم؟\nقم بتنزيل ngrok من الموقع الرسمي (ngrok.com)، سجّل الدخول وانسخ رمز المصادقة الخاص بك.\nافتح الطرفية حيث تم تثبيت ngrok وشغّل الأمر لإضافة رمز المصادقة.\nبمجرد إعداد ngrok، شغّل خادم ماينكرافت وسيقوم المشغل تلقائياً بإنشاء عنوان TCP آمن جاهز للمشاركة.\nلا إعادة توجيه منافذ، لا مشاركة IP، ولا صداع.",
+  "setupNgrokCta": "الحصول على ngrok"
 }

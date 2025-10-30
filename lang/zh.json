@@ -92,5 +92,7 @@
   "addonsManagedManually": "请直接在服务器文件夹中手动管理 Bedrock 附加组件。",
   "openBedrockFolderButton": "打开服务器文件夹",
   "uploadUnavailable": "无法使用上传功能",
-  "addonsUploadUnavailable": "Bedrock 附加组件必须手动管理。"
+  "addonsUploadUnavailable": "Bedrock 附加组件必须手动管理。",
+  "setupNgrokTip": "梦想托管一个在世界任何地方都能使用的 Minecraft 局域网？\n从官方网站 (ngrok.com) 下载 ngrok，登录并复制你的 authtoken。\n打开安装了 ngrok 的终端并运行命令添加 authtoken。\n设置好 ngrok 后启动你的 Minecraft 服务器—启动器会自动生成可分享的安全 TCP 地址。\n无需端口映射，无需分享 IP，轻松无忧。",
+  "setupNgrokCta": "获取 ngrok"
 }

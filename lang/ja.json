@@ -92,5 +92,7 @@
   "addonsManagedManually": "Bedrock のアドオンはサーバーフォルダーから手動で管理してください。",
   "openBedrockFolderButton": "サーバーフォルダーを開く",
   "uploadUnavailable": "アップロードは利用できません",
-  "addonsUploadUnavailable": "Bedrock のアドオンは手動で管理する必要があります。"
+  "addonsUploadUnavailable": "Bedrock のアドオンは手動で管理する必要があります。",
+  "setupNgrokTip": "世界のどこからでも動く Minecraft LAN をホストしたいですか？\n公式サイト (ngrok.com) から ngrok をダウンロードし、ログインして authtoken をコピーしましょう。\nngrok をインストールしたターミナルを開き、authtoken を追加するコマンドを実行します。\nngrok の準備ができたら Minecraft サーバーを起動してください—ランチャーが共有に使える安全な TCP アドレスを自動で生成します。\nポート開放も IP 共有も不要、もう頭を悩ませる必要はありません。",
+  "setupNgrokCta": "ngrok を入手"
 }

@@ -92,5 +92,7 @@
   "addonsManagedManually": "Bedrock অ্যাড-অন সরাসরি সার্ভার ফোল্ডার থেকে ম্যানুয়ালি পরিচালনা করুন।",
   "openBedrockFolderButton": "সার্ভার ফোল্ডার খুলুন",
   "uploadUnavailable": "আপলোড উপলব্ধ নয়",
-  "addonsUploadUnavailable": "Bedrock অ্যাড-অন ম্যানুয়ালি পরিচালনা করতে হবে।"
+  "addonsUploadUnavailable": "Bedrock অ্যাড-অন ম্যানুয়ালি পরিচালনা করতে হবে।",
+  "setupNgrokTip": "সারা বিশ্বে কাজ করে এমন Minecraft LAN হোস্ট করার স্বপ্ন দেখছেন?\nঅফিসিয়াল সাইট (ngrok.com) থেকে ngrok ডাউনলোড করুন, লগ ইন করুন এবং আপনার authtoken কপি করুন।\nযেখানে ngrok ইনস্টল করা আছে সেই টার্মিনাল খুলে কমান্ড চালিয়ে authtoken যোগ করুন।\nngrok প্রস্তুত হয়ে গেলে Minecraft সার্ভার চালু করুন—লঞ্চার নিজেই শেয়ার করার জন্য নিরাপদ TCP ঠিকানা তৈরি করবে।\nকোন পোর্ট ফরওয়ার্ডিং নয়, কোনো IP শেয়ারিং নয়, কোনো ঝামেলা নয়।",
+  "setupNgrokCta": "ngrok ডাউনলোড করুন"
 }

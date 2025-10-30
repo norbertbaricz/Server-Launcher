@@ -92,5 +92,7 @@
   "addonsManagedManually": "Doplňky pro Bedrock spravujte ručně přímo ve složce serveru.",
   "openBedrockFolderButton": "Otevřít složku serveru",
   "uploadUnavailable": "Nahrávání není k dispozici",
-  "addonsUploadUnavailable": "Doplňky Bedrock musí být spravovány ručně."
+  "addonsUploadUnavailable": "Doplňky Bedrock musí být spravovány ručně.",
+  "setupNgrokTip": "Snít o Minecraft LAN serveru, který funguje kdekoli na světě?\nStáhněte si ngrok z oficiálního webu (ngrok.com), přihlaste se a zkopírujte svůj authtoken.\nOtevřete terminál, kde máte nainstalovaný ngrok, a spusťte příkaz pro přidání authtokenu.\nJakmile je ngrok nastaven, spusťte Minecraft server—launcher automaticky vygeneruje bezpečnou TCP adresu připravenou ke sdílení.\nŽádné port forwardingy, žádné sdílení IP, žádné starosti.",
+  "setupNgrokCta": "Získat ngrok"
 }
