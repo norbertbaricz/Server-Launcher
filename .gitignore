@@ -1,6 +1,39 @@
-# Here I can stop git to upload what I dont need to!
+# Dependencies
+node_modules/
 
-/node_modules
-/.env
-/MinecraftServer
-/release
+# Environment variables
+.env
+.env.local
+
+# Build outputs
+release/
+dist/
+dist_electron/
+
+# Server files (user-generated)
+MinecraftServer/
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
+.cache/

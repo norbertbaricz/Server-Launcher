@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Server Launcher
+Comment=Minecraft Server Management Tool
+Exec=server-launcher %U
+Icon=server-launcher
+Terminal=false
+Categories=Game;Utility;
+StartupNotify=true
+StartupWMClass=Server Launcher

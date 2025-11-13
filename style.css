@@ -294,6 +294,8 @@ input:focus, select:focus, textarea:focus {
     animation-timing-function: ease-out;
     animation-fill-mode: forwards;
     will-change: transform, opacity;
+    transform: translateZ(0);
+    backface-visibility: hidden;
 }
 
 .view-stack {
@@ -333,6 +335,34 @@ input:focus, select:focus, textarea:focus {
     .view-panel {
         transition: none !important;
     }
+}
+
+/* Java install modal fixes for Linux */
+#java-install-modal {
+    z-index: 9999;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+
+#java-install-modal-content {
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    position: relative;
+    z-index: 10000;
+}
+
+#java-install-modal.hidden {
+    display: none !important;
+}
+
+/* Ensure modal is always on top on Linux */
+body:has(#java-install-modal:not(.hidden)) {
+    overflow: hidden;
+}
+
+#java-install-modal:not(.hidden) {
+    display: flex !important;
 }
 
 @keyframes spin {
@@ -399,13 +429,34 @@ input:checked + .switch-track .switch-thumb {
     overflow: hidden;
     margin-top: 0;
     border: 1px solid transparent;
+    width: 100%;
 }
 
 #auto-start-delay-container.visible {
-    max-height: 100px;
+    max-height: 80px;
     opacity: 1;
     margin-top: 0.75rem;
     border-color: #4a5568;
+}
+
+/* Ensure auto-start container stays within its parent and make card scrollable */
+section.bg-gray-800:has(#auto-start-delay-container) {
+    overflow: visible;
+    height: auto;
+    min-height: auto;
+}
+
+/* Make Launcher Settings card scrollable */
+#settings-page .card-divider .bg-gray-800 .space-y-4 {
+    max-height: 100%;
+    overflow-y: auto;
+}
+
+/* Add some padding to the scrollable area */
+#settings-page .card-divider .bg-gray-800 {
+    display: flex;
+    flex-direction: column;
+    max-height: 100%;
 }
 
 select:disabled {

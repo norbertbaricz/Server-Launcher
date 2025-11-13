@@ -240,7 +240,6 @@ async function setLanguage(lang) {
         updatePluginsButtonAppearance(currentServerConfig?.serverType);
 
     } catch (error) {
-        console.error("Language Error:", error);
         addToConsole(`Could not apply language: ${error.message}`, 'ERROR');
     }
 }
@@ -432,10 +431,20 @@ async function populateMcVersionSelect(selectElement, currentVersion, serverType
 function showModal(modal, content) {
     if (isModalAnimating || !modal.classList.contains('hidden')) return;
     isModalAnimating = true;
+    
+    // Force layout recalculation for Linux
+    modal.style.display = 'flex';
+    void modal.offsetHeight;
+    
     modal.classList.remove('hidden');
     modal.style.animation = 'fadeInModalBg 0.18s ease-out forwards';
     content.style.animation = 'fadeInModalContent 0.18s ease-out forwards';
-    content.addEventListener('animationend', () => isModalAnimating = false, { once: true });
+    content.style.transform = 'translateZ(0)'; // Force GPU acceleration
+    
+    content.addEventListener('animationend', () => {
+        isModalAnimating = false;
+        content.style.transform = '';
+    }, { once: true });
 }
 
 function hideModal(modal, content, callback) {
@@ -444,10 +453,13 @@ function hideModal(modal, content, callback) {
         return;
     }
     isModalAnimating = true;
+    content.style.transform = 'translateZ(0)'; // Force GPU acceleration
     modal.style.animation = 'fadeOutModalBg 0.18s ease-in forwards';
     content.style.animation = 'fadeOutModalContent 0.18s ease-in forwards';
     content.addEventListener('animationend', () => {
         modal.classList.add('hidden');
+        modal.style.display = '';
+        content.style.transform = '';
         isModalAnimating = false;
         if (callback) callback();
     }, { once: true });
@@ -806,6 +818,8 @@ languageSettingsSelect.addEventListener('change', (event) => {
     const newLang = event.target.value;
     languageModalSelect.value = newLang;
     setLanguage(newLang);
+    launcherSettingsCache.language = newLang;
+    window.electronAPI.setSettings({ language: newLang });
 });
 
 window.electronAPI.onWindowMaximized((isMaximized) => {
@@ -941,7 +955,7 @@ async function fetchAndDisplayIPs(showPort = false) {
                 port = `:${properties['server-port']}`;
             }
         } catch (error) {
-            console.warn("Could not fetch server port for display.", error);
+            addToConsole(`Could not fetch server port: ${error.message}`, 'DEBUG');
         }
     }
     try {

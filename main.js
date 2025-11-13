@@ -15,6 +15,8 @@ const pidusage = require('pidusage');
 const AnsiToHtml = require('ansi-to-html');
 const find = require('find-process');
 const AdmZip = require('adm-zip');
+const NotificationService = require('./src/services/NotificationService');
+const { pingServer } = require('./src/utils/serverPing');
 
 const SOUND_CANDIDATES = {
   error: ['error.mp3', 'error.wav'],
@@ -28,6 +30,16 @@ const ERROR_SOUND_KEYWORDS = ['error', 'failed', 'fail', 'not found', 'crash', '
 const SUCCESS_SOUND_KEYWORDS = ['success', 'successfully', 'ready', 'completed', 'installed', 'configured', 'downloaded', 'server started', 'server ready', 'done'];
 const NGROK_API_ENDPOINT = 'http://127.0.0.1:4040/api/tunnels';
 const PUBLIC_IP_USER_AGENT = 'MyMinecraftLauncher/1.0';
+
+// Set app name before app.whenReady for proper notifications
+if (process.platform === 'linux') {
+    app.name = 'Server Launcher';
+} else if (process.platform === 'win32') {
+    app.setAppUserModelId('com.serverlauncher.app');
+    app.name = 'Server Launcher';
+} else if (process.platform === 'darwin') {
+    app.name = 'Server Launcher';
+}
 const DEFAULT_JAVA_SERVER_PORT = 25565;
 
 const SERVER_TYPES = {
@@ -111,6 +123,9 @@ let ngrokTargetPort = null;
 let ngrokUnavailablePermanently = false;
 let ngrokStopRequested = false;
 let lastNgrokDiagnosticCode = null;
+
+// Notification service
+let notificationService = null;
 const execAsync = promisify(exec);
 
 try { app.setName('Server Launcher'); } catch (_) {}
@@ -156,7 +171,7 @@ async function ensureBundledJavaLinux() {
     const arch = archMap[process.arch] || 'x64';
     const apiUrl = `https://api.adoptium.net/v3/assets/latest/21/hotspot?os=linux&architecture=${arch}&image_type=jdk`;
     const win = getMainWindow();
-    if (win) win.webContents.send('java-install-status', 'Downloading embedded Java for Linux...', 0);
+    safeSend(win, 'java-install-status', 'Downloading embedded Java for Linux...', 0);
 
     const apiResponse = await new Promise((resolve, reject) => {
       https.get(apiUrl, { headers: { 'User-Agent': 'Server-Launcher-Electron' } }, (res) => {
@@ -252,10 +267,7 @@ const serverPropertiesFileName = 'server.properties';
 let localIsServerRunningGlobal = false;
 let mainWindow;
 let performanceStatsInterval = null;
-let manualTpsCheck = false;
-let manualListCheck = false; 
-let latencyProbeActive = false;
-let latencyProbeStart = 0;
+let manualListCheck = false;
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -403,7 +415,7 @@ async function downloadAndInstallJava() {
     if (!win) return;
 
     try {
-        win.webContents.send('java-install-status', 'Finding the latest Java version for your system...');
+        safeSend(win, 'java-install-status', 'Finding the latest Java version for your system...');
 
         if (process.platform !== 'win32') {
             throw new Error('Automated Java installation is currently supported only on Windows.');
@@ -441,7 +453,7 @@ async function downloadAndInstallJava() {
             fs.unlinkSync(filePath);
         }
 
-        win.webContents.send('java-install-status', `Downloading ${fileName}...`, 0);
+        safeSend(win, 'java-install-status', `Downloading ${fileName}...`, 0);
 
         await new Promise((resolve, reject) => {
             const fileStream = fs.createWriteStream(filePath);
@@ -467,7 +479,7 @@ async function downloadAndInstallJava() {
                 response.on('data', chunk => {
                     downloadedBytes += chunk.length;
                     const progress = totalBytes ? Math.round((downloadedBytes / totalBytes) * 100) : 0;
-                    win.webContents.send('java-install-status', `Downloading... ${progress}%`, progress);
+                    safeSend(win, 'java-install-status', `Downloading... ${progress}%`, progress);
                 });
 
                 response.pipe(fileStream);
@@ -478,13 +490,13 @@ async function downloadAndInstallJava() {
             fileStream.on('error', err => fs.unlink(filePath, () => reject(err)));
         });
         
-        win.webContents.send('java-install-status', 'Download complete. Launching installer...');
+        safeSend(win, 'java-install-status', 'Download complete. Launching installer...');
 
         shell.openPath(filePath).then(errorMessage => {
             if (errorMessage) {
                 throw new Error(`Failed to open installer: ${errorMessage}`);
             }
-            win.webContents.send('java-install-status', 'Installer launched. Please complete the installation, then restart the launcher. The application will now close.');
+            safeSend(win, 'java-install-status', 'Installer launched. Please complete the installation, then restart the launcher. The application will now close.');
             log.info('Java installer launched. Closing the launcher.');
             
             setTimeout(() => {
@@ -494,7 +506,8 @@ async function downloadAndInstallJava() {
 
     } catch (error) {
         log.error('Java install error:', error);
-        win.webContents.send(
+        safeSend(
+            win,
             'java-install-status',
             `Error: ${error.message}. Please try again or install Java manually.`
         );
@@ -502,19 +515,40 @@ async function downloadAndInstallJava() {
 }
 
 function getMainWindow() { return mainWindow; }
+
+/**
+ * Safely send IPC message to renderer process
+ * Handles EPIPE errors when renderer is closed/crashed
+ */
+function safeSend(win, channel, ...args) {
+    if (!win || win.isDestroyed()) return false;
+    try {
+        const wc = win.webContents;
+        if (wc && !wc.isDestroyed()) {
+            wc.send(channel, ...args);
+            return true;
+        }
+    } catch (error) {
+        if (error.code !== 'EPIPE') {
+            log.error(`IPC send error on channel '${channel}':`, error.message);
+        }
+    }
+    return false;
+}
+
 function sendStatus(fallbackMessage, pulse = false, translationKey = null) {
     const win = getMainWindow();
-    if (win && !win.isDestroyed()) win.webContents.send('update-status', fallbackMessage, pulse, translationKey);
+    safeSend(win, 'update-status', fallbackMessage, pulse, translationKey);
     handleStatusSound(fallbackMessage, translationKey, pulse);
 }
 function sendConsole(message, type = 'INFO') {
     const win = getMainWindow();
-    if (win && !win.isDestroyed()) win.webContents.send('update-console', message, type);
+    safeSend(win, 'update-console', message, type);
 }
 function sendServerStateChange(isRunning) {
     localIsServerRunningGlobal = isRunning;
     const win = getMainWindow();
-    if (win && !win.isDestroyed()) win.webContents.send('server-state-change', isRunning);
+    safeSend(win, 'server-state-change', isRunning);
     if (isRunning) {
         ensureNgrokTunnelForCurrentServerPort().catch((err) => {
             if (err && typeof log.debug === 'function') log.debug(`Ngrok ensure failed: ${err.message}`);
@@ -647,13 +681,18 @@ function getNotificationIconPath() {
 
 function showDesktopNotification(title, body) {
     try {
-        if (!Notification || !Notification.isSupported()) return;
+        if (!notificationService) {
+            return;
+        }
+        
         const settings = readLauncherSettings();
-        if (settings && settings.notificationsEnabled === false) return;
-        const iconPath = getNotificationIconPath();
-        const notif = new Notification({ title, body, icon: iconPath, silent: false });
-        notif.show();
-    } catch (_) { /* ignore notification errors */ }
+        const enabled = settings ? settings.notificationsEnabled !== false : true;
+        notificationService.setEnabled(enabled);
+        
+        notificationService.show(title, body);
+    } catch (error) {
+        // Silent error
+    }
 }
 
 function resolveAssetFile(relativePath) {
@@ -694,10 +733,10 @@ function playSoundEffect(requestedType = DEFAULT_SOUND_TYPE) {
         win = getMainWindow();
         if (!win || win.isDestroyed()) return;
         const payload = soundPath ? pathToFileURL(soundPath).href : null;
-        win.webContents.send('play-sound', payload);
+        safeSend(win, 'play-sound', payload);
     } catch (_) {
         if (!win) win = getMainWindow();
-        if (win && !win.isDestroyed()) win.webContents.send('play-sound', null);
+        safeSend(win, 'play-sound', null);
     }
 }
 
@@ -1009,7 +1048,15 @@ async function ensureNgrokTunnelForCurrentServerPort(existingInfo = null) {
         }
     }
 
-    return startNgrokTunnel(desiredPort);
+    const result = startNgrokTunnel(desiredPort);
+    if (result && typeof result.then === 'function') {
+        const outcome = await result;
+        if (!outcome.success && outcome.error) {
+            sendConsole(`Ngrok error: ${outcome.error}`, 'ERROR');
+        }
+        return outcome.success;
+    }
+    return result;
 }
 
 function createWindow () {
@@ -1068,18 +1115,18 @@ function createWindow () {
       if (isJavaServer(type)) {
           hasJava = await checkJava();
           if (!hasJava && app.isPackaged) {
-              mainWindow.webContents.send('java-install-required');
+              safeSend(mainWindow, 'java-install-required');
               return;
           }
       }
       
       sendServerStateChange(localIsServerRunningGlobal);
-      mainWindow.webContents.send('window-maximized', mainWindow.isMaximized());
+      safeSend(mainWindow, 'window-maximized', mainWindow.isMaximized());
 
       const launcherSettings = readLauncherSettings();
       if (launcherSettings.autoStartServer) {
           const delay = launcherSettings.autoStartDelay || 5;
-          mainWindow.webContents.send('start-countdown', 'initial', delay);
+          safeSend(mainWindow, 'start-countdown', 'initial', delay);
       }
       if (!startupSoundPlayed) {
           startupSoundPlayed = true;
@@ -1087,18 +1134,33 @@ function createWindow () {
       }
   });
 
-  mainWindow.on('maximize', () => mainWindow.webContents.send('window-maximized', true));
-  mainWindow.on('unmaximize', () => mainWindow.webContents.send('window-maximized', false));
+  mainWindow.on('maximize', () => safeSend(mainWindow, 'window-maximized', true));
+  mainWindow.on('unmaximize', () => safeSend(mainWindow, 'window-maximized', false));
 }
 
 app.whenReady().then(async () => {
   const userDataPath = app.getPath('userData');
-  try { if (typeof app.setDesktopName === 'function') app.setDesktopName('server-launcher.desktop'); } catch (_) {}
   serverFilesDir = path.join(userDataPath, 'MinecraftServer');
   serverConfigFilePath = path.join(serverFilesDir, serverConfigFileName);
   launcherSettingsFilePath = path.join(userDataPath, launcherSettingsFileName);
   serverPropertiesFilePath = path.join(serverFilesDir, serverPropertiesFileName);
   refreshMinimumJavaRequirementFromConfig();
+
+  // Initialize notification service
+  notificationService = new NotificationService();
+  
+  // Set fallback callback to send in-app notifications
+  notificationService.setFallbackCallback((title, body) => {
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) {
+      safeSend(win, 'show-in-app-notification', { title, body });
+    }
+  });
+  
+  // Set sound callback
+  notificationService.setSoundCallback((soundType) => {
+    playSoundEffect(soundType);
+  });
 
   if (!fs.existsSync(serverFilesDir)) {
     try {
@@ -1111,7 +1173,16 @@ app.whenReady().then(async () => {
   await killStrayServerProcess();
   createWindow();
 
-  try { if (process.platform === 'win32') app.setAppUserModelId('com.server.launcher'); } catch (_) {}
+  // Set desktop file name for Linux notifications
+  if (process.platform === 'linux') {
+    try {
+      if (typeof app.setDesktopName === 'function') {
+        app.setDesktopName('server-launcher.desktop');
+      }
+    } catch (error) {
+      log.warn('Failed to set desktop name:', error);
+    }
+  }
 
   rpc = new RPC.Client({ transport: 'ipc' });
   rpc.on('ready', () => {
@@ -1555,11 +1626,11 @@ async function startBedrockServer(serverConfig) {
     }
 
     if (performanceStatsInterval) clearInterval(performanceStatsInterval);
-    latencyProbeActive = false; latencyProbeStart = 0; manualListCheck = false;
+    manualListCheck = false;
 
     sendConsole('Starting Bedrock server...', 'INFO');
     sendStatus('Starting server...', true, 'serverStarting');
-    getMainWindow()?.webContents.send('update-performance-stats', { allocatedRamGB: '-' });
+    safeSend(getMainWindow(), 'update-performance-stats', { allocatedRamGB: '-' });
 
     const spawnOptions = {
         cwd: serverFilesDir,
@@ -1591,7 +1662,26 @@ async function startBedrockServer(serverConfig) {
         try {
             const stats = await pidusage(serverProcess.pid);
             const memoryGB = stats.memory / (1024 * 1024 * 1024);
-            getMainWindow()?.webContents.send('update-performance-stats', { memoryGB });
+            safeSend(getMainWindow(), 'update-performance-stats', { memoryGB });
+            
+            // Measure latency using real ping for Bedrock server
+            if (serverIsFullyStarted) {
+                const serverConfig = readServerConfig();
+                const serverType = normalizeServerType(serverConfig.serverType);
+                const properties = readServerPropertiesObject();
+                let port = 19132; // Default Bedrock port
+                
+                if (properties && properties['server-port']) {
+                    port = parseInt(properties['server-port'], 10);
+                } else if (properties && properties['server-portv4']) {
+                    port = parseInt(properties['server-portv4'], 10);
+                }
+                
+                const pingResult = await pingServer(serverType, port, 3000);
+                if (pingResult.online && pingResult.latency >= 0) {
+                    safeSend(getMainWindow(), 'update-performance-stats', { latencyMs: pingResult.latency });
+                }
+            }
         } catch (e) {
             clearInterval(performanceStatsInterval);
             if (localIsServerRunningGlobal) {
@@ -1649,7 +1739,7 @@ async function startBedrockServer(serverConfig) {
             if (launcherSettings.autoStartServer) {
                 sendConsole('Server stopped unexpectedly. Attempting to auto-restart...', 'WARN');
                 const delay = launcherSettings.autoStartDelay || 5;
-                mainWindow.webContents.send('start-countdown', 'restart', delay);
+                safeSend(mainWindow, 'start-countdown', 'restart', delay);
                 try {
                     const cfg = readServerConfig();
                     const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
@@ -1939,14 +2029,14 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
             sendConsole(`Bedrock server ${mcVersion} downloaded and extracted.`, 'SUCCESS');
         }
 
-        getMainWindow()?.webContents.send('setup-finished');
+        safeSend(getMainWindow(), 'setup-finished');
         if (isJavaServer(chosenType)) {
             setTimeout(async () => {
                 const hasJava2 = await checkJava();
                 if (!hasJava2 && app.isPackaged) {
                     const win = getMainWindow();
                     if (win && !win.isDestroyed()) {
-                        win.webContents.send('java-install-required');
+                        safeSend(win, 'java-install-required');
                     }
                 }
             }, 2000);
@@ -1955,7 +2045,7 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
     } catch (error) {
         sendStatus('Download failed.', false, 'downloadFailed');
         sendConsole(`ERROR: ${error.message}`, 'ERROR');
-        getMainWindow()?.webContents.send('setup-finished');
+        safeSend(getMainWindow(), 'setup-finished');
     }
 });
 
@@ -2023,7 +2113,7 @@ ipcMain.on('start-server', async () => {
 
     try {
         const allocatedRamGB = parseRamToGB(ramToUseForJava);
-        getMainWindow()?.webContents.send('update-performance-stats', { allocatedRamGB });
+        safeSend(getMainWindow(), 'update-performance-stats', { allocatedRamGB });
 
         serverProcess = spawn(javaExecutablePath, javaArgs, { cwd: serverFilesDir, stdio: ['pipe', 'pipe', 'pipe'], env: getCleanEnvForJava() });
         serverProcess.killedInternally = false;
@@ -2039,15 +2129,18 @@ ipcMain.on('start-server', async () => {
             try {
                 const stats = await pidusage(serverProcess.pid);
                 const memoryGB = stats.memory / (1024 * 1024 * 1024);
-                getMainWindow()?.webContents.send('update-performance-stats', { memoryGB });
-                if (serverIsFullyStarted && serverProcess && serverProcess.stdin && serverProcess.stdin.writable) {
-                    if (latencyProbeActive && Date.now() - latencyProbeStart > 5000) {
-                        latencyProbeActive = false;
-                    }
-                    if (!latencyProbeActive && !manualListCheck) {
-                        latencyProbeActive = true;
-                        latencyProbeStart = Date.now();
-                        serverProcess.stdin.write("list\n");
+                safeSend(getMainWindow(), 'update-performance-stats', { memoryGB });
+                
+                // Measure latency using real ping
+                if (serverIsFullyStarted) {
+                    const serverConfig = readServerConfig();
+                    const serverType = normalizeServerType(serverConfig.serverType);
+                    const properties = readServerPropertiesObject();
+                    const port = properties && properties['server-port'] ? parseInt(properties['server-port'], 10) : 25565;
+                    
+                    const pingResult = await pingServer(serverType, port, 3000);
+                    if (pingResult.online && pingResult.latency >= 0) {
+                        safeSend(getMainWindow(), 'update-performance-stats', { latencyMs: pingResult.latency });
                     }
                 }
             } catch (e) {
@@ -2065,23 +2158,14 @@ ipcMain.on('start-server', async () => {
             const cleanOutput = stripAnsiCodes(rawOutput).trimEnd();
             
             const playersRegex = /players online:?/i;
-            if (playersRegex.test(cleanOutput)) {
-                if (manualListCheck) {
-                    sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
-                    manualListCheck = false;
-                } else if (latencyProbeActive) {
-                    const latencyMs = Math.max(0, Date.now() - latencyProbeStart);
-                    getMainWindow()?.webContents.send('update-performance-stats', { latencyMs });
-                    latencyProbeActive = false;
-                } else {
-                    sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
-                }
+            if (playersRegex.test(cleanOutput) && manualListCheck) {
+                sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
+                manualListCheck = false;
             } else {
                 sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
             }
 
             if (!serverIsFullyStarted && /Done \([^)]+\)! For help, type "help"/.test(cleanOutput)) {
-                latencyProbeActive = false; latencyProbeStart = 0;
                 serverIsFullyStarted = true;
                 sendServerStateChange(true);
                 setDiscordActivity();
@@ -2121,7 +2205,7 @@ ipcMain.on('start-server', async () => {
                 if (launcherSettings.autoStartServer) {
                     sendConsole('Server stopped unexpectedly. Attempting to auto-restart...', 'WARN');
                     const delay = launcherSettings.autoStartDelay || 5;
-                    mainWindow.webContents.send('start-countdown', 'restart', delay);
+                    safeSend(mainWindow, 'start-countdown', 'restart', delay);
                     try {
                         const cfg = readServerConfig();
                         const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
@@ -2162,7 +2246,6 @@ ipcMain.on('start-server', async () => {
 ipcMain.on('stop-server', async () => {
     if (!serverProcess || serverProcess.killed) { sendConsole('Server not running.', 'WARN'); return; }
     if (performanceStatsInterval) clearInterval(performanceStatsInterval);
-    latencyProbeActive = false; latencyProbeStart = 0;
     sendConsole('Stopping server...', 'INFO');
     sendStatus('Stopping server...', true, 'serverStopping');
     serverProcess.killedInternally = true;
@@ -2182,7 +2265,6 @@ ipcMain.on('send-command', (event, command) => {
     const trimmedCommand = command.trim().toLowerCase();
     if (trimmedCommand === 'list' || trimmedCommand === '/list') {
         manualListCheck = true;
-        latencyProbeActive = false; latencyProbeStart = 0;
     }
     let outgoing = command;
     if (outgoing.startsWith('/')) outgoing = outgoing.slice(1);
