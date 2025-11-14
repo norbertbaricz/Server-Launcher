@@ -5,6 +5,18 @@ All notable changes to Server Launcher will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### ⚙️ Maintenance
+- Removed unused modules that were never wired into `main.js` (`ServerManager`, `NetworkManager`, `ConfigManager`, `CleanupManager`, renderer performance helpers, and the standalone debounce utilities).
+- Dropped the bespoke `Logger` helper in favor of using `electron-log` directly inside `serverPing.js`.
+- Deleted the empty `src/renderer/` folder to keep the source tree lean.
+
+### 📝 Documentation
+- Rewrote `README.md` so it reflects the current codebase (no phantom test suite, Tailwind, or missing design docs).
+- Clarified the tech stack, build instructions, and localization/theme sections for contributors.
+
+
 ## [1.2.0] - 2025-11-14
 
 ### 🎉 Major Features Added

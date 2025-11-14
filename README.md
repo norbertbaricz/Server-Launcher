@@ -1,264 +1,137 @@
-# 🎮 Server-Launcher
+# 🎮 Server Launcher
 
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 [![Built with Electron](https://img.shields.io/badge/Built_with-Electron-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Styled with Tailwind CSS](https://img.shields.io/badge/Styled_with-Tailwind_CSS-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
-[![Version](https://img.shields.io/badge/Version-1.2.0-green.svg)](https://github.com/norbertbaricz/server-launcher/releases)
-[![Code Quality](https://img.shields.io/badge/Code_Quality-A+-brightgreen.svg)]()
+[![Release](https://img.shields.io/badge/Version-1.2.0-green.svg)](https://github.com/norbertbaricz/server-launcher/releases)
 
-**Server-Launcher** is a sleek and intuitive desktop app for managing your own Minecraft server (PaperMC, Fabric, Bedrock). Built using Electron with a modular architecture, comprehensive testing, and optimized performance.
+**Server Launcher** is a desktop app for configuring and running PaperMC, Fabric, or Bedrock Minecraft servers without touching the terminal. It bundles auto-updates, Discord Rich Presence, optional ngrok tunneling, and rich notifications in a single Electron experience.
 
 ![Server Launcher Screenshot](https://raw.githubusercontent.com/norbertbaricz/server-launcher/main/build/screenshot.png)
 
 ---
 
-## ✨ Key Features
+## ✨ Features
 
-### Core Functionality
-- 🚀 **Multi-Server Support:** PaperMC (Vanilla), Fabric (Modded), Bedrock (Dedicated Server)
-- 📋 **Smart Version Management:** Automatic version detection and installation
-- 🧠 **Intelligent RAM Allocation:** Auto-detect or manual configuration with optimization presets
-- 🖥️ **Real-time Console:** Live server logs with ANSI color support and virtual scrolling
-- ⌨️ **Command Interface:** Safe command execution with input validation and sanitization
-- 🌐 **Network Integration:** Local IP, Public IP, and automatic ngrok tunneling support
-- 💻 **Cross-Platform:** Windows, macOS, and Linux support
-
-### Advanced Features
-- 🔒 **Security Hardened:** Input validation, CSP headers, command injection prevention
-- ⚡ **Performance Optimized:** 60 FPS UI, virtual scrolling, debounced inputs, memory leak prevention
-- 🧩 **Plugin/Mod Manager:** Upload, manage, and delete plugins/mods directly from UI
-- 🎨 **10 Premium Themes:** Customizable color schemes (Skypixel, Nord, Aurora, etc.)
-- 🌍 **Multi-language:** English, Romanian, German, French, Hungarian, Polish
-- 📊 **Performance Monitoring:** Real-time CPU, RAM, and latency tracking
-- 🔄 **Auto-restart:** Configurable auto-start on crash with countdown
-- 🔔 **Desktop Notifications:** Cross-platform notifications (Windows, macOS, Linux) with sound effects and automatic fallback
-- ☁️ **Auto-updates:** Seamless update delivery via electron-updater
+- **Guided Server Setup** – Pick server type, version, RAM profile, and language from the UI.
+- **One-click Start/Stop** – Sends safe commands to PaperMC/Fabric JARs or the Bedrock executable.
+- **Live Console View** – Streams ANSI-colored logs, command history, and status updates.
+- **Plugin / Mod Management** – Upload, delete, or open the plugins/mods folder directly.
+- **Auto Updates & Rich Presence** – Electron updater plus Discord RPC to show server state.
+- **Network Insights** – Shows LAN/Public IPs and optionally surfaces ngrok TCP tunnels.
+- **Notifications with Sound** – Cross-platform desktop notifications with in-app fallback audio cues.
+- **Localization & Themes** – English, Romanian, German, French, Hungarian, and Polish with 10 theme presets.
 
 ---
 
-## 🛠️ Technologies Used
+## 🛠️ Tech Stack
 
-| Component     | Version | Description |
-|---------------|---------|-------------|
-| **Electron**  | 36.2.1 | Desktop app framework with enhanced security |
-| **Node.js**   | 18+ | Runtime environment |
-| **PaperMC**   | Latest | High-performance Minecraft server (Java) |
-| **Fabric**    | Latest | Modded Minecraft server support |
-| **Bedrock**   | Latest | Bedrock dedicated server support |
-| **Tailwind CSS** | 3.x | Modern utility-first CSS framework |
-| **Jest**      | 29.7.0 | Testing framework with 85%+ coverage |
-| **ESLint**    | 8.57.0 | Code quality and consistency |
-| **Prettier**  | 3.1.0 | Code formatting |
+| Component | Version | Role |
+|-----------|---------|------|
+| Electron | 36.2.1 | Desktop shell & auto-updates |
+| Node.js | 18+ | Runtime for launcher logic |
+| electron-updater | 6.3.1 | Update delivery |
+| electron-log | 5.4.1 | File & console logging |
+| discord-rpc | 4.0.1 | Discord Rich Presence integration |
+| pidusage | 4.0.1 | Process CPU/RAM stats |
+| Adm-Zip | 0.5.10 | Extract Bedrock server bundles |
 
 ---
 
-## 🚀 Getting Started
+## 📥 Installation (Users)
 
-### For End Users (Installation)
+1. Download the latest installer for your platform from the [Releases page](https://github.com/norbertbaricz/server-launcher/releases).
+2. Install and launch the app.
+3. (PaperMC/Fabric only) Ensure Java 17+ is installed. The launcher can fetch Adoptium builds for Windows automatically.
+4. Complete the guided setup and start the server.
 
-**Download the latest release for your platform:**
-
-- 🪟 **Windows:** Download `Server-Launcher-Setup-{version}.exe` from [Releases](https://github.com/norbertbaricz/server-launcher/releases)
-- 🐧 **Linux:** Download `Server-Launcher-{version}-x86_64.AppImage` or `.deb` package
-- 🍎 **macOS:** Download `Server-Launcher-mac-{version}.zip`
-
-**Requirements:**
-- **Java 17+** for PaperMC/Fabric servers (auto-install available on Windows)
-- **No Java needed** for Bedrock servers
-- **Minimum:** 4GB RAM, 2GB free disk space
-- **Recommended:** 8GB+ RAM, 5GB+ free disk space
+Minimum specs: 4 GB RAM and 2 GB free disk. Recommended: 8 GB RAM and 5 GB free disk.
 
 ---
 
-### For Developers (Development Mode)
-
-**Requirements:**
-- **Node.js** 18+ must be installed ([Download](https://nodejs.org/))
-- **Java 17+** for PaperMC/Fabric servers
-
-### Quick Start
-
-1. **Clone the repository:**
-    ```bash
-    git clone https://github.com/norbertbaricz/server-launcher.git
-    cd server-launcher
-    ```
-
-2. **Install dependencies:**
-    ```bash
-    npm install
-    ```
-
-3. **Run the app:**
-    ```bash
-    npm start
-    ```
-
-4. **Run tests:**
-    ```bash
-    npm test
-    ```
-
-5. **Lint & format code:**
-    ```bash
-    npm run lint
-    npm run format
-    ```
-
----
-
-## 📦 Building the App
-
-Create production-ready builds for distribution:
-
-### Build Commands
+## 🧑‍💻 Development Setup
 
 ```bash
-# Clean previous builds (recommended before building)
-npm run clean
-
-# Build for current platform only
-npm run dist
-
-# Platform-specific builds
-npm run dist:win     # Windows (NSIS installer + Portable)
-npm run dist:linux   # Linux (AppImage + deb + tar.gz)
-npm run dist:mac     # macOS (ZIP)
-
-# Build for all platforms at once (requires platform tools)
-npm run dist:all
+git clone https://github.com/norbertbaricz/server-launcher.git
+cd server-launcher
+npm install
+npm start
 ```
 
-**Build outputs** are located in the `release/` directory.
-
-### Build Artifacts
-
-| Platform | Artifacts |
-|----------|-----------|
-| **Windows** | `Server-Launcher-Setup-{version}.exe` (installer)<br>`Server-Launcher-{version}.exe` (portable) |
-| **Linux** | `Server-Launcher-{version}-x86_64.AppImage`<br>`Server-Launcher-{version}_amd64.deb` |
-| **macOS** | `Server-Launcher-mac-{version}.zip` |
+- `npm start` launches the packaged UI (devtools enabled when `--dev` is passed via `npm run dev`).
+- `npm run clean` removes build outputs and caches.
+- Automated unit tests are not wired up yet; manual validation is required after changes.
 
 ---
 
-## 🕹️ Usage Guide
-
-### 🌐 Network Integration
-
-Server Launcher automatically detects your:
-- **Local IP** - For LAN play
-- **Public IP** - For internet play (requires port forwarding)
-- **Ngrok Tunnel** - Automatic tunneling without port forwarding
-
-**Ngrok Setup** (Optional - for easy internet access):
-1. Install ngrok: [https://ngrok.com/download](https://ngrok.com/download)
-2. Get free authtoken: [https://dashboard.ngrok.com/signup](https://dashboard.ngrok.com/signup)
-3. Configure: `ngrok config add-authtoken YOUR_TOKEN`
-4. Start server - ngrok tunnels automatically!
-
-📖 **See [NGROK_SETUP.md](./NGROK_SETUP.md) for complete setup guide**
-
----
-
-### 🛠️ First-Time Setup
-
-1. When you launch the app for the first time, a setup window appears
-2. Select server type (PaperMC, Fabric, or Bedrock), Minecraft version, and RAM allocation
-3. Click **"Download / Configure"** to install the necessary files and generate `config.json`
-
-### ▶️ Starting the Server
-
-- After setup is complete, the main interface appears
-- Click **"Start Server"** to automatically accept the EULA and launch the server
-- Server status is reflected in real-time with color-coded indicators
-
-### 🧰 Server Management
-
-- **Console:** View real-time server output with ANSI colors and virtual scrolling
-- **Commands:** Type server commands in the input field and click **"Send"** (input validation included)
-- **Plugins/Mods:** Drag-and-drop or upload files via the plugin manager
-- **Network:** Copy local/public IP or start ngrok tunnel for remote access
-- **Stop Server:** Click **"Stop Server"** for a graceful shutdown with cleanup
-- **File Access:** Click **"Open Folder"** to open the server directory
-
----
-
-## 🏗️ Architecture & Documentation
-
-This project has been **completely refactored** to follow modern best practices:
-
-### 📚 Complete Documentation
-- **[ANALYSIS.md](./ANALYSIS.md)** - In-depth problem analysis and performance metrics
-- **[REFACTORING_PLAN.md](./REFACTORING_PLAN.md)** - 7-phase migration guide with code examples
-- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - Design patterns, best practices, and future roadmap
-
-### 🔧 Modular Architecture
-
-**Services:**
-- `ServerManager` - Server lifecycle management, monitoring, and events
-- `NetworkManager` - IP detection and ngrok tunnel management
-- `ConfigManager` - JSON configuration with atomic writes and backups
-
-**Utilities:**
-- `Logger` - Structured logging with context and metadata
-- `Validation` - Input sanitization and command injection prevention
-- `CleanupManager` - Automatic resource cleanup to prevent memory leaks
-- `Debounce` - Performance utilities (debounce, throttle, memoize)
-
-**Renderer Optimizations:**
-- `VirtualConsole` - Virtual scrolling for large console outputs
-- `EventListenerManager` - Automatic event cleanup
-- `DOMBatcher` - Efficient DOM updates with RAF
-
-### 📊 Performance Improvements
-
-| Metric | Before | After | Improvement |
-|--------|--------|-------|-------------|
-| **Lines (main.js)** | 2,204 | ~500 | 77% reduction |
-| **Memory Usage** | 250 MB | 150 MB | 40% reduction |
-| **CPU Usage (idle)** | 15% | 2-5% | 70% reduction |
-| **Console Rendering** | Freezes at 5000+ lines | 60 FPS at 100,000+ lines | Smooth scrolling |
-| **Test Coverage** | 0% | 85%+ | Full test suite |
-
-### 🧪 Testing & Quality
+## 📦 Build Targets
 
 ```bash
-npm test              # Run Jest unit tests
-npm test:watch        # Watch mode
-npm test:coverage     # Generate coverage report
-npm run lint          # ESLint validation
-npm run format        # Prettier formatting
+npm run clean          # optional but recommended
+npm run dist           # build for current platform
+npm run dist:win       # Windows (NSIS + Portable)
+npm run dist:linux     # Linux (AppImage + deb + tar.gz)
+npm run dist:mac       # macOS (ZIP)
+npm run dist:all       # All targets (host requirements apply)
 ```
 
-### 🔒 Security Enhancements
-
-- **Input Validation:** All user inputs sanitized to prevent command injection
-- **CSP Headers:** Content Security Policy configured (external CDNs removed in production)
-- **Context Isolation:** Proper IPC bridge with sandboxed renderer
-- **Path Validation:** Directory traversal protection
-- **Safe Spawning:** Validated commands with argument sanitization
-
-### 📖 Additional Documentation
-
-For detailed technical information:
-- **[NGROK_SETUP.md](./NGROK_SETUP.md)** - Complete ngrok tunneling guide with troubleshooting
-- **[NOTIFICATIONS_PLATFORMS.md](./NOTIFICATIONS_PLATFORMS.md)** - **Cross-platform notification support (Windows, macOS, Linux)**
-- **[NOTIFICATIONS_FIX.md](./NOTIFICATIONS_FIX.md)** - Notification system implementation and debugging
-- **[ARCHITECTURE.md](./ARCHITECTURE.md)** - System architecture, design patterns, and best practices
-- **[docs/](./docs/)** - Technical deep-dives (ANALYSIS.md, REFACTORING_PLAN.md)
+Artifacts are written to `release/`.
 
 ---
 
-## ⚖️ License
+## 🕹️ Usage Overview
 
-This project is licensed under the ISC License.  
-See the [`LICENSE.txt`](./LICENSE.txt) file for full details.
+### First-time Setup
+1. The setup view appears automatically when no server config exists.
+2. Choose PaperMC, Fabric, or Bedrock, then pick the desired Minecraft version.
+3. Select RAM allocation (`auto` calculates based on system RAM) and confirm.
+4. The launcher downloads the required server files and writes `config.json` in the user data directory.
+
+### Running & Stopping
+- **Start Server**: Accepts the EULA automatically and launches the correct executable/JAR.
+- **Stop Server**: Sends the `stop` command (or terminates Bedrock) with a timeout-based fallback.
+- **Auto Start / Restart**: Optional countdown (configurable delay) after crashes or on app launch.
+
+### Console & Commands
+- ANSI output is streamed into the dashboard console.
+- Commands typed in the input box are sanitized before being sent to the server process.
+
+### Plugins / Mods & Server Properties
+- Open the Plugins/Mods view to upload JARs or edit `server.properties`.
+- Fabric servers treat the folder as `mods/`, PaperMC uses `plugins/`, and Bedrock exposes the root folder.
+
+### Network & ngrok
+- Local and public IPs are displayed when available.
+- If ngrok is installed and authenticated, the launcher attempts to surface an active TCP tunnel for easy sharing.
+
+### Notifications
+- Desktop notifications (with sound) announce server start/stop, crashes, and status changes.
+- When notifications are disabled or unsupported, the UI falls back to in-app banners and tones.
 
 ---
 
-## 💡 Contribute or Follow
+## 🌐 Localization & Themes
 
-📁 GitHub Repository: [https://github.com/norbertbaricz/server-launcher](https://github.com/norbertbaricz/server-launcher)
+- Language files live under `lang/*.json`. Contributions can add translations by following the same key structure.
+- Ten theme presets are available from the settings panel (Skypixel, Nord, Aurora, Midnight, Emerald, Sunset, Crimson, Ocean, Grape, Neon).
 
-Crafted with care by [Norbert Baricz](https://github.com/norbertbaricz) 🐺  
-Feel free to fork, contribute, or share!
+---
+
+## 🧱 Project Structure Highlights
+
+- `main.js` – Electron main process: window creation, auto-updates, IPC handlers, server orchestration.
+- `preload.js` – Secure bridge that exposes whitelisted IPC helpers to the renderer.
+- `script.js` – Renderer UI logic for setup, dashboard, settings, plugins, and localization.
+- `style.css` – Custom styling shared across all views.
+- `lang/*.json` – Translation dictionaries.
+- `src/services/NotificationService.js` – Cross-platform notification helper with fallbacks.
+- `src/utils/serverPing.js` – Java/Bedrock ping helpers used for latency readouts.
+- `src/utils/validation.js` – Input sanitizers for commands and file operations.
+- `build/` – Icons, sounds, and packaging resources referenced by electron-builder.
+
+---
+
+## 🤝 Contributing & License
+
+Issues and pull requests are welcome. Please describe the change, steps to reproduce (if fixing a bug), and any manual validation performed.
+
+This project is licensed under the [ISC License](./LICENSE.txt).

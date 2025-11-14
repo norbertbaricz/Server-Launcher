@@ -5,7 +5,7 @@
 
 const net = require('net');
 const dgram = require('dgram');
-const logger = require('./logger');
+const log = require('electron-log');
 
 /**
  * Ping a Minecraft Java server using Server List Ping protocol
@@ -145,7 +145,7 @@ async function pingServer(serverType, port, timeout = 5000) {
       return await pingJavaServer('localhost', port || 25565, timeout);
     }
   } catch (error) {
-    logger.error('Failed to ping server', error);
+    log.error('Failed to ping server', error);
     return { latency: -1, online: false };
   }
 }
