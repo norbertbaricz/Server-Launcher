@@ -1138,12 +1138,30 @@ function createWindow () {
   mainWindow.on('unmaximize', () => safeSend(mainWindow, 'window-maximized', false));
 }
 
-app.whenReady().then(async () => {
-  const userDataPath = app.getPath('userData');
-  serverFilesDir = path.join(userDataPath, 'MinecraftServer');
-  serverConfigFilePath = path.join(serverFilesDir, serverConfigFileName);
-  launcherSettingsFilePath = path.join(userDataPath, launcherSettingsFileName);
-  serverPropertiesFilePath = path.join(serverFilesDir, serverPropertiesFileName);
+    app.whenReady().then(async () => {
+        const userDataPath = app.getPath('userData');
+        launcherSettingsFilePath = path.join(userDataPath, launcherSettingsFileName);
+    // Read launcher settings early to see if user picked a custom path
+    let ls = readLauncherSettings();
+    const customBase = (ls && typeof ls.customServerPath === 'string' && ls.customServerPath.trim() !== '') ? ls.customServerPath : null;
+    // serverFilesDir always points to the MinecraftServer folder inside chosen base
+        serverFilesDir = customBase ? path.join(customBase, 'MinecraftServer') : path.join(userDataPath, 'MinecraftServer');
+        // Store server config outside MinecraftServer to decouple from install folder
+        serverConfigFilePath = path.join(userDataPath, serverConfigFileName);
+        serverPropertiesFilePath = path.join(serverFilesDir, serverPropertiesFileName);
+        // Migrate legacy config stored inside MinecraftServer/config.json to userData/config.json
+        try {
+            if (!fs.existsSync(serverConfigFilePath)) {
+                const legacyPath = path.join(serverFilesDir, serverConfigFileName);
+                if (fs.existsSync(legacyPath)) {
+                    const legacyData = readJsonFile(legacyPath, serverConfigFileName);
+                    if (legacyData && Object.keys(legacyData).length) {
+                        writeJsonFile(serverConfigFilePath, legacyData, serverConfigFileName);
+                        sendConsole('Migrated server config from legacy location to user data.', 'INFO');
+                    }
+                }
+            }
+        } catch (_) {}
   refreshMinimumJavaRequirementFromConfig();
 
   // Initialize notification service
@@ -1162,14 +1180,7 @@ app.whenReady().then(async () => {
     playSoundEffect(soundType);
   });
 
-  if (!fs.existsSync(serverFilesDir)) {
-    try {
-      fs.mkdirSync(serverFilesDir, { recursive: true });
-    } catch (error) {
-      log.error(`FATAL: Failed to create directory ${serverFilesDir}:`, error);
-      dialog.showErrorBox('Directory Creation Failed', `Failed to create server directory at ${serverFilesDir}:\n${error.message}`);
-    }
-  }
+    // Do not create MinecraftServer folder at startup; create it during setup/configure
   await killStrayServerProcess();
   createWindow();
 
@@ -1361,20 +1372,10 @@ ipcMain.on('set-server-properties', (event, newProperties) => {
 });
 ipcMain.handle('get-app-path', () => app.getAppPath());
 ipcMain.handle('check-initial-setup', async () => {
-    const configExists = fs.existsSync(serverConfigFilePath);
-    let installExists = false;
-    if (configExists) {
-        const cfg = readServerConfig();
-        const t = normalizeServerType(cfg.serverType);
-        if (t === SERVER_TYPES.BEDROCK) {
-            installExists = fs.existsSync(path.join(serverFilesDir, getBedrockExecutableName()));
-        } else {
-            installExists = fs.existsSync(path.join(serverFilesDir, getServerJarNameForType(t)));
-        }
-    }
-    const needsSetup = !installExists || !configExists;
+    // Show setup ONLY if the MinecraftServer folder does not exist at all
+    const needsSetup = !fs.existsSync(serverFilesDir);
     if (!needsSetup) sendConsole(`Setup check OK.`, 'INFO');
-    return { needsSetup, config: configExists ? readServerConfig() : {} };
+    return { needsSetup, config: readServerConfig() };
 });
 ipcMain.handle('get-available-versions', async (_event, serverType) => {
     const type = normalizeServerType(serverType);
@@ -1598,6 +1599,56 @@ ipcMain.handle('get-available-languages', () => {
     }
 });
 
+// Server path management IPC
+ipcMain.handle('get-server-path-info', () => {
+    const ls = readLauncherSettings();
+    return {
+        path: serverFilesDir,
+        basePath: ls.customServerPath || app.getPath('userData'),
+        locked: !!ls.serverPathLocked
+    };
+});
+
+ipcMain.on('set-server-path-lock', (_event, locked) => {
+    const ls = readLauncherSettings();
+    ls.serverPathLocked = !!locked;
+    writeLauncherSettings(ls);
+});
+
+ipcMain.handle('select-server-location', async () => {
+    const ls = readLauncherSettings();
+    if (ls.serverPathLocked) {
+        return { ok: false, error: 'Path is locked.' };
+    }
+    if (localIsServerRunningGlobal) {
+        return { ok: false, error: 'Stop server before changing location.' };
+    }
+    const win = getMainWindow();
+    const { canceled, filePaths } = await dialog.showOpenDialog(win, {
+        title: 'Select Base Folder for MinecraftServer',
+        properties: ['openDirectory','createDirectory']
+    });
+    if (canceled || !filePaths || !filePaths.length) {
+        return { ok: false, cancelled: true };
+    }
+    const base = filePaths[0];
+    try {
+        // Update settings
+        ls.customServerPath = base;
+        writeLauncherSettings(ls);
+        // Recompute paths
+        serverFilesDir = path.join(base, 'MinecraftServer');
+        // Keep server config in userData regardless of server folder
+        serverConfigFilePath = path.join(app.getPath('userData'), serverConfigFileName);
+        serverPropertiesFilePath = path.join(serverFilesDir, serverPropertiesFileName);
+        if (!fs.existsSync(serverFilesDir)) fs.mkdirSync(serverFilesDir, { recursive: true });
+        sendConsole(`Server base location set to: ${serverFilesDir}`, 'INFO');
+        return { ok: true, path: serverFilesDir, locked: !!ls.serverPathLocked };
+    } catch (e) {
+        return { ok: false, error: e.message };
+    }
+});
+
 ipcMain.handle('get-translations', async (event, lang) => {
   const langPath = path.join(__dirname, 'lang', `${lang}.json`);
   try {
@@ -1776,6 +1827,17 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
     const chosenType = normalizeServerType(serverType);
     const typeLabel = chosenType === SERVER_TYPES.FABRIC ? 'Fabric' : (chosenType === SERVER_TYPES.BEDROCK ? 'Bedrock' : 'PaperMC');
     sendConsole(`Configuring: Type ${typeLabel}, Version ${mcVersion || 'N/A'}, RAM ${ramAllocation || 'Auto'}`, 'INFO');
+
+    // Ensure the MinecraftServer folder exists only when configuring
+    try {
+        if (!fs.existsSync(serverFilesDir)) {
+            fs.mkdirSync(serverFilesDir, { recursive: true });
+        }
+    } catch (e) {
+        sendConsole(`Failed to create server directory: ${e.message}`, 'ERROR');
+        sendStatus('Error', false, 'error');
+        return;
+    }
 
     const currentConfig = readServerConfig();
     if (isJavaServer(chosenType)) {

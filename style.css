@@ -32,6 +32,11 @@ body {
     }
 }
 
+/* Settings page: keep equal height rows so cards align visually */
+#settings-page .equal-card-grid {
+    grid-auto-rows: minmax(0, 1fr);
+}
+
 /* Plugin / mod / addon list styling */
 .addon-list-row {
     background: rgba(17, 24, 39, 0.88);
@@ -207,6 +212,8 @@ body {
     transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out, box-shadow 0.2s ease, border-color 0.2s ease-in-out;
     will-change: transform, background-color, box-shadow;
 }
+
+/* (Reverted) No custom scale on status buttons */
 
 .btn-primary:hover:not(.btn-disabled), 
 .btn-secondary:hover:not(.btn-disabled), 
@@ -423,7 +430,7 @@ input:checked + .switch-track .switch-thumb {
 }
 
 #auto-start-delay-container {
-    transition: max-height 0.4s ease-in-out, opacity 0.3s ease-in-out, margin-top 0.4s ease-in-out;
+    transition: max-height 0.35s ease, opacity 0.25s ease, margin-top 0.35s ease;
     max-height: 0;
     opacity: 0;
     overflow: hidden;
@@ -433,36 +440,44 @@ input:checked + .switch-track .switch-thumb {
 }
 
 #auto-start-delay-container.visible {
-    max-height: 80px;
+    /* Allow enough space for label + slider without clipping */
+    max-height: 160px; /* generous to accommodate translations with longer text */
     opacity: 1;
     margin-top: 0.75rem;
     border-color: #4a5568;
+    overflow: visible; /* ensure inner elements are fully shown */
 }
 
-/* Ensure auto-start container stays within its parent and make card scrollable */
-section.bg-gray-800:has(#auto-start-delay-container) {
-    overflow: visible;
-    height: auto;
-    min-height: auto;
-}
-
-/* Make Launcher Settings card scrollable */
-#settings-page .card-divider .bg-gray-800 .space-y-4 {
-    max-height: 100%;
-    overflow-y: auto;
-}
-
-/* Add some padding to the scrollable area */
-#settings-page .card-divider .bg-gray-800 {
+/* Settings cards: internal scroll areas while outer cards stay equal height */
+#settings-page .equal-card-grid > section {
     display: flex;
     flex-direction: column;
-    max-height: 100%;
+    min-height: 0; /* allow child scroll */
+    overflow-y: auto;
 }
+/* Ensure scrollbars remain hidden per global rules but content is accessible */
 
 select:disabled {
     cursor: not-allowed;
     background-color: #4a5568 !important;
     opacity: 0.5;
+}
+
+/* Lock button colors: red when locked, green when unlocked */
+#lock-server-path-button[data-locked="true"] {
+    background-color: #ef4444 !important; /* red for locked */
+    color: white !important;
+}
+#lock-server-path-button[data-locked="true"]:hover:not(.btn-disabled) {
+    background-color: #dc2626 !important; /* darker red */
+}
+
+#lock-server-path-button[data-locked="false"] {
+    background-color: #22c55e !important; /* green for unlocked */
+    color: white !important;
+}
+#lock-server-path-button[data-locked="false"]:hover:not(.btn-disabled) {
+    background-color: #16a34a !important; /* darker green */
 }
 
 /* (Removed custom select styles; using native selects) */

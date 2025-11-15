@@ -46,11 +46,13 @@
                         <span id="status-message" class="text-sm text-yellow-400 ml-2 truncate" data-key="initializing">Initializing...</span>
                     </div>
                     <div class="flex items-stretch gap-x-2">
-                        <button id="plugins-folder-button" class="btn-primary font-semibold px-4 py-3 flex items-center justify-center rounded-md" aria-label="Plugins" data-key-aria-label="pluginsButton" title="Plugins">
+                        <button id="plugins-folder-button" class="btn-primary font-semibold px-4 py-3 flex items-center justify-center gap-2 rounded-md no-tooltip" aria-label="Plugins" data-key-aria-label="pluginsButton">
                             <i id="plugins-folder-icon" class="fas fa-puzzle-piece"></i>
+                            <span data-key="pluginsButton">Plugins</span>
                         </button>
-                        <button id="settings-button" class="btn-secondary font-semibold px-4 py-3 flex items-center justify-center rounded-md" aria-label="Settings" data-key-aria-label="settingsButton" title="Settings">
+                        <button id="settings-button" class="btn-secondary font-semibold px-4 py-3 flex items-center justify-center gap-2 rounded-md no-tooltip" aria-label="Settings" data-key-aria-label="settingsButton">
                             <i class="fas fa-cog"></i>
+                            <span data-key="settingsButton">Settings</span>
                         </button>
                     </div>
                 </div>
@@ -104,14 +106,17 @@
             <div id="bottom-action-bar" class="bg-gray-800 p-3 rounded-lg shadow-xl animate-fadeIn flex-shrink-0" style="animation-delay: 0.3s;">
                 <div class="flex flex-col space-y-3 sm:space-y-0 sm:flex-row sm:space-x-2 items-stretch">
                     <input type="text" id="command-input" data-key-placeholder="commandPlaceholder" placeholder="Enter server command..." class="flex-grow bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5">
-                    <button id="send-command-button" class="btn-primary font-semibold py-2.5 px-4 rounded-md shadow-md flex items-center justify-center w-full sm:w-auto" aria-label="Send" data-key-aria-label="sendButton" title="Send">
+                    <button id="send-command-button" class="btn-primary font-semibold py-2.5 px-4 rounded-md shadow-md flex items-center justify-center gap-2 w-full sm:w-auto" aria-label="Send" data-key-aria-label="sendButton" title="Send">
                         <i class="fas fa-paper-plane"></i>
+                        <span data-key="sendButton">Send</span>
                     </button>
-                    <button id="start-button" class="btn-primary font-semibold py-2.5 px-5 rounded-md shadow-md flex items-center justify-center w-full sm:w-auto" style="background-color: #16a34a; color:white;" aria-label="Start Server" data-key-aria-label="startButton" title="Start Server">
+                    <button id="start-button" class="btn-primary font-semibold py-2.5 px-5 rounded-md shadow-md flex items-center justify-center gap-2 w-full sm:w-auto" style="background-color: #16a34a; color:white;" aria-label="Start Server" data-key-aria-label="startButton" title="Start Server">
                         <i class="fas fa-play" style="color:white;"></i>
+                        <span data-key="startButton">Start Server</span>
                     </button>
-                    <button id="stop-button" class="btn-danger font-semibold py-2.5 px-5 rounded-md shadow-md flex items-center justify-center btn-disabled w-full sm:w-auto" aria-label="Stop Server" data-key-aria-label="stopButton" title="Stop Server">
+                    <button id="stop-button" class="btn-danger font-semibold py-2.5 px-5 rounded-md shadow-md flex items-center justify-center gap-2 btn-disabled w-full sm:w-auto" aria-label="Stop Server" data-key-aria-label="stopButton" title="Stop Server">
                         <i class="fas fa-stop"></i>
+                        <span data-key="stopButton">Stop Server</span>
                     </button>
                 </div>
             </div>
@@ -255,6 +260,21 @@
                                 <option value="Performance" data-key="javaArgsPerformance">Performance (Includes Aikar's flags for optimization)</option>
                             </select>
                         </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-1" data-key="serverPathLabel">Server Data Location:</label>
+                            <div class="flex items-center gap-2">
+                                <input id="server-path-display" type="text" readonly class="flex-grow bg-gray-700 border border-gray-600 text-gray-300 text-xs rounded-md p-2.5 cursor-default" value="" />
+                                <button id="choose-server-path-button" class="btn-secondary px-3 py-2 rounded-md text-sm flex items-center gap-2" title="Choose">
+                                    <i class="fas fa-folder-open"></i>
+                                    <span data-key="choosePathButton">Choose</span>
+                                </button>
+                                <button id="lock-server-path-button" class="btn-secondary px-3 py-2 rounded-md text-sm flex items-center gap-2" data-locked="false">
+                                    <i class="fas fa-lock-open" id="lock-server-path-icon"></i>
+                                    <span id="lock-server-path-text" data-key="lockPathButton">Lock</span>
+                                </button>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1" data-key="serverPathHint">Choose where the launcher stores the MinecraftServer folder (jar, worlds, configs). Lock it to prevent accidental moves.</p>
+                        </div>
                     </div>
                 </section>
                 <section class="bg-gray-800 p-5 rounded-lg shadow-xl space-y-4 flex flex-col">
@@ -336,8 +356,8 @@
                         <i class="fas fa-sync"></i>
                         <span data-key="pluginsRefreshButton">Refresh</span>
                     </button>
-                    <button id="plugins-save-apply-button" class="btn-primary font-semibold px-4 py-2 rounded-md shadow-md flex items-center gap-2" data-key="saveApplyButton" data-key-aria-label="saveApplyButton" aria-label="Save &amp; Apply" title="Save &amp; Apply">
-                        <i class="fas fa-save"></i>
+                    <button id="plugins-save-apply-button" class="btn-primary font-semibold px-4 py-2 rounded-md shadow-md flex items-center gap-2" data-key-aria-label="saveApplyButton" aria-label="Save &amp; Apply" title="Save &amp; Apply">
+                        <i class="fas fa-save mr-1"></i>
                         <span data-key="saveApplyButton">Save &amp; Apply</span>
                     </button>
                 </div>
@@ -350,8 +370,8 @@
                             <span id="plugins-section-title">Plugins</span>
                         </h3>
                         <div class="flex flex-wrap items-center gap-2">
-                            <button id="upload-plugin-button" class="btn-primary px-3 py-1.5 rounded-md"><i class="fas fa-upload mr-1"></i>Upload</button>
-                            <button id="open-plugins-folder-button" class="btn-secondary px-3 py-1.5 rounded-md"><i class="fas fa-folder-open mr-1"></i>Open Folder</button>
+                            <button id="upload-plugin-button" class="btn-primary px-3 py-1.5 rounded-md"><i class="fas fa-upload mr-1"></i><span>Upload</span></button>
+                            <button id="open-plugins-folder-button" class="btn-secondary px-3 py-1.5 rounded-md"><i class="fas fa-folder-open mr-1"></i><span>Open Folder</span></button>
                         </div>
                     </div>
                     <div id="plugins-list" class="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 pr-1"></div>

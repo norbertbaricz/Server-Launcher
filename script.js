@@ -50,6 +50,11 @@ const autoStartServerCheckbox = document.getElementById('auto-start-server-check
 const autoStartDelayContainer = document.getElementById('auto-start-delay-container');
 const autoStartDelaySlider = document.getElementById('auto-start-delay-slider');
 const autoStartDelayValue = document.getElementById('auto-start-delay-value');
+const serverPathDisplay = document.getElementById('server-path-display');
+const chooseServerPathButton = document.getElementById('choose-server-path-button');
+const lockServerPathButton = document.getElementById('lock-server-path-button');
+const lockServerPathIcon = document.getElementById('lock-server-path-icon');
+const lockServerPathText = document.getElementById('lock-server-path-text');
 
 const javaInstallModal = document.getElementById('java-install-modal');
 const javaInstallModalContent = document.getElementById('java-install-modal-content');
@@ -91,6 +96,8 @@ let isPluginsViewOpen = false;
 let isSetupViewOpen = false;
 let setupRequired = false;
 let activeViewKey = dashboardView ? 'dashboard' : null;
+let isStarting = false;
+let isStopping = false;
 
 const viewMap = {
     dashboard: dashboardView,
@@ -149,7 +156,15 @@ function updatePluginsButtonAppearance(serverType) {
     }
     if (pluginsFolderButton) {
         pluginsFolderButton.setAttribute('aria-label', label);
-        pluginsFolderButton.title = label;
+        if (!pluginsFolderButton.classList.contains('no-tooltip')) {
+            pluginsFolderButton.title = label;
+        } else {
+            pluginsFolderButton.removeAttribute('title');
+        }
+        const textSpan = pluginsFolderButton.querySelector('span[data-key="pluginsButton"]');
+        if (textSpan) {
+            textSpan.textContent = label;
+        }
     }
     const propsLabel = currentTranslations['serverPropsHeader'] || 'Server Properties';
     if (pluginsModalIcon) {
@@ -174,6 +189,7 @@ function updatePluginsButtonAppearance(serverType) {
             uploadPluginButton.classList.remove('btn-disabled');
             const uploadLabel = isFabric ? (currentTranslations['uploadModsButton'] || 'Upload Mods') : (currentTranslations['uploadButton'] || 'Upload');
             uploadPluginButton.innerHTML = `<i class="fas fa-upload mr-1"></i>${uploadLabel}`;
+            uploadPluginButton.title = uploadLabel;
         }
     }
     if (openPluginsFolderButton) {
@@ -181,6 +197,7 @@ function updatePluginsButtonAppearance(serverType) {
             ? (currentTranslations['openModsFolderButton'] || 'Open Mods Folder')
             : (isBedrock ? (currentTranslations['openBedrockFolderButton'] || 'Open Server Folder') : (currentTranslations['openFolderButton'] || 'Open Folder'));
         openPluginsFolderButton.innerHTML = `<i class="fas fa-folder-open mr-1"></i>${openFolderLabel}`;
+        openPluginsFolderButton.title = openFolderLabel;
     }
 }
 
@@ -228,7 +245,11 @@ async function setLanguage(lang) {
             const key = element.getAttribute('data-key-aria-label');
             if (translations[key]) {
                 element.setAttribute('aria-label', translations[key]);
-                element.title = translations[key];
+                if (!element.classList.contains('no-tooltip')) {
+                    element.title = translations[key];
+                } else {
+                    element.removeAttribute('title');
+                }
             }
         });
 
@@ -373,9 +394,11 @@ function updateButtonStates(isRunning) {
     applyServerTypeUiState(currentServerConfig?.serverType || 'papermc');
     const setupComplete = !setupRequired;
     
-    startButton.disabled = isRunning || !setupComplete || autoStartIsActive || isDownloadingFromServer;
+    startButton.style.display = (isRunning || !setupComplete || autoStartIsActive || isDownloadingFromServer) ? 'none' : 'inline-flex';
+    startButton.disabled = isRunning || !setupComplete || autoStartIsActive || isDownloadingFromServer || isStarting;
     
-    stopButton.disabled = !isRunning;
+    stopButton.style.display = (!isRunning) ? 'none' : 'inline-flex';
+    stopButton.disabled = !isRunning || isStopping;
     sendCommandButton.disabled = !isRunning;
     commandInput.disabled = !isRunning;
     pluginsFolderButton.disabled = !setupComplete;
@@ -717,6 +740,12 @@ settingsButton.addEventListener('click', async () => {
 
     const serverConfig = await window.electronAPI.getServerConfig();
     const currentType = serverConfig.serverType || 'papermc';
+    // Load server path info
+    try {
+        const info = await window.electronAPI.getServerPathInfo();
+        if (serverPathDisplay) serverPathDisplay.value = info.path || '';
+        updateServerPathLockState(info.locked);
+    } catch (e) { addToConsole(`Failed to load server path info: ${e.message}`, 'ERROR'); }
     populateServerTypeSelect(serverTypeSettingsSelect, currentType);
     serverTypeSettingsSelect.onchange = async () => {
         const selectedType = serverTypeSettingsSelect.value;
@@ -759,24 +788,63 @@ saveSettingsButton.addEventListener('click', () => {
     closeSettingsView();
 });
 
+function updateServerPathLockState(locked) {
+    if (!lockServerPathButton) return;
+    lockServerPathButton.dataset.locked = locked ? 'true' : 'false';
+    if (locked) {
+        lockServerPathIcon.className = 'fas fa-lock';
+        lockServerPathText.textContent = currentTranslations['unlockPathButton'] || 'Unlock';
+        chooseServerPathButton.disabled = true;
+        chooseServerPathButton.classList.add('btn-disabled');
+        lockServerPathButton.title = currentTranslations['unlockPathButton'] || 'Unlock';
+    } else {
+        lockServerPathIcon.className = 'fas fa-lock-open';
+        lockServerPathText.textContent = currentTranslations['lockPathButton'] || 'Lock';
+        chooseServerPathButton.disabled = false;
+        chooseServerPathButton.classList.remove('btn-disabled');
+        lockServerPathButton.title = currentTranslations['lockPathButton'] || 'Lock';
+    }
+}
+
+chooseServerPathButton?.addEventListener('click', async () => {
+    if (chooseServerPathButton.disabled) return;
+    const res = await window.electronAPI.selectServerLocation();
+    if (!res.ok) {
+        if (!res.cancelled) addToConsole(`Could not change path: ${res.error}`, 'ERROR');
+        return;
+    }
+    serverPathDisplay.value = res.path;
+    addToConsole(`Server path changed to ${res.path}`, 'SUCCESS');
+});
+
+lockServerPathButton?.addEventListener('click', async () => {
+    const currentlyLocked = lockServerPathButton.dataset.locked === 'true';
+    const newLocked = !currentlyLocked;
+    window.electronAPI.setServerPathLock(newLocked);
+    updateServerPathLockState(newLocked);
+    addToConsole(newLocked ? 'Server path locked.' : 'Server path unlocked.', 'INFO');
+});
+
 
 startButton.addEventListener('click', () => { 
-    if (!startButton.disabled) {
-        window.electronAPI.startServer(); 
-    }
+    isStarting = true;
+    startButton.disabled = true;
+    startButton.classList.add('btn-disabled');
+    window.electronAPI.startServer(); 
 });
 
 stopButton.addEventListener('click', () => { 
-    if (!stopButton.disabled) {
-        autoStartIsActive = false;
-        if (countdownInterval) {
-            clearInterval(countdownInterval);
-            countdownInterval = null;
-        }
-        setStatus(currentTranslations['autoStartCancelled'] || "Auto-start cancelled.", false, 'autoStartCancelled');
-        updateButtonStates(localIsServerRunning);
-        window.electronAPI.stopServer(); 
+    isStopping = true;
+    stopButton.disabled = true;
+    stopButton.classList.add('btn-disabled');
+    autoStartIsActive = false;
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
     }
+    setStatus(currentTranslations['autoStartCancelled'] || "Auto-start cancelled.", false, 'autoStartCancelled');
+    updateButtonStates(localIsServerRunning);
+    window.electronAPI.stopServer(); 
 });
 
 sendCommandButton.addEventListener('click', () => {
@@ -856,6 +924,7 @@ window.electronAPI.onSetupFinished(async () => {
 
 window.electronAPI.onServerStateChange(async (isRunning) => {
     if (isRunning) {
+        isStarting = false;
         autoStartIsActive = false;
         if (countdownInterval) {
             clearInterval(countdownInterval);
@@ -882,6 +951,7 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
             : '— GB';
         memoryUsageSpan.style.color = '';
     } else {
+        isStopping = false;
         if (!autoStartIsActive) {
             setStatus(currentTranslations['serverStopped'] || "Server stopped.", false, 'serverStopped');
         }
