@@ -268,6 +268,11 @@ let localIsServerRunningGlobal = false;
 let mainWindow;
 let performanceStatsInterval = null;
 let manualListCheck = false;
+let commandLatencyInterval = null;
+let awaitingListProbe = false;
+let listProbeSentAt = 0;
+let lastManualListAt = 0;
+let listProbeTimeout = null;
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -1693,6 +1698,16 @@ async function startBedrockServer(serverConfig) {
 
     try {
         serverProcess = spawn(execPath, [], spawnOptions);
+        if (serverProcess.stdin) {
+            serverProcess.stdin.on('error', (err) => {
+                if (err && err.code === 'EPIPE') {
+                    if (commandLatencyInterval) { clearInterval(commandLatencyInterval); commandLatencyInterval = null; }
+                    if (listProbeTimeout) { clearTimeout(listProbeTimeout); listProbeTimeout = null; }
+                    awaitingListProbe = false;
+                }
+                try { sendConsole(`STDIN error: ${err.message}`, 'WARN'); } catch (_) {}
+            });
+        }
     } catch (error) {
         sendConsole(`Error spawning server: ${error.message}`, 'ERROR');
         serverProcess = null;
@@ -1714,25 +1729,6 @@ async function startBedrockServer(serverConfig) {
             const stats = await pidusage(serverProcess.pid);
             const memoryGB = stats.memory / (1024 * 1024 * 1024);
             safeSend(getMainWindow(), 'update-performance-stats', { memoryGB });
-            
-            // Measure latency using real ping for Bedrock server
-            if (serverIsFullyStarted) {
-                const serverConfig = readServerConfig();
-                const serverType = normalizeServerType(serverConfig.serverType);
-                const properties = readServerPropertiesObject();
-                let port = 19132; // Default Bedrock port
-                
-                if (properties && properties['server-port']) {
-                    port = parseInt(properties['server-port'], 10);
-                } else if (properties && properties['server-portv4']) {
-                    port = parseInt(properties['server-portv4'], 10);
-                }
-                
-                const pingResult = await pingServer(serverType, port, 3000);
-                if (pingResult.online && pingResult.latency >= 0) {
-                    safeSend(getMainWindow(), 'update-performance-stats', { latencyMs: pingResult.latency });
-                }
-            }
         } catch (e) {
             clearInterval(performanceStatsInterval);
             if (localIsServerRunningGlobal) {
@@ -1748,7 +1744,30 @@ async function startBedrockServer(serverConfig) {
     serverProcess.stdout.on('data', (data) => {
         const rawOutput = data.toString();
         const cleanOutput = rawOutput.trimEnd();
-        sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
+
+        // Detect /list output for latency probe
+        let isListLine = false;
+        let isAutomaticProbe = false;
+        try {
+            isListLine = /players online:?/i.test(cleanOutput) || /there are \d+.*players online/i.test(cleanOutput);
+            if (isListLine && awaitingListProbe) {
+                const now = Date.now();
+                if (now - lastManualListAt > 2000) {
+                    isAutomaticProbe = true;
+                    const latency = Math.max(0, now - listProbeSentAt);
+                    awaitingListProbe = false;
+                    if (listProbeTimeout) { clearTimeout(listProbeTimeout); listProbeTimeout = null; }
+                    safeSend(getMainWindow(), 'update-performance-stats', { cmdLatencyMs: latency });
+                } else {
+                    awaitingListProbe = false;
+                }
+            }
+        } catch (_) {}
+
+        // Only send to console if NOT an automatic list probe output
+        if (!isAutomaticProbe) {
+            sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
+        }
 
         if (!serverIsFullyStarted && startedRegex.test(cleanOutput)) {
             serverIsFullyStarted = true;
@@ -1761,6 +1780,33 @@ async function startBedrockServer(serverConfig) {
                 showDesktopNotification('Server Started', `${type} ${ver} is now running.`);
                 playSoundEffect('success');
             } catch (_) {}
+            // Start periodic /list latency probe (Bedrock)
+            try {
+                if (commandLatencyInterval) clearInterval(commandLatencyInterval);
+                commandLatencyInterval = setInterval(() => {
+                    // Skip probe if manual /list was sent recently (within last 3 seconds)
+                    const timeSinceManual = Date.now() - lastManualListAt;
+                    if (
+                        !awaitingListProbe &&
+                        timeSinceManual > 3000 &&
+                        serverProcess &&
+                        serverProcess.stdin &&
+                        !serverProcess.killed &&
+                        serverProcess.exitCode === null &&
+                        !serverProcess.stdin.destroyed &&
+                        !serverProcess.stdin.writableEnded &&
+                        serverProcess.stdin.writable
+                    ) {
+                        try {
+                            awaitingListProbe = true;
+                            listProbeSentAt = Date.now();
+                            serverProcess.stdin.write('list\n');
+                            if (listProbeTimeout) clearTimeout(listProbeTimeout);
+                            listProbeTimeout = setTimeout(() => { awaitingListProbe = false; }, 3000);
+                        } catch (_) { awaitingListProbe = false; }
+                    }
+                }, 1500);
+            } catch (_) {}
         }
     });
 
@@ -1770,6 +1816,9 @@ async function startBedrockServer(serverConfig) {
 
     serverProcess.on('close', (code) => {
         if (performanceStatsInterval) clearInterval(performanceStatsInterval);
+        if (commandLatencyInterval) { clearInterval(commandLatencyInterval); commandLatencyInterval = null; }
+        if (listProbeTimeout) { clearTimeout(listProbeTimeout); listProbeTimeout = null; }
+        awaitingListProbe = false;
         const killedInternally = serverProcess?.killedInternally;
         serverProcess = null;
 
@@ -2181,6 +2230,17 @@ ipcMain.on('start-server', async () => {
         serverProcess.killedInternally = false;
         let serverIsFullyStarted = false;
 
+        if (serverProcess.stdin) {
+            serverProcess.stdin.on('error', (err) => {
+                if (err && err.code === 'EPIPE') {
+                    if (commandLatencyInterval) { clearInterval(commandLatencyInterval); commandLatencyInterval = null; }
+                    if (listProbeTimeout) { clearTimeout(listProbeTimeout); listProbeTimeout = null; }
+                    awaitingListProbe = false;
+                }
+                try { sendConsole(`STDIN error: ${err.message}`, 'WARN'); } catch (_) {}
+            });
+        }
+
         if (performanceStatsInterval) clearInterval(performanceStatsInterval);
 
         performanceStatsInterval = setInterval(async () => {
@@ -2192,19 +2252,6 @@ ipcMain.on('start-server', async () => {
                 const stats = await pidusage(serverProcess.pid);
                 const memoryGB = stats.memory / (1024 * 1024 * 1024);
                 safeSend(getMainWindow(), 'update-performance-stats', { memoryGB });
-                
-                // Measure latency using real ping
-                if (serverIsFullyStarted) {
-                    const serverConfig = readServerConfig();
-                    const serverType = normalizeServerType(serverConfig.serverType);
-                    const properties = readServerPropertiesObject();
-                    const port = properties && properties['server-port'] ? parseInt(properties['server-port'], 10) : 25565;
-                    
-                    const pingResult = await pingServer(serverType, port, 3000);
-                    if (pingResult.online && pingResult.latency >= 0) {
-                        safeSend(getMainWindow(), 'update-performance-stats', { latencyMs: pingResult.latency });
-                    }
-                }
             } catch (e) {
                 clearInterval(performanceStatsInterval);
                 if (localIsServerRunningGlobal) {
@@ -2218,12 +2265,28 @@ ipcMain.on('start-server', async () => {
         serverProcess.stdout.on('data', (data) => {
             const rawOutput = data.toString();
             const cleanOutput = stripAnsiCodes(rawOutput).trimEnd();
-            
-            const playersRegex = /players online:?/i;
-            if (playersRegex.test(cleanOutput) && manualListCheck) {
-                sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
-                manualListCheck = false;
-            } else {
+
+            // Detect /list output for latency probe (Java)
+            let isListLine = false;
+            let isAutomaticProbe = false;
+            try {
+                isListLine = /players online:?/i.test(cleanOutput) || /there are \d+.*players online/i.test(cleanOutput);
+                if (isListLine && awaitingListProbe) {
+                    const now = Date.now();
+                    if (now - lastManualListAt > 2000) {
+                        isAutomaticProbe = true;
+                        const latency = Math.max(0, now - listProbeSentAt);
+                        awaitingListProbe = false;
+                        if (listProbeTimeout) { clearTimeout(listProbeTimeout); listProbeTimeout = null; }
+                        safeSend(getMainWindow(), 'update-performance-stats', { cmdLatencyMs: latency });
+                    } else {
+                        awaitingListProbe = false;
+                    }
+                }
+            } catch (_) {}
+
+            // Only send to console if NOT an automatic list probe output
+            if (!isAutomaticProbe) {
                 sendConsole(ansiConverter.toHtml(rawOutput), 'SERVER_LOG_HTML');
             }
 
@@ -2238,6 +2301,33 @@ ipcMain.on('start-server', async () => {
                     showDesktopNotification('Server Started', `${type} ${ver} is now running.`);
                     playSoundEffect('success');
                 } catch (_) {}
+                // Start periodic /list latency probe (Java)
+                try {
+                    if (commandLatencyInterval) clearInterval(commandLatencyInterval);
+                    commandLatencyInterval = setInterval(() => {
+                        // Skip probe if manual /list was sent recently (within last 3 seconds)
+                        const timeSinceManual = Date.now() - lastManualListAt;
+                        if (
+                            !awaitingListProbe &&
+                            timeSinceManual > 3000 &&
+                            serverProcess &&
+                            serverProcess.stdin &&
+                            !serverProcess.killed &&
+                            serverProcess.exitCode === null &&
+                            !serverProcess.stdin.destroyed &&
+                            !serverProcess.stdin.writableEnded &&
+                            serverProcess.stdin.writable
+                        ) {
+                            try {
+                                awaitingListProbe = true;
+                                listProbeSentAt = Date.now();
+                                serverProcess.stdin.write('list\n');
+                                if (listProbeTimeout) clearTimeout(listProbeTimeout);
+                                listProbeTimeout = setTimeout(() => { awaitingListProbe = false; }, 3000);
+                            } catch (_) { awaitingListProbe = false; }
+                        }
+                    }, 1500);
+                } catch (_) {}
             }
         });
 
@@ -2247,6 +2337,9 @@ ipcMain.on('start-server', async () => {
 
         serverProcess.on('close', (code) => {
             if (performanceStatsInterval) clearInterval(performanceStatsInterval);
+            if (commandLatencyInterval) { clearInterval(commandLatencyInterval); commandLatencyInterval = null; }
+            if (listProbeTimeout) { clearTimeout(listProbeTimeout); listProbeTimeout = null; }
+            awaitingListProbe = false;
             const killedInternally = serverProcess?.killedInternally;
             serverProcess = null;
         
@@ -2326,7 +2419,12 @@ ipcMain.on('send-command', (event, command) => {
     if (command.length > 1000) return;
     const trimmedCommand = command.trim().toLowerCase();
     if (trimmedCommand === 'list' || trimmedCommand === '/list') {
-        manualListCheck = true;
+        lastManualListAt = Date.now();
+            // Cancel pending probe to avoid immediate duplicate
+            if (awaitingListProbe) {
+                awaitingListProbe = false;
+                if (listProbeTimeout) { clearTimeout(listProbeTimeout); listProbeTimeout = null; }
+            }
     }
     let outgoing = command;
     if (outgoing.startsWith('/')) outgoing = outgoing.slice(1);

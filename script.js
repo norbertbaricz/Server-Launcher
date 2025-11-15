@@ -968,7 +968,7 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
     }
 });
 
-window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, tps, latencyMs }) => {
+window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, tps, latencyMs, mspt, cmdLatencyMs }) => {
     if (allocatedRamGB) {
         allocatedRamCache = allocatedRamGB;
     }
@@ -997,8 +997,9 @@ window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, tps, la
         }
     }
 
-    if (typeof latencyMs !== 'undefined') {
-        const ms = Math.max(0, parseInt(latencyMs, 10) || 0);
+    // Display command latency from /list response time
+    if (typeof cmdLatencyMs !== 'undefined' && cmdLatencyMs !== null) {
+        const ms = Math.max(0, parseInt(cmdLatencyMs, 10) || 0);
         serverTpsSpan.textContent = `${ms} ms`;
         if (ms >= 300) {
             serverTpsSpan.style.color = '#ef4444';
