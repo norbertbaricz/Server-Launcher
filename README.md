@@ -1,137 +1,120 @@
-# 🎮 Server Launcher
+# 🎮 Server Launcher — User Guide
 
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
-[![Built with Electron](https://img.shields.io/badge/Built_with-Electron-47848F?logo=electron&logoColor=white)](https://www.electronjs.org/)
-[![Release](https://img.shields.io/badge/Version-1.2.0-green.svg)](https://github.com/norbertbaricz/server-launcher/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.0-green.svg)](https://github.com/norbertbaricz/server-launcher/releases)
 
-**Server Launcher** is a desktop app for configuring and running PaperMC, Fabric, or Bedrock Minecraft servers without touching the terminal. It bundles auto-updates, Discord Rich Presence, optional ngrok tunneling, and rich notifications in a single Electron experience.
-
-![Server Launcher Screenshot](https://raw.githubusercontent.com/norbertbaricz/server-launcher/main/build/screenshot.png)
+Server Launcher is a desktop application that helps you configure and run Minecraft servers (Java: PaperMC/Vanilla, Fabric/Modded; Bedrock) without touching the terminal. This guide explains the interface in detail and what each button does, so you can use it effectively day-to-day.
 
 ---
 
-## ✨ Features
+## 📋 Overview
 
-- **Guided Server Setup** – Pick server type, version, RAM profile, and language from the UI.
-- **One-click Start/Stop** – Sends safe commands to PaperMC/Fabric JARs or the Bedrock executable.
-- **Live Console View** – Streams ANSI-colored logs, command history, and status updates.
-- **Plugin / Mod Management** – Upload, delete, or open the plugins/mods folder directly.
-- **Auto Updates & Rich Presence** – Electron updater plus Discord RPC to show server state.
-- **Network Insights** – Shows LAN/Public IPs and optionally surfaces ngrok TCP tunnels.
-- **Notifications with Sound** – Cross-platform desktop notifications with in-app fallback audio cues.
-- **Localization & Themes** – English, Romanian, German, French, Hungarian, and Polish with 10 theme presets.
+- Dashboard with live status, local/public IPs, latency, and memory usage.
+- Quick Start/Stop buttons and command input to the server console.
+- Plugins/Mods/Add-ons page for managing extensions and editing `server.properties`.
+- Settings with three sections: Server Configuration, Server Data Location, Launcher Settings.
+- Guided Setup on first launch or when server files are missing.
 
 ---
 
-## 🛠️ Tech Stack
+## 🖥️ Dashboard (Main Screen)
 
-| Component | Version | Role |
-|-----------|---------|------|
-| Electron | 36.2.1 | Desktop shell & auto-updates |
-| Node.js | 18+ | Runtime for launcher logic |
-| electron-updater | 6.3.1 | Update delivery |
-| electron-log | 5.4.1 | File & console logging |
-| discord-rpc | 4.0.1 | Discord Rich Presence integration |
-| pidusage | 4.0.1 | Process CPU/RAM stats |
-| Adm-Zip | 0.5.10 | Extract Bedrock server bundles |
+- **Status Bar:** Displays current state (e.g., "Server is running.", "Server ready.", "Downloading…"). Color changes based on context.
+- **Local IP / Public IP:** Shows network addresses. Port is automatically appended when the server is running (extracted from `server.properties`).
+- **Latency:** Measured via `/list` command sent periodically (every 1.5s) when server is running. Automatic probes are hidden from console; manual `/list` commands remain visible.
+- **Memory:** Current RAM consumption reported from the server process.
+- **Console:** Displays server logs. The command input below sends commands (press Enter). All commands are sanitized before being sent.
+- **Start:** Launches the server. During "starting", critical settings are automatically locked.
+- **Stop:** Safely stops the server.
 
 ---
 
-## 📥 Installation (Users)
+## 🔧 Settings
 
-1. Download the latest installer for your platform from the [Releases page](https://github.com/norbertbaricz/server-launcher/releases).
-2. Install and launch the app.
-3. (PaperMC/Fabric only) Ensure Java 17+ is installed. The launcher can fetch Adoptium builds for Windows automatically.
-4. Complete the guided setup and start the server.
+Settings are always accessible. Only critical fields are locked during "starting" or when the server is running.
 
-Minimum specs: 4 GB RAM and 2 GB free disk. Recommended: 8 GB RAM and 5 GB free disk.
+### 1) Server Configuration
+- **Server Type:** PaperMC (Vanilla), Fabric (Modded), or Bedrock.
+- **Minecraft Version:** List of available versions for the selected type.
+- **RAM Allocation:** How much memory the server uses (or `auto`).
+- **Java Arguments:** Only applicable for Java servers (Paper/Fabric).
+- **Save & Apply:** Saves settings. Reconfiguration/download only occurs if you modified Server Type/Version/RAM/Java Args. If nothing changed, it skips reconfiguration and refreshes Dashboard IPs correctly.
 
----
+### 2) Server Data Location
+- Displays the path where server files are stored. Default: `Documents/MinecraftServer` (all operating systems).
+- **Choose:** Change the location (disabled if Locked or server is starting/running).
+- **Lock / Unlock:** Locks/unlocks the ability to change the location.
+  - By default, the path is Locked at application startup.
+  - Both Lock/Unlock and Choose are disabled during "starting" or "running".
 
-## 🧑‍💻 Development Setup
-
-```bash
-git clone https://github.com/norbertbaricz/server-launcher.git
-cd server-launcher
-npm install
-npm start
-```
-
-- `npm start` launches the packaged UI (devtools enabled when `--dev` is passed via `npm run dev`).
-- `npm run clean` removes build outputs and caches.
-- Automated unit tests are not wired up yet; manual validation is required after changes.
-
----
-
-## 📦 Build Targets
-
-```bash
-npm run clean          # optional but recommended
-npm run dist           # build for current platform
-npm run dist:win       # Windows (NSIS + Portable)
-npm run dist:linux     # Linux (AppImage + deb + tar.gz)
-npm run dist:mac       # macOS (ZIP)
-npm run dist:all       # All targets (host requirements apply)
-```
-
-Artifacts are written to `release/`.
+### 3) Launcher Settings
+- **Language:** Interface language. Applied ONLY on Save & Apply.
+- **Theme:** Visual theme (Skypixel, Nord, Aurora, Midnight, Emerald, Sunset, Crimson, Ocean, Grape, Neon).
+- **Desktop Notifications:** Notifications with sound for start/stop/crash events.
+- **Start with system:** Launch the launcher with the operating system.
+- **Auto-start server:** Automatically start the server after a configurable countdown.
 
 ---
 
-## 🕹️ Usage Overview
+## 🧩 Plugins / Mods / Add-ons
 
-### First-time Setup
-1. The setup view appears automatically when no server config exists.
-2. Choose PaperMC, Fabric, or Bedrock, then pick the desired Minecraft version.
-3. Select RAM allocation (`auto` calculates based on system RAM) and confirm.
-4. The launcher downloads the required server files and writes `config.json` in the user data directory.
-
-### Running & Stopping
-- **Start Server**: Accepts the EULA automatically and launches the correct executable/JAR.
-- **Stop Server**: Sends the `stop` command (or terminates Bedrock) with a timeout-based fallback.
-- **Auto Start / Restart**: Optional countdown (configurable delay) after crashes or on app launch.
-
-### Console & Commands
-- ANSI output is streamed into the dashboard console.
-- Commands typed in the input box are sanitized before being sent to the server process.
-
-### Plugins / Mods & Server Properties
-- Open the Plugins/Mods view to upload JARs or edit `server.properties`.
-- Fabric servers treat the folder as `mods/`, PaperMC uses `plugins/`, and Bedrock exposes the root folder.
-
-### Network & ngrok
-- Local and public IPs are displayed when available.
-- If ngrok is installed and authenticated, the launcher attempts to surface an active TCP tunnel for easy sharing.
-
-### Notifications
-- Desktop notifications (with sound) announce server start/stop, crashes, and status changes.
-- When notifications are disabled or unsupported, the UI falls back to in-app banners and tones.
+- The label adapts automatically based on server type:
+  - PaperMC: "Plugins"
+  - Fabric: "Mods"
+  - Bedrock: "Add-ons"
+- **Upload:** Upload plugins/mods (disabled for Bedrock; manage manually from the server folder).
+- **Open Folder:** Opens the corresponding folder (plugins/mods or Bedrock folder).
+- **Server Properties:** Edit values in `server.properties`; press Save & Apply on the page to save changes.
+- **Delete:** Delete a plugin/mod (disabled for Bedrock).
 
 ---
 
-## 🌐 Localization & Themes
+## 🧭 Setup (Initial Configuration)
 
-- Language files live under `lang/*.json`. Contributions can add translations by following the same key structure.
-- Ten theme presets are available from the settings panel (Skypixel, Nord, Aurora, Midnight, Emerald, Sunset, Crimson, Ocean, Grape, Neon).
-
----
-
-## 🧱 Project Structure Highlights
-
-- `main.js` – Electron main process: window creation, auto-updates, IPC handlers, server orchestration.
-- `preload.js` – Secure bridge that exposes whitelisted IPC helpers to the renderer.
-- `script.js` – Renderer UI logic for setup, dashboard, settings, plugins, and localization.
-- `style.css` – Custom styling shared across all views.
-- `lang/*.json` – Translation dictionaries.
-- `src/services/NotificationService.js` – Cross-platform notification helper with fallbacks.
-- `src/utils/serverPing.js` – Java/Bedrock ping helpers used for latency readouts.
-- `src/utils/validation.js` – Input sanitizers for commands and file operations.
-- `build/` – Icons, sounds, and packaging resources referenced by electron-builder.
+- Setup appears only when the `MinecraftServer` folder is missing from the configured location.
+- Choose server type, version, and RAM. Press Download / Configure.
+- The launcher downloads necessary files and completes setup.
 
 ---
 
-## 🤝 Contributing & License
+## 🌐 Network & Latency
 
-Issues and pull requests are welcome. Please describe the change, steps to reproduce (if fixing a bug), and any manual validation performed.
+- **Local/Public IP:** Displayed on Dashboard. When server is running, the port from `server.properties` is automatically appended.
+- **Latency:** Measured via `/list` probe every 1.5s. Automatic commands are hidden from console (to avoid spam); manual `/list` commands appear normally.
 
-This project is licensed under the [ISC License](./LICENSE.txt).
+---
+
+## 🛡️ Safety & Runtime Behavior
+
+- **EPIPE Protection:** If the server process exits, the launcher stops writing to stdin and clears related intervals.
+- **Command Sanitization:** Console input is validated before being sent.
+- **Runtime Control Locking:**
+  - "Server Configuration" (critical fields) locks during starting/running.
+  - "Server Data Location" (Choose and Lock/Unlock) are disabled during starting/running.
+- Settings remain accessible at all times (only locked fields are disabled when appropriate).
+- Language applies only on Save & Apply (not immediately on selection).
+
+---
+
+## ❓ Frequently Asked Questions
+
+**Where are the server files located?**
+- Default: `Documents/MinecraftServer`. You can choose a different path from Settings → Server Data Location (when not running/starting and if not Locked).
+
+**Why can't I use "Choose" or "Lock/Unlock" when the server is running?**
+- For safety, the location cannot be changed during starting/running.
+
+**Why don't I see the port when the server is stopped?**
+- The port is displayed with the IP when the server is running (read from `server.properties`).
+
+**Why doesn't `/list` appear in the console periodically?**
+- Automatic probe commands are hidden to avoid spam. If you type `/list` manually, it appears normally.
+
+**I pressed Save & Apply without changing Server Configuration settings and the IPs stayed on "fetching".**
+- This has been fixed. IPs now refresh correctly even without reconfiguration.
+
+---
+
+## 📄 License
+
+This project is licensed under [ISC](./LICENSE.txt).
