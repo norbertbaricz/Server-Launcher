@@ -56,6 +56,12 @@ const lockServerPathButton = document.getElementById('lock-server-path-button');
 const lockServerPathIcon = document.getElementById('lock-server-path-icon');
 const lockServerPathText = document.getElementById('lock-server-path-text');
 
+// Default to locked state until IPC confirms otherwise
+if (chooseServerPathButton) {
+    chooseServerPathButton.disabled = true;
+    chooseServerPathButton.classList.add('btn-disabled');
+}
+
 const javaInstallModal = document.getElementById('java-install-modal');
 const javaInstallModalContent = document.getElementById('java-install-modal-content');
 const javaInstallMessage = document.getElementById('java-install-message');
@@ -404,12 +410,14 @@ function updateButtonStates(isRunning) {
     pluginsFolderButton.disabled = !setupComplete;
     settingsButton.disabled = !setupComplete;
 
-    // Lock server configuration while starting or running
+    // Lock server configuration while starting or running, and respect user lock
     const lockNow = isRunning || isStarting;
-    if (serverPathDisplay) serverPathDisplay.disabled = lockNow;
-    if (chooseServerPathButton && lockServerPathButton?.dataset.locked !== 'true') {
-        chooseServerPathButton.disabled = lockNow;
-        chooseServerPathButton.classList.toggle('btn-disabled', lockNow);
+    const lockedByUser = (lockServerPathButton?.dataset.locked === 'true');
+    const effectiveLocked = lockNow || lockedByUser;
+    if (serverPathDisplay) serverPathDisplay.disabled = effectiveLocked;
+    if (chooseServerPathButton) {
+        chooseServerPathButton.disabled = effectiveLocked;
+        chooseServerPathButton.classList.toggle('btn-disabled', effectiveLocked);
     }
 
     // Lock critical settings inside modal when starting or running
@@ -729,6 +737,11 @@ pluginsFolderButton.addEventListener('click', async () => {
 
 settingsButton.addEventListener('click', async () => {
     if (settingsButton.disabled) return;
+    // Prevent interim clicks: pre-disable Choose until lock state is fetched
+    if (chooseServerPathButton) {
+        chooseServerPathButton.disabled = true;
+        chooseServerPathButton.classList.add('btn-disabled');
+    }
     launcherSettingsCache = await window.electronAPI.getSettings();
     startWithSystemCheckbox.checked = launcherSettingsCache.openAtLogin;
     autoStartServerCheckbox.checked = launcherSettingsCache.autoStartServer;
@@ -776,14 +789,17 @@ settingsButton.addEventListener('click', async () => {
 
 closeSettingsButton.addEventListener('click', () => closeSettingsView());
 
-saveSettingsButton.addEventListener('click', () => {
+saveSettingsButton.addEventListener('click', async () => {
     launcherSettingsCache.openAtLogin = startWithSystemCheckbox.checked;
     launcherSettingsCache.autoStartServer = autoStartServerCheckbox.checked;
     launcherSettingsCache.autoStartDelay = parseInt(autoStartDelaySlider.value, 10);
-    launcherSettingsCache.language = languageSettingsSelect.value;
+    const selectedLanguage = languageSettingsSelect.value;
+    launcherSettingsCache.language = selectedLanguage;
     launcherSettingsCache.notificationsEnabled = desktopNotificationsCheckbox.checked;
     
     window.electronAPI.setSettings(launcherSettingsCache);
+    // Apply language now that user saved changes
+    try { await setLanguage(selectedLanguage); } catch (_) {}
     
     const newProperties = {};
     serverPropertiesContainer.querySelectorAll('input, select').forEach(input => {
@@ -807,14 +823,18 @@ function updateServerPathLockState(locked) {
     if (locked) {
         lockServerPathIcon.className = 'fas fa-lock';
         lockServerPathText.textContent = currentTranslations['unlockPathButton'] || 'Unlock';
-        chooseServerPathButton.disabled = true;
-        chooseServerPathButton.classList.add('btn-disabled');
+        if (chooseServerPathButton) {
+            chooseServerPathButton.disabled = true;
+            chooseServerPathButton.classList.add('btn-disabled');
+        }
         lockServerPathButton.title = currentTranslations['unlockPathButton'] || 'Unlock';
     } else {
         lockServerPathIcon.className = 'fas fa-lock-open';
         lockServerPathText.textContent = currentTranslations['lockPathButton'] || 'Lock';
-        chooseServerPathButton.disabled = false;
-        chooseServerPathButton.classList.remove('btn-disabled');
+        if (chooseServerPathButton) {
+            chooseServerPathButton.disabled = false;
+            chooseServerPathButton.classList.remove('btn-disabled');
+        }
         lockServerPathButton.title = currentTranslations['lockPathButton'] || 'Lock';
     }
 }
@@ -825,21 +845,11 @@ function updateSettingsLockState(locked) {
     if (mcVersionSettingsSelect) mcVersionSettingsSelect.disabled = locked;
     if (ramAllocationSettingsSelect) ramAllocationSettingsSelect.disabled = locked;
     if (javaArgumentsSettingsSelect) javaArgumentsSettingsSelect.disabled = locked;
-    // Also lock Server Data Location controls while locked
-    if (serverPathDisplay) serverPathDisplay.disabled = locked;
-    if (chooseServerPathButton) {
-        chooseServerPathButton.disabled = locked;
-        chooseServerPathButton.classList.toggle('btn-disabled', locked);
-    }
-    if (lockServerPathButton) {
-        lockServerPathButton.disabled = locked;
-        lockServerPathButton.classList.toggle('btn-disabled', locked);
-    }
     // Keep non-critical settings enabled (autostart, notifications, theme, language, etc.)
 }
 
 chooseServerPathButton?.addEventListener('click', async () => {
-    if (chooseServerPathButton.disabled) return;
+    if (chooseServerPathButton.disabled || lockServerPathButton?.dataset.locked === 'true') return;
     const res = await window.electronAPI.selectServerLocation();
     if (!res.ok) {
         if (!res.cancelled) addToConsole(`Could not change path: ${res.error}`, 'ERROR');
@@ -910,18 +920,14 @@ closeBtn.addEventListener('click', () => window.electronAPI.closeWindow());
 
 languageModalSelect.addEventListener('change', (event) => {
     const newLang = event.target.value;
-    languageSettingsSelect.value = newLang;
-    setLanguage(newLang);
-    launcherSettingsCache.language = newLang;
-    window.electronAPI.setSettings({ language: newLang });
+    // Mirror selection only; do not apply or persist until Save & Apply
+    if (languageSettingsSelect) languageSettingsSelect.value = newLang;
 });
 
 languageSettingsSelect.addEventListener('change', (event) => {
     const newLang = event.target.value;
-    languageModalSelect.value = newLang;
-    setLanguage(newLang);
-    launcherSettingsCache.language = newLang;
-    window.electronAPI.setSettings({ language: newLang });
+    // Mirror selection only; do not apply or persist until Save & Apply
+    if (languageModalSelect) languageModalSelect.value = newLang;
 });
 
 window.electronAPI.onWindowMaximized((isMaximized) => {
@@ -1095,6 +1101,12 @@ async function initializeApp() {
         const savedTheme = launcherSettingsCache.theme || 'skypixel';
         applyThemeClass(savedTheme);
         themeSelect.value = savedTheme === 'default' ? 'skypixel' : savedTheme;
+        // Initialize server path lock state early to avoid clickable window
+        try {
+            const pathInfo = await window.electronAPI.getServerPathInfo();
+            if (serverPathDisplay && pathInfo?.path) serverPathDisplay.value = pathInfo.path;
+            updateServerPathLockState(!!pathInfo?.locked);
+        } catch (_) {}
         
         await populateLanguageSelects();
         const savedLang = launcherSettingsCache.language || 'en';

@@ -1148,6 +1148,13 @@ function createWindow () {
         launcherSettingsFilePath = path.join(userDataPath, launcherSettingsFileName);
     // Read launcher settings early to see if user picked a custom path
     let ls = readLauncherSettings();
+    try {
+        if (!ls || ls.serverPathLocked !== true) {
+            ls = ls && typeof ls === 'object' ? ls : {};
+            ls.serverPathLocked = true;
+            writeLauncherSettings(ls);
+        }
+    } catch (_) {}
     const customBase = (ls && typeof ls.customServerPath === 'string' && ls.customServerPath.trim() !== '') ? ls.customServerPath : null;
     // serverFilesDir always points to the MinecraftServer folder inside chosen base
         // Default to Documents/MinecraftServer instead of userData

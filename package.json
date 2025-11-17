@@ -136,14 +136,7 @@
       "artifactName": "Server-Launcher-${version}-${arch}.${ext}",
       "category": "Game",
       "maintainer": "Skypixel maxultimat3@yahoo.com",
-      "desktop": {
-        "Name": "Server Launcher",
-        "Comment": "Minecraft Server Management Tool",
-        "Type": "Application",
-        "Categories": "Game;Utility;",
-        "StartupNotify": "true",
-        "Terminal": "false"
-      }
+      "synopsis": "Minecraft Server Management Tool"
     },
     "mac": {
       "target": [
