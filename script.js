@@ -419,6 +419,10 @@ function updateButtonStates(isRunning) {
         chooseServerPathButton.disabled = effectiveLocked;
         chooseServerPathButton.classList.toggle('btn-disabled', effectiveLocked);
     }
+    if (lockServerPathButton) {
+        lockServerPathButton.disabled = lockNow;
+        lockServerPathButton.classList.toggle('btn-disabled', lockNow);
+    }
 
     // Lock critical settings inside modal when starting or running
     updateSettingsLockState(lockNow);
@@ -794,12 +798,15 @@ saveSettingsButton.addEventListener('click', async () => {
     launcherSettingsCache.autoStartServer = autoStartServerCheckbox.checked;
     launcherSettingsCache.autoStartDelay = parseInt(autoStartDelaySlider.value, 10);
     const selectedLanguage = languageSettingsSelect.value;
+    const prevLanguage = launcherSettingsCache.language || 'en';
     launcherSettingsCache.language = selectedLanguage;
     launcherSettingsCache.notificationsEnabled = desktopNotificationsCheckbox.checked;
     
     window.electronAPI.setSettings(launcherSettingsCache);
-    // Apply language now that user saved changes
-    try { await setLanguage(selectedLanguage); } catch (_) {}
+    // Apply language only if it actually changed
+    if (selectedLanguage !== prevLanguage) {
+        try { await setLanguage(selectedLanguage); } catch (_) {}
+    }
     
     const newProperties = {};
     serverPropertiesContainer.querySelectorAll('input, select').forEach(input => {
@@ -808,12 +815,27 @@ saveSettingsButton.addEventListener('click', async () => {
     if (Object.keys(newProperties).length > 0) window.electronAPI.setServerProperties(newProperties);
     
     const newServerType = serverTypeSettingsSelect?.value || 'papermc';
-    const newMcVersion = mcVersionSettingsSelect.value;
-    const newRam = ramAllocationSettingsSelect.value;
-    const newJavaArgs = javaArgumentsSettingsSelect.value;
-    window.electronAPI.configureServer({ serverType: newServerType, mcVersion: newMcVersion, ramAllocation: newRam, javaArgs: newJavaArgs });
+    const newMcVersion = mcVersionSettingsSelect.value || '';
+    const newRam = ramAllocationSettingsSelect.value || 'auto';
+    const newJavaArgs = javaArgumentsSettingsSelect.value || 'Default';
+    const prevType = (currentServerConfig?.serverType) || 'papermc';
+    const prevVersion = (currentServerConfig?.version) || '';
+    const prevRam = (currentServerConfig?.ram) || 'auto';
+    const prevJavaArgs = (currentServerConfig?.javaArgs) || 'Default';
+    const requiresReconfigure = (
+        newServerType !== prevType ||
+        newMcVersion !== prevVersion ||
+        newRam !== prevRam ||
+        newJavaArgs !== prevJavaArgs
+    );
+    if (requiresReconfigure) {
+        window.electronAPI.configureServer({ serverType: newServerType, mcVersion: newMcVersion, ramAllocation: newRam, javaArgs: newJavaArgs });
+    } else {
+        // No reconfigure: refresh IPs so translated placeholders are replaced with actual values
+        try { await fetchAndDisplayIPs(localIsServerRunning); } catch (_) {}
+    }
     
-    addToConsole("Settings saved and applied.", "SUCCESS");
+    addToConsole(requiresReconfigure ? "Settings saved and applied (reconfigured)." : "Settings saved.", "SUCCESS");
     closeSettingsView();
 });
 
@@ -824,19 +846,24 @@ function updateServerPathLockState(locked) {
         lockServerPathIcon.className = 'fas fa-lock';
         lockServerPathText.textContent = currentTranslations['unlockPathButton'] || 'Unlock';
         if (chooseServerPathButton) {
-            chooseServerPathButton.disabled = true;
-            chooseServerPathButton.classList.add('btn-disabled');
+            const runtimeLocked = (localIsServerRunning || isStarting) || locked;
+            chooseServerPathButton.disabled = runtimeLocked;
+            chooseServerPathButton.classList.toggle('btn-disabled', runtimeLocked);
         }
         lockServerPathButton.title = currentTranslations['unlockPathButton'] || 'Unlock';
     } else {
         lockServerPathIcon.className = 'fas fa-lock-open';
         lockServerPathText.textContent = currentTranslations['lockPathButton'] || 'Lock';
         if (chooseServerPathButton) {
-            chooseServerPathButton.disabled = false;
-            chooseServerPathButton.classList.remove('btn-disabled');
+            const runtimeLocked = (localIsServerRunning || isStarting) || locked;
+            chooseServerPathButton.disabled = runtimeLocked;
+            chooseServerPathButton.classList.toggle('btn-disabled', runtimeLocked);
         }
         lockServerPathButton.title = currentTranslations['lockPathButton'] || 'Lock';
     }
+    // Ensure the lock toggle itself respects runtime state
+    lockServerPathButton.disabled = (localIsServerRunning || isStarting);
+    lockServerPathButton.classList.toggle('btn-disabled', (localIsServerRunning || isStarting));
 }
 
 function updateSettingsLockState(locked) {
