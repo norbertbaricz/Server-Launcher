@@ -1150,7 +1150,9 @@ function createWindow () {
     let ls = readLauncherSettings();
     const customBase = (ls && typeof ls.customServerPath === 'string' && ls.customServerPath.trim() !== '') ? ls.customServerPath : null;
     // serverFilesDir always points to the MinecraftServer folder inside chosen base
-        serverFilesDir = customBase ? path.join(customBase, 'MinecraftServer') : path.join(userDataPath, 'MinecraftServer');
+        // Default to Documents/MinecraftServer instead of userData
+        const defaultBase = app.getPath('documents');
+        serverFilesDir = customBase ? path.join(customBase, 'MinecraftServer') : path.join(defaultBase, 'MinecraftServer');
         // Store server config outside MinecraftServer to decouple from install folder
         serverConfigFilePath = path.join(userDataPath, serverConfigFileName);
         serverPropertiesFilePath = path.join(serverFilesDir, serverPropertiesFileName);
@@ -1609,7 +1611,7 @@ ipcMain.handle('get-server-path-info', () => {
     const ls = readLauncherSettings();
     return {
         path: serverFilesDir,
-        basePath: ls.customServerPath || app.getPath('userData'),
+        basePath: ls.customServerPath || app.getPath('documents'),
         locked: !!ls.serverPathLocked
     };
 });

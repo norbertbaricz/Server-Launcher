@@ -402,7 +402,18 @@ function updateButtonStates(isRunning) {
     sendCommandButton.disabled = !isRunning;
     commandInput.disabled = !isRunning;
     pluginsFolderButton.disabled = !setupComplete;
-    settingsButton.disabled = isRunning || !setupComplete;
+    settingsButton.disabled = !setupComplete;
+
+    // Lock server configuration while starting or running
+    const lockNow = isRunning || isStarting;
+    if (serverPathDisplay) serverPathDisplay.disabled = lockNow;
+    if (chooseServerPathButton && lockServerPathButton?.dataset.locked !== 'true') {
+        chooseServerPathButton.disabled = lockNow;
+        chooseServerPathButton.classList.toggle('btn-disabled', lockNow);
+    }
+
+    // Lock critical settings inside modal when starting or running
+    updateSettingsLockState(lockNow);
 
     startButton.classList.toggle('btn-disabled', startButton.disabled);
     stopButton.classList.toggle('btn-disabled', stopButton.disabled);
@@ -758,6 +769,8 @@ settingsButton.addEventListener('click', async () => {
     ramAllocationSettingsSelect.value = serverConfig.ram || 'auto';
     javaArgumentsSettingsSelect.value = serverConfig.javaArgs || 'Default';
     updatePluginsButtonAppearance(serverConfig.serverType);
+    // Ensure Server Configuration fields are locked during starting or running
+    updateSettingsLockState(localIsServerRunning || isStarting);
     openSettingsView();
 });
 
@@ -806,6 +819,25 @@ function updateServerPathLockState(locked) {
     }
 }
 
+function updateSettingsLockState(locked) {
+    // Lock critical settings that affect the running server or during starting
+    if (serverTypeSettingsSelect) serverTypeSettingsSelect.disabled = locked;
+    if (mcVersionSettingsSelect) mcVersionSettingsSelect.disabled = locked;
+    if (ramAllocationSettingsSelect) ramAllocationSettingsSelect.disabled = locked;
+    if (javaArgumentsSettingsSelect) javaArgumentsSettingsSelect.disabled = locked;
+    // Also lock Server Data Location controls while locked
+    if (serverPathDisplay) serverPathDisplay.disabled = locked;
+    if (chooseServerPathButton) {
+        chooseServerPathButton.disabled = locked;
+        chooseServerPathButton.classList.toggle('btn-disabled', locked);
+    }
+    if (lockServerPathButton) {
+        lockServerPathButton.disabled = locked;
+        lockServerPathButton.classList.toggle('btn-disabled', locked);
+    }
+    // Keep non-critical settings enabled (autostart, notifications, theme, language, etc.)
+}
+
 chooseServerPathButton?.addEventListener('click', async () => {
     if (chooseServerPathButton.disabled) return;
     const res = await window.electronAPI.selectServerLocation();
@@ -830,6 +862,8 @@ startButton.addEventListener('click', () => {
     isStarting = true;
     startButton.disabled = true;
     startButton.classList.add('btn-disabled');
+    // Immediately lock configuration while starting
+    updateButtonStates(localIsServerRunning);
     window.electronAPI.startServer(); 
 });
 
@@ -906,11 +940,6 @@ window.electronAPI.onUpdateStatus(async (fallbackMessage, pulse, translationKey)
         updateButtonStates(localIsServerRunning);
     }
 
-    if (lowerMessage.includes('starting') || lowerMessage.includes('se pornește')) {
-        settingsButton.disabled = true;
-        settingsButton.classList.add('btn-disabled');
-    }
-
     if ((lowerMessage.includes('failed') || lowerMessage.includes('error')) && isSetupViewOpen) {
         hideDownloadLoading();
     }
@@ -951,6 +980,8 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
             : '— GB';
         memoryUsageSpan.style.color = '';
     } else {
+        // Ensure starting/stopping flags reset so UI re-enables controls after crashes
+        isStarting = false;
         isStopping = false;
         if (!autoStartIsActive) {
             setStatus(currentTranslations['serverStopped'] || "Server stopped.", false, 'serverStopped');
