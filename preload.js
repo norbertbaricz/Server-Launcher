@@ -49,4 +49,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ,getServerPathInfo: () => ipcRenderer.invoke('get-server-path-info')
     ,selectServerLocation: () => ipcRenderer.invoke('select-server-location')
     ,setServerPathLock: (locked) => ipcRenderer.send('set-server-path-lock', locked)
+    ,devSimulateFirstLaunch: () => ipcRenderer.send('dev-simulate-first-launch')
+    ,devSimulateUpdate: () => ipcRenderer.send('dev-simulate-update')
+    ,devClearCache: () => ipcRenderer.send('dev-clear-cache')
 });

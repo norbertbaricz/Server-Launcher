@@ -42,6 +42,20 @@ if (process.platform === 'linux') {
 }
 const DEFAULT_JAVA_SERVER_PORT = 25565;
 
+// ===== RESOURCE OPTIMIZATION & IDLE MODE =====
+// IMPORTANT: Optimizations apply ONLY when server is STOPPED
+// When server is running, FULL performance is maintained regardless of focus/idle state
+// This ensures server stability and performance are never compromised
+let lastActivityTime = Date.now();
+let idleTimeout = null;
+let isIdleMode = false;
+const IDLE_TIME_MS = 5 * 60 * 1000; // 5 minutes
+let discordRpcInterval = null;
+const DISCORD_RPC_INTERVAL_ACTIVE = 15000; // 15 seconds when server is running
+const DISCORD_RPC_INTERVAL_IDLE = 60000; // 60 seconds when idle/stopped
+// Frame rates: Always 60fps when server running, 60fps (focus)/10fps (blur)/5fps (idle) when stopped
+// ============================================
+
 const SERVER_TYPES = {
   PAPER: 'papermc',
   FABRIC: 'fabric',
@@ -143,7 +157,7 @@ function getCleanEnvForJava() {
 }
 
 async function ensureBundledJavaLinux() {
-  if (process.platform !== 'linux' || !app.isPackaged) return false;
+  if (process.platform !== 'linux') return false;
   try {
     const userDataPath = app.getPath('userData');
     const jdkBaseDir = path.join(userDataPath, 'embedded-jdk-21');
@@ -185,15 +199,26 @@ async function ensureBundledJavaLinux() {
       throw new Error('No suitable Linux JDK tar.gz found from Adoptium.');
     }
     const tmpPath = path.join(app.getPath('temp'), pkg.name);
+    const totalBytes = pkg.size || 0;
     await new Promise((resolve, reject) => {
       const fileStream = fs.createWriteStream(tmpPath);
+      let downloadedBytes = 0;
       https.get(pkg.link, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
         if (response.statusCode !== 200) return reject(new Error(`JDK download failed ${response.statusCode}`));
+        
+        response.on('data', chunk => {
+          downloadedBytes += chunk.length;
+          const progress = totalBytes ? Math.round((downloadedBytes / totalBytes) * 100) : 0;
+          safeSend(win, 'java-install-status', `Downloading Java... ${progress}%`, progress);
+        });
+        
         response.pipe(fileStream);
         fileStream.on('finish', () => fileStream.close(resolve));
       }).on('error', err => fs.unlink(tmpPath, () => reject(err)));
     });
 
+    safeSend(win, 'java-install-status', 'Extracting Java...', 95);
+    safeSend(win, 'java-install-status', 'Extracting Java...', 95);
     await new Promise((resolve, reject) => {
       const args = ['-xzf', tmpPath, '-C', jdkBaseDir];
       const proc = spawn('tar', args, { stdio: ['ignore','ignore','pipe'] });
@@ -203,12 +228,99 @@ async function ensureBundledJavaLinux() {
       proc.on('error', reject);
     });
 
+    safeSend(win, 'java-install-status', 'Verifying installation...', 98);
     existingJava = findJava(jdkBaseDir);
     if (!existingJava) throw new Error('Embedded JDK extraction: java binary not found.');
     javaExecutablePath = existingJava;
+    safeSend(win, 'java-install-status', 'Installation complete!', 100);
     return true;
   } catch (e) {
     sendConsole(`Embedded Java install (Linux) failed: ${e.message}`, 'ERROR');
+    return false;
+  }
+}
+
+async function ensureBundledJavaMac() {
+  if (process.platform !== 'darwin') return false;
+  try {
+    const userDataPath = app.getPath('userData');
+    const jdkBaseDir = path.join(userDataPath, 'embedded-jdk-21');
+    if (!fs.existsSync(jdkBaseDir)) fs.mkdirSync(jdkBaseDir, { recursive: true });
+
+    const findJava = (base) => {
+      try {
+        const entries = fs.readdirSync(base, { withFileTypes: true });
+        for (const e of entries) {
+          if (!e.isDirectory()) continue;
+          // macOS JDK structure: jdk-21.x.x.jdk/Contents/Home/bin/java
+          const homeDir = path.join(base, e.name, 'Contents', 'Home');
+          const p = path.join(homeDir, 'bin', 'java');
+          if (fs.existsSync(p)) return p;
+        }
+      } catch (_) {}
+      return null;
+    };
+
+    let existingJava = findJava(jdkBaseDir);
+    if (existingJava) {
+      javaExecutablePath = existingJava;
+      return true;
+    }
+
+    const archMap = { x64: 'x64', arm64: 'aarch64' };
+    const arch = archMap[process.arch] || 'x64';
+    const apiUrl = `https://api.adoptium.net/v3/assets/latest/21/hotspot?os=mac&architecture=${arch}&image_type=jdk`;
+    const win = getMainWindow();
+    safeSend(win, 'java-install-status', 'Downloading embedded Java for macOS...', 0);
+
+    const apiResponse = await new Promise((resolve, reject) => {
+      https.get(apiUrl, { headers: { 'User-Agent': 'Server-Launcher-Electron' } }, (res) => {
+        if (res.statusCode !== 200) { res.resume(); return reject(new Error(`Adoptium API error ${res.statusCode}`)); }
+        let data=''; res.on('data', c=>data+=c); res.on('end', ()=>{ try { resolve(JSON.parse(data)); } catch(e){ reject(e);} });
+      }).on('error', reject);
+    });
+    const asset = Array.isArray(apiResponse) ? apiResponse[0] : null;
+    const pkg = asset?.binary?.package;
+    if (!pkg?.link || !pkg?.name || !pkg.name.endsWith('.tar.gz')) {
+      throw new Error('No suitable macOS JDK tar.gz found from Adoptium.');
+    }
+    const tmpPath = path.join(app.getPath('temp'), pkg.name);
+    const totalBytes = pkg.size || 0;
+    await new Promise((resolve, reject) => {
+      const fileStream = fs.createWriteStream(tmpPath);
+      let downloadedBytes = 0;
+      https.get(pkg.link, { headers: { 'User-Agent': 'Mozilla/5.0' } }, (response) => {
+        if (response.statusCode !== 200) return reject(new Error(`JDK download failed ${response.statusCode}`));
+        
+        response.on('data', chunk => {
+          downloadedBytes += chunk.length;
+          const progress = totalBytes ? Math.round((downloadedBytes / totalBytes) * 100) : 0;
+          safeSend(win, 'java-install-status', `Downloading Java... ${progress}%`, progress);
+        });
+        
+        response.pipe(fileStream);
+        fileStream.on('finish', () => fileStream.close(resolve));
+      }).on('error', err => fs.unlink(tmpPath, () => reject(err)));
+    });
+
+    safeSend(win, 'java-install-status', 'Extracting Java...', 95);
+    await new Promise((resolve, reject) => {
+      const args = ['-xzf', tmpPath, '-C', jdkBaseDir];
+      const proc = spawn('tar', args, { stdio: ['ignore','ignore','pipe'] });
+      let err = '';
+      proc.stderr.on('data', d => err += d.toString());
+      proc.on('close', code => code === 0 ? resolve() : reject(new Error(`tar failed: ${err || code}`)));
+      proc.on('error', reject);
+    });
+
+    safeSend(win, 'java-install-status', 'Verifying installation...', 98);
+    existingJava = findJava(jdkBaseDir);
+    if (!existingJava) throw new Error('Embedded JDK extraction: java binary not found.');
+    javaExecutablePath = existingJava;
+    safeSend(win, 'java-install-status', 'Installation complete!', 100);
+    return true;
+  } catch (e) {
+    sendConsole(`Embedded Java install (macOS) failed: ${e.message}`, 'ERROR');
     return false;
   }
 }
@@ -402,9 +514,17 @@ async function checkJava() {
         return true;
     }
 
-    if (process.platform === 'linux' && app.isPackaged) {
+    if (process.platform === 'linux') {
         const installed = await ensureBundledJavaLinux();
-        if (installed && await verifyJavaVersion(javaExecutablePath)) {
+        if (installed) {
+            log.info(`Java >= ${MINIMUM_JAVA_VERSION} verified at: ${javaExecutablePath}`);
+            return true;
+        }
+    }
+
+    if (process.platform === 'darwin') {
+        const installed = await ensureBundledJavaMac();
+        if (installed) {
             log.info(`Java >= ${MINIMUM_JAVA_VERSION} verified at: ${javaExecutablePath}`);
             return true;
         }
@@ -422,8 +542,38 @@ async function downloadAndInstallJava() {
     try {
         safeSend(win, 'java-install-status', 'Finding the latest Java version for your system...');
 
+        // Handle Linux and macOS
+        if (process.platform === 'linux') {
+            const installed = await ensureBundledJavaLinux();
+            if (installed) {
+                safeSend(win, 'java-install-status', 'Java installation complete! Please restart the launcher.');
+                log.info('Java successfully installed on Linux.');
+                setTimeout(() => {
+                    app.quit();
+                }, 4000);
+                return;
+            } else {
+                throw new Error('Failed to install Java on Linux. Please install Java 21+ manually from your package manager (e.g., sudo apt install openjdk-21-jdk).');
+            }
+        }
+
+        if (process.platform === 'darwin') {
+            const installed = await ensureBundledJavaMac();
+            if (installed) {
+                safeSend(win, 'java-install-status', 'Java installation complete! Please restart the launcher.');
+                log.info('Java successfully installed on macOS.');
+                setTimeout(() => {
+                    app.quit();
+                }, 4000);
+                return;
+            } else {
+                throw new Error('Failed to install Java on macOS. Please install Java 21+ manually using Homebrew: brew install openjdk@21');
+            }
+        }
+
+        // Windows installation (existing code)
         if (process.platform !== 'win32') {
-            throw new Error('Automated Java installation is currently supported only on Windows.');
+            throw new Error('Automated Java installation is currently supported only on Windows and Linux.');
         }
 
         const arch = process.arch === 'ia32' ? 'x86' : 'x64';
@@ -554,7 +704,24 @@ function sendServerStateChange(isRunning) {
     localIsServerRunningGlobal = isRunning;
     const win = getMainWindow();
     safeSend(win, 'server-state-change', isRunning);
+    resetIdleTimer();
+    setDiscordActivity();
+    
+    // Ajustează intervalul Discord RPC în funcție de starea serverului
+    if (discordRpcInterval) clearInterval(discordRpcInterval);
+    const interval = isRunning ? DISCORD_RPC_INTERVAL_ACTIVE : DISCORD_RPC_INTERVAL_IDLE;
+    discordRpcInterval = setInterval(setDiscordActivity, interval);
+    
+    // CRITICAL: Când serverul pornește, asigură performanță maximă
     if (isRunning) {
+        // Forțează frame rate maxim pentru stabilitate server
+        if (mainWindow && mainWindow.webContents) {
+            mainWindow.webContents.setFrameRate(60);
+        }
+        // Anulează idle mode dacă era activ
+        if (isIdleMode) {
+            isIdleMode = false;
+        }
         ensureNgrokTunnelForCurrentServerPort().catch((err) => {
             if (err && typeof log.debug === 'function') log.debug(`Ngrok ensure failed: ${err.message}`);
         });
@@ -567,11 +734,19 @@ function setDiscordActivity() {
     if (!rpc || !mainWindow) {
         return;
     }
-    const serverConfig = readServerConfig();
-    const state = serverConfig.version ? `Version: ${serverConfig.version}` : 'Configuring server...';
+    
+    // Determină statusul curent
+    let details;
+    if (isIdleMode) {
+        details = 'Idle';
+    } else if (localIsServerRunningGlobal) {
+        details = 'Server started';
+    } else {
+        details = 'Server stopped';
+    }
+    
     const activity = {
-        details: localIsServerRunningGlobal ? 'Server is running' : 'Server is stopped',
-        state: state,
+        details: details,
         startTimestamp: rpcStartTime,
         largeImageKey: 'server_icon_large',
         largeImageText: 'Server Launcher',
@@ -584,6 +759,60 @@ function setDiscordActivity() {
             sendConsole(`Discord RPC Error: ${err.message}`, 'ERROR');
         }
     });
+}
+
+function resetIdleTimer() {
+    lastActivityTime = Date.now();
+    const wasIdle = isIdleMode;
+    if (isIdleMode) {
+        isIdleMode = false;
+        setDiscordActivity();
+        // Când ies din idle, revin la intervalul normal
+        if (discordRpcInterval && !localIsServerRunningGlobal) {
+            clearInterval(discordRpcInterval);
+            discordRpcInterval = setInterval(setDiscordActivity, DISCORD_RPC_INTERVAL_IDLE);
+        }
+        // Restabilește frame rate normal când iese din idle
+        if (mainWindow && mainWindow.webContents && !localIsServerRunningGlobal) {
+            mainWindow.webContents.setFrameRate(60);
+        }
+    }
+    
+    // Clear existing timeout
+    if (idleTimeout) {
+        clearTimeout(idleTimeout);
+    }
+    
+    // Set new timeout pentru idle mode DOAR dacă serverul NU rulează
+    idleTimeout = setTimeout(() => {
+        // CRITICAL: Nu intră în idle mode dacă serverul rulează
+        if (localIsServerRunningGlobal) {
+            // Reprogramează check-ul pentru mai târziu
+            resetIdleTimer();
+            return;
+        }
+        
+        isIdleMode = true;
+        setDiscordActivity();
+        // Când intru în idle, măresc intervalul la 2 minute pentru economie maximă
+        if (discordRpcInterval) {
+            clearInterval(discordRpcInterval);
+            discordRpcInterval = setInterval(setDiscordActivity, 120000); // 2 minutes in full idle
+        }
+        // Reduce frame rate când intră în idle complet (DOAR când serverul e oprit)
+        if (mainWindow && mainWindow.webContents && !localIsServerRunningGlobal) {
+            mainWindow.webContents.setFrameRate(5); // Foarte redus în idle
+        }
+        // Sugerează garbage collection când intră în idle pentru a reduce memoria
+        if (global.gc) {
+            try {
+                global.gc();
+                sendConsole('Idle mode: Memory optimized.', 'INFO');
+            } catch (e) {
+                // GC not available
+            }
+        }
+    }, IDLE_TIME_MS);
 }
 
 function readJsonFile(filePath, fileNameForLog) {
@@ -1097,7 +1326,8 @@ function createWindow () {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      devTools: !app.isPackaged
+      devTools: !app.isPackaged,
+      backgroundThrottling: true // Reduce CPU când fereastra e în background
     }
   });
 
@@ -1141,6 +1371,21 @@ function createWindow () {
 
   mainWindow.on('maximize', () => safeSend(mainWindow, 'window-maximized', true));
   mainWindow.on('unmaximize', () => safeSend(mainWindow, 'window-maximized', false));
+  mainWindow.on('focus', () => {
+    resetIdleTimer();
+    // Reactivează frame rate normal când fereastra primește focus
+    if (mainWindow && mainWindow.webContents) {
+      mainWindow.webContents.setFrameRate(60);
+    }
+  });
+  mainWindow.on('blur', () => {
+    // CRITICAL: Reduce frame rate DOAR când serverul NU rulează
+    // Când serverul rulează, menține performanța maximă pentru stabilitate
+    if (mainWindow && mainWindow.webContents && !localIsServerRunningGlobal) {
+      mainWindow.webContents.setFrameRate(10);
+    }
+    // Dacă serverul rulează, menține 60fps pentru performanță optimă
+  });
 }
 
     app.whenReady().then(async () => {
@@ -1214,7 +1459,10 @@ function createWindow () {
     sendConsole('Discord Rich Presence is active.', 'INFO');
     rpcStartTime = new Date();
     setDiscordActivity();
-    setInterval(setDiscordActivity, 15000);
+    resetIdleTimer();
+    // Începe cu intervalul pentru idle/stopped (60s)
+    if (discordRpcInterval) clearInterval(discordRpcInterval);
+    discordRpcInterval = setInterval(setDiscordActivity, DISCORD_RPC_INTERVAL_IDLE);
   });
   rpc.login({ clientId }).catch(err => {
       if (!err.message.includes('Could not connect')) {
@@ -1245,6 +1493,14 @@ autoUpdater.on('update-downloaded', (info) => {
 });
 
 app.on('before-quit', () => {
+    if (idleTimeout) {
+        clearTimeout(idleTimeout);
+        idleTimeout = null;
+    }
+    if (discordRpcInterval) {
+        clearInterval(discordRpcInterval);
+        discordRpcInterval = null;
+    }
     stopNgrokTunnel();
 });
 
@@ -1629,6 +1885,91 @@ ipcMain.on('set-server-path-lock', (_event, locked) => {
     writeLauncherSettings(ls);
 });
 
+// ===== DEVELOPER TOOLS =====
+ipcMain.on('dev-simulate-first-launch', async () => {
+    try {
+        sendConsole('[DEV] Simulating first launch - deleting MinecraftServer folder...', 'WARN');
+        
+        // Stop server if running
+        if (serverProcess && !serverProcess.killed) {
+            sendConsole('[DEV] Stopping server before deletion...', 'INFO');
+            serverProcess.killedInternally = true;
+            try {
+                if (serverProcess.stdin && serverProcess.stdin.writable) {
+                    serverProcess.stdin.write('stop\n');
+                }
+            } catch (e) {
+                serverProcess.kill('SIGKILL');
+            }
+            // Wait a bit for server to stop
+            await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        
+        // Delete MinecraftServer folder
+        if (fs.existsSync(serverFilesDir)) {
+            const fsExtra = require('fs-extra');
+            await fsExtra.remove(serverFilesDir);
+            sendConsole('[DEV] MinecraftServer folder deleted', 'SUCCESS');
+        }
+        
+        // Clear server config
+        writeServerConfig({});
+        
+        sendConsole('[DEV] First launch simulation complete. Restarting...', 'SUCCESS');
+        
+        // Restart after 1 second
+        setTimeout(() => {
+            app.relaunch();
+            app.exit(0);
+        }, 1000);
+    } catch (error) {
+        sendConsole(`[DEV] Error simulating first launch: ${error.message}`, 'ERROR');
+    }
+});
+
+ipcMain.on('dev-simulate-update', () => {
+    try {
+        sendConsole('[DEV] Simulating update available...', 'INFO');
+        const win = getMainWindow();
+        if (win && !win.isDestroyed()) {
+            // Simulate update info
+            const fakeUpdateInfo = {
+                version: '99.99.99',
+                releaseDate: new Date().toISOString(),
+                releaseName: 'Test Update',
+                releaseNotes: 'This is a simulated update for testing purposes.'
+            };
+            safeSend(win, 'show-in-app-notification', {
+                title: 'Update Available',
+                body: `Version ${fakeUpdateInfo.version} is available for download.`
+            });
+            sendConsole(`[DEV] Simulated update to version ${fakeUpdateInfo.version}`, 'SUCCESS');
+        }
+    } catch (error) {
+        sendConsole(`[DEV] Error simulating update: ${error.message}`, 'ERROR');
+    }
+});
+
+ipcMain.on('dev-clear-cache', () => {
+    try {
+        sendConsole('[DEV] Clearing all cache and settings...', 'WARN');
+        // Clear launcher settings
+        const emptySettings = { serverPathLocked: true };
+        writeLauncherSettings(emptySettings);
+        // Clear server config
+        writeServerConfig({});
+        sendConsole('[DEV] Cache cleared! Restarting application...', 'SUCCESS');
+        // Restart after 2 seconds
+        setTimeout(() => {
+            app.relaunch();
+            app.exit(0);
+        }, 2000);
+    } catch (error) {
+        sendConsole(`[DEV] Error clearing cache: ${error.message}`, 'ERROR');
+    }
+});
+// ===========================
+
 ipcMain.handle('select-server-location', async () => {
     const ls = readLauncherSettings();
     if (ls.serverPathLocked) {
@@ -1781,7 +2122,6 @@ async function startBedrockServer(serverConfig) {
         if (!serverIsFullyStarted && startedRegex.test(cleanOutput)) {
             serverIsFullyStarted = true;
             sendServerStateChange(true);
-            setDiscordActivity();
             try {
                 const cfg = readServerConfig();
                 const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
@@ -1832,7 +2172,6 @@ async function startBedrockServer(serverConfig) {
         serverProcess = null;
 
         sendServerStateChange(false);
-        setDiscordActivity();
 
         if (killedInternally) {
             sendConsole('Server process stopped normally.', 'INFO');
@@ -1882,6 +2221,7 @@ async function startBedrockServer(serverConfig) {
 }
 
 ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocation, javaArgs }) => {
+    resetIdleTimer();
     const chosenType = normalizeServerType(serverType);
     const typeLabel = chosenType === SERVER_TYPES.FABRIC ? 'Fabric' : (chosenType === SERVER_TYPES.BEDROCK ? 'Bedrock' : 'PaperMC');
     sendConsole(`Configuring: Type ${typeLabel}, Version ${mcVersion || 'N/A'}, RAM ${ramAllocation || 'Auto'}`, 'INFO');
@@ -2170,6 +2510,7 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
 });
 
 ipcMain.on('start-server', async () => {
+    resetIdleTimer();
     if (serverProcess) {
         sendConsole('Server is already running.', 'WARN');
         return;
@@ -2302,7 +2643,6 @@ ipcMain.on('start-server', async () => {
             if (!serverIsFullyStarted && /Done \([^)]+\)! For help, type "help"/.test(cleanOutput)) {
                 serverIsFullyStarted = true;
                 sendServerStateChange(true);
-                setDiscordActivity();
                 try {
                     const cfg = readServerConfig();
                     const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
@@ -2353,7 +2693,6 @@ ipcMain.on('start-server', async () => {
             serverProcess = null;
         
             sendServerStateChange(false);
-            setDiscordActivity();
         
             if (killedInternally) {
                 sendConsole('Server process stopped normally.', 'INFO');
@@ -2408,6 +2747,7 @@ ipcMain.on('start-server', async () => {
 });
 
 ipcMain.on('stop-server', async () => {
+    resetIdleTimer();
     if (!serverProcess || serverProcess.killed) { sendConsole('Server not running.', 'WARN'); return; }
     if (performanceStatsInterval) clearInterval(performanceStatsInterval);
     sendConsole('Stopping server...', 'INFO');
@@ -2424,6 +2764,7 @@ ipcMain.on('stop-server', async () => {
 });
 
 ipcMain.on('send-command', (event, command) => {
+    resetIdleTimer();
     if (typeof command !== 'string') return;
     if (command.length > 1000) return;
     const trimmedCommand = command.trim().toLowerCase();

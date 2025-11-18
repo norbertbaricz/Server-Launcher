@@ -24,9 +24,12 @@ const statusBarContent = document.getElementById('status-bar-content');
 const setupActivePlaceholderTop = document.getElementById('setup-active-placeholder-top');
 
 const setupPage = document.getElementById('setup-page');
+const javaPage = document.getElementById('java-page');
 const mcVersionModalSelect = document.getElementById('mc-version-modal');
 const ramAllocationModalSelect = document.getElementById('ram-allocation-modal');
 const languageModalSelect = document.getElementById('language-modal-select');
+const languageJavaSelect = document.getElementById('language-java-select');
+const themeJavaSelect = document.getElementById('theme-java-select');
 const downloadModalButton = document.getElementById('download-button-modal');
 const downloadModalButtonIcon = downloadModalButton.querySelector('i');
 const downloadModalButtonText = document.getElementById('download-button-text');
@@ -62,13 +65,13 @@ if (chooseServerPathButton) {
     chooseServerPathButton.classList.add('btn-disabled');
 }
 
-const javaInstallModal = document.getElementById('java-install-modal');
-const javaInstallModalContent = document.getElementById('java-install-modal-content');
 const javaInstallMessage = document.getElementById('java-install-message');
 const javaInstallButton = document.getElementById('java-install-button');
 const javaRestartButton = document.getElementById('java-restart-button');
 const javaInstallProgressBarContainer = document.getElementById('java-install-progress-bar-container');
 const javaInstallProgressBar = document.getElementById('java-install-progress-bar');
+
+// Developer Tools removed
 
 const pluginsPage = document.getElementById('plugins-page');
 const pluginsModalTitleText = document.getElementById('plugins-modal-title-text');
@@ -100,6 +103,7 @@ let launcherSettingsCache = {};
 let isSettingsViewOpen = false;
 let isPluginsViewOpen = false;
 let isSetupViewOpen = false;
+let isJavaViewOpen = false;
 let setupRequired = false;
 let activeViewKey = dashboardView ? 'dashboard' : null;
 let isStarting = false;
@@ -108,6 +112,7 @@ let isStopping = false;
 const viewMap = {
     dashboard: dashboardView,
     setup: setupPage,
+    java: javaPage,
     settings: settingsPage,
     plugins: pluginsPage
 };
@@ -233,6 +238,7 @@ async function setLanguage(lang) {
         }
         currentTranslations = translations;
         
+        // Update all elements with data-key attribute (including option elements)
         document.querySelectorAll('[data-key]').forEach(element => {
             const key = element.getAttribute('data-key');
             if (translations[key]) {
@@ -266,6 +272,21 @@ async function setLanguage(lang) {
 
         updatePluginsButtonAppearance(currentServerConfig?.serverType);
 
+        // Repopulate dropdowns with translated labels
+        const serverType = currentServerConfig?.serverType || 'papermc';
+        populateServerTypeSelect(serverTypeModalSelect, serverType);
+        populateServerTypeSelect(serverTypeSettingsSelect, serverType);
+        
+        // Repopulate version dropdowns with translated labels (Latest, etc.)
+        if (mcVersionModalSelect && availableMcVersionsCache[serverType]) {
+            const currentModalVersion = mcVersionModalSelect.value;
+            await populateMcVersionSelect(mcVersionModalSelect, currentModalVersion, serverType);
+        }
+        if (mcVersionSettingsSelect && availableMcVersionsCache[serverType]) {
+            const currentSettingsVersion = mcVersionSettingsSelect.value;
+            await populateMcVersionSelect(mcVersionSettingsSelect, currentSettingsVersion, serverType);
+        }
+
     } catch (error) {
         addToConsole(`Could not apply language: ${error.message}`, 'ERROR');
     }
@@ -286,10 +307,12 @@ async function populateLanguageSelects() {
     };
 
     languageModalSelect.innerHTML = '';
+    languageJavaSelect.innerHTML = '';
     languageSettingsSelect.innerHTML = '';
 
     languages.forEach(lang => {
         languageModalSelect.appendChild(createOption(lang));
+        languageJavaSelect.appendChild(createOption(lang).cloneNode(true));
         languageSettingsSelect.appendChild(createOption(lang).cloneNode(true));
     });
 }
@@ -540,6 +563,8 @@ function setActiveView(target, callback) {
     isSettingsViewOpen = target === 'settings';
     isPluginsViewOpen = target === 'plugins';
     isSetupViewOpen = target === 'setup';
+    isJavaViewOpen = target === 'java';
+    isJavaViewOpen = target === 'java';
 
     if (mainContentArea) {
         mainContentArea.scrollTop = 0;
@@ -945,16 +970,43 @@ minimizeBtn.addEventListener('click', () => window.electronAPI.minimizeWindow())
 maximizeBtn.addEventListener('click', () => window.electronAPI.maximizeWindow());
 closeBtn.addEventListener('click', () => window.electronAPI.closeWindow());
 
-languageModalSelect.addEventListener('change', (event) => {
+languageModalSelect.addEventListener('change', async (event) => {
     const newLang = event.target.value;
-    // Mirror selection only; do not apply or persist until Save & Apply
+    // Apply immediately for Setup page so users can understand the interface
+    launcherSettingsCache.language = newLang;
+    window.electronAPI.setSettings(launcherSettingsCache);
+    await setLanguage(newLang);
+    // Mirror to other selectors
     if (languageSettingsSelect) languageSettingsSelect.value = newLang;
+    if (languageJavaSelect) languageJavaSelect.value = newLang;
+});
+
+languageJavaSelect.addEventListener('change', async (event) => {
+    const newLang = event.target.value;
+    // Apply immediately for Java page since it's a standalone page
+    launcherSettingsCache.language = newLang;
+    window.electronAPI.setSettings(launcherSettingsCache);
+    await setLanguage(newLang);
+    // Mirror to other selectors
+    if (languageModalSelect) languageModalSelect.value = newLang;
+    if (languageSettingsSelect) languageSettingsSelect.value = newLang;
+});
+
+themeJavaSelect.addEventListener('change', (event) => {
+    const newTheme = event.target.value;
+    // Apply immediately for Java page since it's a standalone page
+    launcherSettingsCache.theme = newTheme;
+    window.electronAPI.setSettings(launcherSettingsCache);
+    applyThemeClass(newTheme);
+    // Mirror to other selectors
+    if (themeSelect) themeSelect.value = newTheme;
 });
 
 languageSettingsSelect.addEventListener('change', (event) => {
     const newLang = event.target.value;
     // Mirror selection only; do not apply or persist until Save & Apply
     if (languageModalSelect) languageModalSelect.value = newLang;
+    if (languageJavaSelect) languageJavaSelect.value = newLang;
 });
 
 window.electronAPI.onWindowMaximized((isMaximized) => {
@@ -1140,6 +1192,10 @@ async function initializeApp() {
         
         languageModalSelect.value = savedLang;
         languageSettingsSelect.value = savedLang;
+        languageJavaSelect.value = savedLang;
+        
+        // Set theme selector initial value for Java page
+        themeJavaSelect.value = savedTheme === 'default' ? 'skypixel' : savedTheme;
         
         await setLanguage(savedLang);
         
@@ -1227,12 +1283,13 @@ window.electronAPI.onJavaInstallRequired(() => {
     javaRestartButton.classList.add('hidden');
     javaInstallProgressBarContainer.classList.add('hidden');
     
-    const existingSpinner = javaInstallModalContent.querySelector('.fa-spinner');
+    const existingSpinner = javaInstallButton.querySelector('.fa-spinner');
     if (existingSpinner) {
         existingSpinner.remove();
     }
 
-    showModal(javaInstallModal, javaInstallModalContent);
+    // Deschide pagina java în loc de modal
+    setActiveView('java');
 });
 
 javaInstallButton.addEventListener('click', () => {
@@ -1251,7 +1308,7 @@ window.electronAPI.onJavaInstallStatus((status, progress) => {
     javaRestartButton.classList.add('hidden');
     javaInstallProgressBarContainer.classList.add('hidden');
     
-    const existingSpinner = javaInstallModalContent.querySelector('.fa-spinner');
+    const existingSpinner = javaPage?.querySelector('.fa-spinner');
     if (existingSpinner) {
         existingSpinner.remove();
     }
@@ -1262,7 +1319,7 @@ window.electronAPI.onJavaInstallStatus((status, progress) => {
     } else if (lowerStatus.includes('installer has been launched')) {
         const spinner = document.createElement('i');
         spinner.className = 'fas fa-spinner fa-spin text-2xl accent-text mt-4';
-        javaInstallModalContent.appendChild(spinner);
+        if (javaPage) javaPage.appendChild(spinner);
     } else if (lowerStatus.includes('error') || lowerStatus.includes('failed') || lowerStatus.includes('timed out')) {
         javaInstallButton.classList.remove('hidden');
         javaInstallButton.disabled = false;
@@ -1424,11 +1481,7 @@ pluginsSaveApplyButton?.addEventListener('click', () => {
     }
     closePluginsView();
 });
-javaInstallModal.addEventListener('click', (e) => {
-    if (!javaInstallModalContent.contains(e.target)) {
-        hideModal(javaInstallModal, javaInstallModalContent);
-    }
-});
+// Java page is now a full page, not a modal
 function applyThemeClass(theme) {
     const classes = ['theme-skypixel','theme-nord','theme-aurora','theme-midnight','theme-emerald','theme-sunset','theme-crimson','theme-ocean','theme-grape','theme-neon'];
     document.body.classList.remove(...classes);
@@ -1455,3 +1508,30 @@ themeSelect.addEventListener('change', (e) => {
     launcherSettingsCache.theme = value;
     window.electronAPI.setSettings({ theme: value });
 });
+
+// Developer Tools Event Listeners
+if (devSimulateNoJdkButton) {
+    devSimulateNoJdkButton.addEventListener('click', () => {
+        setActiveView('java');
+    });
+}
+
+if (devSimulateFirstLaunchButton) {
+    devSimulateFirstLaunchButton.addEventListener('click', () => {
+        window.electronAPI.devSimulateFirstLaunch();
+    });
+}
+
+if (devSimulateUpdateButton) {
+    devSimulateUpdateButton.addEventListener('click', () => {
+        window.electronAPI.devSimulateUpdate();
+    });
+}
+
+if (devClearCacheButton) {
+    devClearCacheButton.addEventListener('click', () => {
+        if (confirm('Are you sure you want to clear all cache and settings? This will require a restart.')) {
+            window.electronAPI.devClearCache();
+        }
+    });
+}
