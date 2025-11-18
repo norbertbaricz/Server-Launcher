@@ -218,7 +218,6 @@ async function ensureBundledJavaLinux() {
     });
 
     safeSend(win, 'java-install-status', 'Extracting Java...', 95);
-    safeSend(win, 'java-install-status', 'Extracting Java...', 95);
     await new Promise((resolve, reject) => {
       const args = ['-xzf', tmpPath, '-C', jdkBaseDir];
       const proc = spawn('tar', args, { stdio: ['ignore','ignore','pipe'] });
