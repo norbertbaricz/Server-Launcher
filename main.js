@@ -16,7 +16,6 @@ const AnsiToHtml = require('ansi-to-html');
 const find = require('find-process');
 const AdmZip = require('adm-zip');
 const NotificationService = require('./src/services/NotificationService');
-const { pingServer } = require('./src/utils/serverPing');
 
 const SOUND_CANDIDATES = {
   error: ['error.mp3', 'error.wav'],
@@ -30,6 +29,7 @@ const ERROR_SOUND_KEYWORDS = ['error', 'failed', 'fail', 'not found', 'crash', '
 const SUCCESS_SOUND_KEYWORDS = ['success', 'successfully', 'ready', 'completed', 'installed', 'configured', 'downloaded', 'server started', 'server ready', 'done'];
 const NGROK_API_ENDPOINT = 'http://127.0.0.1:4040/api/tunnels';
 const PUBLIC_IP_USER_AGENT = 'MyMinecraftLauncher/1.0';
+const DISCORD_CONSOLE_SUPPRESS_REGEX = /discord/i;
 
 // Set app name before app.whenReady for proper notifications
 if (process.platform === 'linux') {
@@ -325,13 +325,19 @@ async function ensureBundledJavaMac() {
 }
 
 process.on('uncaughtException', (error) => {
-  log.error('UNCAUGHT EXCEPTION:', error);
-  sendConsole(`An uncaught exception was prevented: ${error.message}`, 'ERROR');
+    try { log.error('UNCAUGHT EXCEPTION:', error); } catch (_) {}
+    const msg = String(error && error.message ? error.message : error || '');
+    // Suppress discord-rpc related UI logs
+    if (/discord|rpc|setactivity|reading 'write'|transport|socket/i.test(msg)) return;
+    try { sendConsole(`An uncaught exception was prevented: ${msg}`, 'ERROR'); } catch (_) {}
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-  log.error('UNHANDLED REJECTION:', reason);
-  sendConsole(`An unhandled promise rejection was caught: ${reason}`, 'ERROR');
+process.on('unhandledRejection', (reason, _promise) => {
+    try { log.error('UNHANDLED REJECTION:', reason); } catch (_) {}
+    const msg = String((reason && reason.message) ? reason.message : reason || '');
+    // Suppress discord-rpc related UI logs
+    if (/discord|rpc|setactivity|reading 'write'|transport|socket/i.test(msg)) return;
+    try { sendConsole(`An unhandled promise rejection was caught: ${msg}`, 'ERROR'); } catch (_) {}
 });
 
 const ansiConverter = new AnsiToHtml({
@@ -384,6 +390,18 @@ let awaitingListProbe = false;
 let listProbeSentAt = 0;
 let lastManualListAt = 0;
 let listProbeTimeout = null;
+
+function setDiscordActivity() {
+    try {
+        if (!rpc) return;
+        const details = localIsServerRunningGlobal ? 'Server running' : 'Launcher idle';
+        rpc.setActivity({
+            details,
+            startTimestamp: rpcStartTime || new Date(),
+            instance: false
+        }).catch(() => {});
+    } catch (_) { /* ignore */ }
+}
 
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
@@ -696,6 +714,15 @@ function sendStatus(fallbackMessage, pulse = false, translationKey = null) {
     handleStatusSound(fallbackMessage, translationKey, pulse);
 }
 function sendConsole(message, type = 'INFO') {
+    try {
+        if (typeof message === 'string' && DISCORD_CONSOLE_SUPPRESS_REGEX.test(message)) {
+            try {
+                log.warn(message);
+                console.warn(message);
+            } catch (_) {}
+            return;
+        }
+    } catch (_) {}
     const win = getMainWindow();
     safeSend(win, 'update-console', message, type);
 }
@@ -1453,21 +1480,20 @@ function createWindow () {
     }
   }
 
-  rpc = new RPC.Client({ transport: 'ipc' });
-  rpc.on('ready', () => {
-    sendConsole('Discord Rich Presence is active.', 'INFO');
-    rpcStartTime = new Date();
-    setDiscordActivity();
-    resetIdleTimer();
-    // Începe cu intervalul pentru idle/stopped (60s)
-    if (discordRpcInterval) clearInterval(discordRpcInterval);
-    discordRpcInterval = setInterval(setDiscordActivity, DISCORD_RPC_INTERVAL_IDLE);
-  });
-  rpc.login({ clientId }).catch(err => {
-      if (!err.message.includes('Could not connect')) {
-          sendConsole(`Discord RPC login error: ${err.message}`, 'ERROR');
-      }
-  });
+    rpc = new RPC.Client({ transport: 'ipc' });
+    rpc.on('ready', () => {
+        sendConsole('Discord Rich Presence is active.', 'INFO');
+        rpcStartTime = new Date();
+        setDiscordActivity();
+        resetIdleTimer();
+        // Începe cu intervalul pentru idle/stopped (60s)
+        if (discordRpcInterval) clearInterval(discordRpcInterval);
+        discordRpcInterval = setInterval(setDiscordActivity, DISCORD_RPC_INTERVAL_IDLE);
+    });
+    // Keep original behavior; suppress UI error logs on login failure
+    rpc.login({ clientId }).catch(() => {
+            // No UI log
+    });
   if (shouldCheckForUpdates()) {
     autoUpdater.checkForUpdates();
   }
@@ -1507,7 +1533,15 @@ app.on('window-all-closed', () => {
     if (serverProcess && typeof serverProcess.kill === 'function' && !serverProcess.killed) {
         try {
             serverProcess.killedInternally = true;
-            if (serverProcess.stdin && serverProcess.stdin.writable) {
+            if (
+                serverProcess &&
+                serverProcess.stdin &&
+                !serverProcess.killed &&
+                serverProcess.exitCode === null &&
+                !serverProcess.stdin.destroyed &&
+                !serverProcess.stdin.writableEnded &&
+                serverProcess.stdin.writable
+            ) {
                 serverProcess.stdin.write('stop\n');
             }
             setTimeout(() => {
@@ -1520,9 +1554,9 @@ app.on('window-all-closed', () => {
         }
     }
     if (rpc) {
-        rpc.destroy().catch(err => {
-            if (!err.message.includes('Could not connect')) sendConsole(`Discord RPC destroy error: ${err.message}`, 'ERROR');
-        });
+        try {
+            rpc.destroy().catch(() => {});
+        } catch (_) {}
     }
     if (process.platform !== 'darwin') app.quit();
 });
@@ -1884,90 +1918,6 @@ ipcMain.on('set-server-path-lock', (_event, locked) => {
     writeLauncherSettings(ls);
 });
 
-// ===== DEVELOPER TOOLS =====
-ipcMain.on('dev-simulate-first-launch', async () => {
-    try {
-        sendConsole('[DEV] Simulating first launch - deleting MinecraftServer folder...', 'WARN');
-        
-        // Stop server if running
-        if (serverProcess && !serverProcess.killed) {
-            sendConsole('[DEV] Stopping server before deletion...', 'INFO');
-            serverProcess.killedInternally = true;
-            try {
-                if (serverProcess.stdin && serverProcess.stdin.writable) {
-                    serverProcess.stdin.write('stop\n');
-                }
-            } catch (e) {
-                serverProcess.kill('SIGKILL');
-            }
-            // Wait a bit for server to stop
-            await new Promise(resolve => setTimeout(resolve, 2000));
-        }
-        
-        // Delete MinecraftServer folder
-        if (fs.existsSync(serverFilesDir)) {
-            const fsExtra = require('fs-extra');
-            await fsExtra.remove(serverFilesDir);
-            sendConsole('[DEV] MinecraftServer folder deleted', 'SUCCESS');
-        }
-        
-        // Clear server config
-        writeServerConfig({});
-        
-        sendConsole('[DEV] First launch simulation complete. Restarting...', 'SUCCESS');
-        
-        // Restart after 1 second
-        setTimeout(() => {
-            app.relaunch();
-            app.exit(0);
-        }, 1000);
-    } catch (error) {
-        sendConsole(`[DEV] Error simulating first launch: ${error.message}`, 'ERROR');
-    }
-});
-
-ipcMain.on('dev-simulate-update', () => {
-    try {
-        sendConsole('[DEV] Simulating update available...', 'INFO');
-        const win = getMainWindow();
-        if (win && !win.isDestroyed()) {
-            // Simulate update info
-            const fakeUpdateInfo = {
-                version: '99.99.99',
-                releaseDate: new Date().toISOString(),
-                releaseName: 'Test Update',
-                releaseNotes: 'This is a simulated update for testing purposes.'
-            };
-            safeSend(win, 'show-in-app-notification', {
-                title: 'Update Available',
-                body: `Version ${fakeUpdateInfo.version} is available for download.`
-            });
-            sendConsole(`[DEV] Simulated update to version ${fakeUpdateInfo.version}`, 'SUCCESS');
-        }
-    } catch (error) {
-        sendConsole(`[DEV] Error simulating update: ${error.message}`, 'ERROR');
-    }
-});
-
-ipcMain.on('dev-clear-cache', () => {
-    try {
-        sendConsole('[DEV] Clearing all cache and settings...', 'WARN');
-        // Clear launcher settings
-        const emptySettings = { serverPathLocked: true };
-        writeLauncherSettings(emptySettings);
-        // Clear server config
-        writeServerConfig({});
-        sendConsole('[DEV] Cache cleared! Restarting application...', 'SUCCESS');
-        // Restart after 2 seconds
-        setTimeout(() => {
-            app.relaunch();
-            app.exit(0);
-        }, 2000);
-    } catch (error) {
-        sendConsole(`[DEV] Error clearing cache: ${error.message}`, 'ERROR');
-    }
-});
-// ===========================
 
 ipcMain.handle('select-server-location', async () => {
     const ls = readLauncherSettings();
@@ -2053,6 +2003,8 @@ async function startBedrockServer(serverConfig) {
                     if (commandLatencyInterval) { clearInterval(commandLatencyInterval); commandLatencyInterval = null; }
                     if (listProbeTimeout) { clearTimeout(listProbeTimeout); listProbeTimeout = null; }
                     awaitingListProbe = false;
+                    // Do not log EPIPE to avoid noisy warnings when process exits
+                    return;
                 }
                 try { sendConsole(`STDIN error: ${err.message}`, 'WARN'); } catch (_) {}
             });
@@ -2162,13 +2114,22 @@ async function startBedrockServer(serverConfig) {
         sendConsole(ansiConverter.toHtml(data.toString()), 'SERVER_LOG_HTML');
     });
 
-    serverProcess.on('close', (code) => {
+    serverProcess.on('close', function (code, signal) {
         if (performanceStatsInterval) clearInterval(performanceStatsInterval);
         if (commandLatencyInterval) { clearInterval(commandLatencyInterval); commandLatencyInterval = null; }
         if (listProbeTimeout) { clearTimeout(listProbeTimeout); listProbeTimeout = null; }
         awaitingListProbe = false;
-        const killedInternally = serverProcess?.killedInternally;
-        serverProcess = null;
+        const childProcess = this;
+        const killedInternally = !!childProcess?.killedInternally;
+        const shouldAffectUi = !serverProcess || serverProcess === childProcess;
+        if (serverProcess === childProcess) {
+            serverProcess = null;
+        }
+
+        if (!shouldAffectUi) {
+            log.debug('Ignoring stale Bedrock server process close event.');
+            return;
+        }
 
         sendServerStateChange(false);
 
@@ -2196,12 +2157,14 @@ async function startBedrockServer(serverConfig) {
                 } catch (_) {}
             } else {
                 sendStatus('Server stopped unexpectedly.', false, 'serverStoppedUnexpectedly');
-                sendConsole(`Server process exited unexpectedly with code ${code}.`, 'ERROR');
+                const formattedCode = typeof code === 'number' ? code : 'unknown';
+                const signalInfo = signal ? ` (signal ${signal})` : '';
+                sendConsole(`Server process exited unexpectedly with code ${formattedCode}${signalInfo}.`, 'ERROR');
                 try {
                     const cfg = readServerConfig();
                     const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                     const ver = cfg.version || '';
-                    showDesktopNotification('Server Crashed', `${type} ${ver} exited unexpectedly (code ${code ?? 'unknown'}).`);
+                    showDesktopNotification('Server Crashed', `${type} ${ver} exited unexpectedly (code ${formattedCode}${signalInfo}).`);
                     playSoundEffect('error');
                 } catch (_) {}
             }
@@ -2585,6 +2548,8 @@ ipcMain.on('start-server', async () => {
                     if (commandLatencyInterval) { clearInterval(commandLatencyInterval); commandLatencyInterval = null; }
                     if (listProbeTimeout) { clearTimeout(listProbeTimeout); listProbeTimeout = null; }
                     awaitingListProbe = false;
+                    // Suppress EPIPE logging (broken pipe after process exit)
+                    return;
                 }
                 try { sendConsole(`STDIN error: ${err.message}`, 'WARN'); } catch (_) {}
             });
@@ -2683,14 +2648,23 @@ ipcMain.on('start-server', async () => {
             sendConsole(ansiConverter.toHtml(data.toString()), 'SERVER_LOG_HTML');
         });
 
-        serverProcess.on('close', (code) => {
+        serverProcess.on('close', function (code, signal) {
             if (performanceStatsInterval) clearInterval(performanceStatsInterval);
             if (commandLatencyInterval) { clearInterval(commandLatencyInterval); commandLatencyInterval = null; }
             if (listProbeTimeout) { clearTimeout(listProbeTimeout); listProbeTimeout = null; }
             awaitingListProbe = false;
-            const killedInternally = serverProcess?.killedInternally;
-            serverProcess = null;
-        
+            const childProcess = this;
+            const killedInternally = !!childProcess?.killedInternally;
+            const shouldAffectUi = !serverProcess || serverProcess === childProcess;
+            if (serverProcess === childProcess) {
+                serverProcess = null;
+            }
+
+            if (!shouldAffectUi) {
+                log.debug('Ignoring stale Java server process close event.');
+                return;
+            }
+
             sendServerStateChange(false);
         
             if (killedInternally) {
@@ -2717,12 +2691,14 @@ ipcMain.on('start-server', async () => {
                     } catch (_) {}
                 } else {
                     sendStatus('Server stopped unexpectedly.', false, 'serverStoppedUnexpectedly');
-                    sendConsole(`Server process exited unexpectedly with code ${code}.`, 'ERROR');
+                    const formattedCode = typeof code === 'number' ? code : 'unknown';
+                    const signalInfo = signal ? ` (signal ${signal})` : '';
+                    sendConsole(`Server process exited unexpectedly with code ${formattedCode}${signalInfo}.`, 'ERROR');
                     try {
                         const cfg = readServerConfig();
                         const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                         const ver = cfg.version || '';
-                        showDesktopNotification('Server Crashed', `${type} ${ver} exited unexpectedly (code ${code ?? 'unknown'}).`);
+                        showDesktopNotification('Server Crashed', `${type} ${ver} exited unexpectedly (code ${formattedCode}${signalInfo}).`);
                         playSoundEffect('error');
                     } catch (_) {}
                 }
@@ -2753,7 +2729,15 @@ ipcMain.on('stop-server', async () => {
     sendStatus('Stopping server...', true, 'serverStopping');
     serverProcess.killedInternally = true;
     try {
-        if (serverProcess.stdin.writable) {
+        if (
+            serverProcess &&
+            serverProcess.stdin &&
+            !serverProcess.killed &&
+            serverProcess.exitCode === null &&
+            !serverProcess.stdin.destroyed &&
+            !serverProcess.stdin.writableEnded &&
+            serverProcess.stdin.writable
+        ) {
             serverProcess.stdin.write("stop\n");
         }
     } catch (e) {
@@ -2777,7 +2761,15 @@ ipcMain.on('send-command', (event, command) => {
     }
     let outgoing = command;
     if (outgoing.startsWith('/')) outgoing = outgoing.slice(1);
-    if (serverProcess && serverProcess.stdin.writable) {
+    if (
+        serverProcess &&
+        serverProcess.stdin &&
+        !serverProcess.killed &&
+        serverProcess.exitCode === null &&
+        !serverProcess.stdin.destroyed &&
+        !serverProcess.stdin.writableEnded &&
+        serverProcess.stdin.writable
+    ) {
         try { serverProcess.stdin.write(outgoing + '\n'); }
         catch (error) { sendConsole(`Error writing to stdin: ${error.message}`, 'ERROR'); }
     } else { sendConsole('Cannot send command: Server not running.', 'ERROR'); }

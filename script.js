@@ -943,12 +943,23 @@ stopButton.addEventListener('click', () => {
     window.electronAPI.stopServer(); 
 });
 
+// Command history management
+let commandHistory = [];
+let historyIndex = -1;
+
 sendCommandButton.addEventListener('click', () => {
     const raw = commandInput.value.trim();
     if (raw && localIsServerRunning) {
         const sanitized = raw.startsWith('/') ? raw.slice(1) : raw;
         addToConsole(`> ${sanitized}`, 'CMD');
         window.electronAPI.sendCommand(sanitized);
+        
+        // Add to history (avoid duplicates of last command)
+        if (commandHistory.length === 0 || commandHistory[commandHistory.length - 1] !== raw) {
+            commandHistory.push(raw);
+        }
+        historyIndex = commandHistory.length;
+        
         commandInput.value = '';
     }
 });
@@ -963,6 +974,25 @@ autoStartServerCheckbox.addEventListener('change', () => {
 
 autoStartDelaySlider.addEventListener('input', () => {
     autoStartDelayValue.textContent = `${autoStartDelaySlider.value}s`;
+});
+
+commandInput.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        if (commandHistory.length > 0 && historyIndex > 0) {
+            historyIndex--;
+            commandInput.value = commandHistory[historyIndex];
+        }
+    } else if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        if (historyIndex < commandHistory.length - 1) {
+            historyIndex++;
+            commandInput.value = commandHistory[historyIndex];
+        } else if (historyIndex === commandHistory.length - 1) {
+            historyIndex = commandHistory.length;
+            commandInput.value = '';
+        }
+    }
 });
 
 commandInput.addEventListener('keypress', (event) => { if (event.key === 'Enter') sendCommandButton.click(); });
@@ -1328,15 +1358,39 @@ window.electronAPI.onJavaInstallStatus((status, progress) => {
     }
 });
 
+// Prevent sound overlap - only one sound at a time
+let currentAudio = null;
+
 window.electronAPI.onPlaySound((soundPath) => {
     try {
         if (soundPath) {
+            // Stop current audio if playing
+            if (currentAudio) {
+                currentAudio.pause();
+                currentAudio.currentTime = 0;
+                currentAudio = null;
+            }
+            
             const audio = new Audio(soundPath);
             audio.volume = 1.0;
-            audio.play().catch(() => { /* fallback below */ });
+            currentAudio = audio;
+            
+            // Clear reference when sound finishes
+            audio.addEventListener('ended', () => {
+                if (currentAudio === audio) {
+                    currentAudio = null;
+                }
+            });
+            
+            audio.play().catch(() => { 
+                currentAudio = null;
+                /* fallback below */ 
+            });
             return;
         }
-    } catch (_) {}
+    } catch (_) {
+        currentAudio = null;
+    }
     try {
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const osc = ctx.createOscillator();
@@ -1508,30 +1562,3 @@ themeSelect.addEventListener('change', (e) => {
     launcherSettingsCache.theme = value;
     window.electronAPI.setSettings({ theme: value });
 });
-
-// Developer Tools Event Listeners
-if (devSimulateNoJdkButton) {
-    devSimulateNoJdkButton.addEventListener('click', () => {
-        setActiveView('java');
-    });
-}
-
-if (devSimulateFirstLaunchButton) {
-    devSimulateFirstLaunchButton.addEventListener('click', () => {
-        window.electronAPI.devSimulateFirstLaunch();
-    });
-}
-
-if (devSimulateUpdateButton) {
-    devSimulateUpdateButton.addEventListener('click', () => {
-        window.electronAPI.devSimulateUpdate();
-    });
-}
-
-if (devClearCacheButton) {
-    devClearCacheButton.addEventListener('click', () => {
-        if (confirm('Are you sure you want to clear all cache and settings? This will require a restart.')) {
-            window.electronAPI.devClearCache();
-        }
-    });
-}
