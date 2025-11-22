@@ -1372,7 +1372,7 @@ window.electronAPI.onPlaySound((soundPath) => {
             }
             
             const audio = new Audio(soundPath);
-            audio.volume = 1.0;
+            audio.volume = 0.3;
             currentAudio = audio;
             
             // Clear reference when sound finishes
