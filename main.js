@@ -29,6 +29,9 @@ let rendererReady = false; // Set when renderer signals app-ready-to-show
 const statusBuffer = []; // { msg, pulse, key }
 const STATUS_BUFFER_MAX = 50;
 let statusBufferFlushScheduled = false;
+const consoleBuffer = [];
+const CONSOLE_BUFFER_MAX = 200;
+let consoleBufferFlushScheduled = false;
 
 function bufferStatus(msg, pulse, key) {
     if (statusBuffer.length >= STATUS_BUFFER_MAX) {
@@ -45,6 +48,29 @@ function flushStatusBuffer() {
         const win = getMainWindow();
         safeSend(win, 'update-status', msg, pulse, key);
         handleStatusSound(msg, key, pulse);
+    }
+}
+function bufferConsole(message, type = 'INFO') {
+    if (consoleBuffer.length >= CONSOLE_BUFFER_MAX) {
+        consoleBuffer.shift();
+    }
+    consoleBuffer.push({ message, type });
+    if (!consoleBufferFlushScheduled) {
+        consoleBufferFlushScheduled = true;
+        setTimeout(() => {
+            consoleBufferFlushScheduled = false;
+            flushConsoleBuffer();
+        }, 1500);
+    }
+}
+
+function flushConsoleBuffer() {
+    if (!rendererReady) return;
+    const win = getMainWindow();
+    if (!win || win.isDestroyed()) return;
+    while (consoleBuffer.length) {
+        const { message, type } = consoleBuffer.shift();
+        safeSend(win, 'update-console', message, type);
     }
 }
 const SOUND_SEARCH_DIRS = ['', 'sounds'];
@@ -757,8 +783,14 @@ function sendConsole(message, type = 'INFO') {
             return;
         }
     } catch (_) {}
+    if (!rendererReady) {
+        bufferConsole(message, type);
+        return;
+    }
     const win = getMainWindow();
-    safeSend(win, 'update-console', message, type);
+    if (!safeSend(win, 'update-console', message, type)) {
+        bufferConsole(message, type);
+    }
 }
 function sendServerStateChange(isRunning) {
     localIsServerRunningGlobal = isRunning;
@@ -924,6 +956,46 @@ function shouldCheckForUpdates() {
     if (process.platform === 'win32' || process.platform === 'darwin') return true;
     if (process.platform === 'linux') return Boolean(process.env.APPIMAGE);
     return false;
+}
+
+let autoUpdateWarningShown = false;
+let autoUpdateCheckInFlight = false;
+
+function triggerAutoUpdateCheck(reason = 'manual') {
+    if (!shouldCheckForUpdates()) {
+        if (!autoUpdateWarningShown) {
+            const hint = app.isPackaged
+                ? 'Run the AppImage/installer build to enable automatic updates on this platform.'
+                : 'Auto-updates are disabled while running an unpackaged/development build.';
+            sendConsole(`Updater: Automatic updates unavailable. ${hint}`, 'WARN');
+            autoUpdateWarningShown = true;
+        }
+        return { supported: false, reason: 'unsupported' };
+    }
+    if (autoUpdateCheckInFlight) {
+        sendConsole('Updater: A previous update check is still in progress.', 'INFO');
+        return { supported: true, reason: 'in-progress' };
+    }
+    autoUpdateCheckInFlight = true;
+    try {
+        const pending = autoUpdater.checkForUpdates();
+        if (pending && typeof pending.finally === 'function') {
+            pending.finally(() => { autoUpdateCheckInFlight = false; });
+        } else {
+            autoUpdateCheckInFlight = false;
+        }
+        if (pending && typeof pending.catch === 'function') {
+            pending.catch((error) => {
+                autoUpdateCheckInFlight = false;
+                sendConsole(`Updater: Failed to complete update check: ${error.message}`, 'ERROR');
+            });
+        }
+        return { supported: true, reason };
+    } catch (error) {
+        autoUpdateCheckInFlight = false;
+        sendConsole(`Updater: Could not start update check: ${error.message}`, 'ERROR');
+        return { supported: true, reason: 'error', error: error.message };
+    }
 }
 
 function requiredJavaForVersion(mcVersion) {
@@ -1528,9 +1600,7 @@ function createWindow () {
     rpc.login({ clientId }).catch(() => {
             // No UI log
     });
-  if (shouldCheckForUpdates()) {
-    autoUpdater.checkForUpdates();
-  }
+    triggerAutoUpdateCheck('startup');
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow();});
 });
 
@@ -1612,6 +1682,7 @@ ipcMain.on('app-ready-to-show', () => {
     rendererReady = true;
     mainWindow.show();
     flushStatusBuffer();
+    flushConsoleBuffer();
 });
 
 ipcMain.handle('get-settings', () => {
