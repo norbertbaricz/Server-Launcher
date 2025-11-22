@@ -1,7 +1,7 @@
 # 🎮 Server Launcher — User Guide
 
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
-[![Version](https://img.shields.io/badge/Version-1.2.0-green.svg)](https://github.com/norbertbaricz/server-launcher/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.14-green.svg)](https://github.com/norbertbaricz/server-launcher/releases)
 
 Server Launcher is a desktop application that helps you configure and run Minecraft servers (Java: PaperMC/Vanilla, Fabric/Modded; Bedrock) without touching the terminal. This guide explains the interface in detail and what each button does, so you can use it effectively day-to-day.
 
