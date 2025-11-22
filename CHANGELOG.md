@@ -1,4 +1,19 @@
-# Changelog
+## [1.2.14] - 2025-11-22
+
+### 🆕 Added / Changed
+- Java installation information and optimized resource management
+- Enhanced server path locking and optimized settings save logic
+- Implemented server path locking mechanism and updated UI states
+- Updated server path management and locked settings during server operations
+- Implemented command latency measurement and updated performance stats display
+- Enhanced server path management and localization support
+- Updated README and documentation for version 1.2.14
+- Added versioning guidelines to documentation
+
+### 🐛 Fixed
+- Removed duplicate Java installation status message during extraction
+- Removed unused server ping utilities and cleaned up related code
+- Removed unused services and utilities
 
 ## [1.2.0] - 2025-11-14
 
