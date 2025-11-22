@@ -1,6 +1,6 @@
 ## [1.2.14] - 2025-11-22
 
-### 🆕 Added / Changed
+### ➕ Added
 - Java installation information and optimized resource management
 - Enhanced server path locking and optimized settings save logic
 - Implemented server path locking mechanism and updated UI states
@@ -9,15 +9,6 @@
 - Enhanced server path management and localization support
 - Updated README and documentation for version 1.2.14
 - Added versioning guidelines to documentation
-
-### 🐛 Fixed
-- Removed duplicate Java installation status message during extraction
-- Removed unused server ping utilities and cleaned up related code
-- Removed unused services and utilities
-
-## [1.2.0] - 2025-11-14
-
-### ➕ Added
 - **Multi-Server Support:** PaperMC (Vanilla), Fabric (Modded), and Bedrock (Dedicated Server)
 - **Dynamic UI Labeling:** Plugins/Mods/Add-ons button text and icons adapt based on server type
 - **Real-time Latency Measurement:** `/list` command probe every 1.5s with automatic console suppression
@@ -49,6 +40,9 @@
 - **Path Validation:** Directory traversal protection
 
 ### 🗑️ Removed
+- Removed duplicate Java installation status message during extraction
+- Removed unused server ping utilities and cleaned up related code
+- Removed unused services and utilities
 - Unused modules never wired into `main.js` (ServerManager, NetworkManager, ConfigManager, CleanupManager)
 - Renderer performance helpers and standalone debounce utilities
 - Bespoke Logger helper (now using electron-log directly)
