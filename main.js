@@ -24,6 +24,29 @@ const SOUND_CANDIDATES = {
   success: ['success.mp3', 'success.wav']
 };
 const DEFAULT_SOUND_TYPE = 'status';
+// Renderer readiness + buffered status messages for backward compatibility with older renderer bundles
+let rendererReady = false; // Set when renderer signals app-ready-to-show
+const statusBuffer = []; // { msg, pulse, key }
+const STATUS_BUFFER_MAX = 50;
+let statusBufferFlushScheduled = false;
+
+function bufferStatus(msg, pulse, key) {
+    if (statusBuffer.length >= STATUS_BUFFER_MAX) {
+        statusBuffer.shift(); // Drop oldest to prevent unbounded growth
+    }
+    statusBuffer.push({ msg, pulse, key });
+}
+
+function flushStatusBuffer() {
+    if (!rendererReady) return;
+    // Flush in order of arrival
+    while (statusBuffer.length) {
+        const { msg, pulse, key } = statusBuffer.shift();
+        const win = getMainWindow();
+        safeSend(win, 'update-status', msg, pulse, key);
+        handleStatusSound(msg, key, pulse);
+    }
+}
 const SOUND_SEARCH_DIRS = ['', 'sounds'];
 const ERROR_SOUND_KEYWORDS = ['error', 'failed', 'fail', 'not found', 'crash', 'stopped unexpectedly', 'timed out', 'unavailable', 'unable'];
 const SUCCESS_SOUND_KEYWORDS = ['success', 'successfully', 'ready', 'completed', 'installed', 'configured', 'downloaded', 'server started', 'server ready', 'done'];
@@ -709,6 +732,17 @@ function safeSend(win, channel, ...args) {
 }
 
 function sendStatus(fallbackMessage, pulse = false, translationKey = null) {
+    if (!rendererReady) {
+        // Store message until renderer defines its status handler; log for visibility
+        sendConsole(`[STATUS-buffered] ${fallbackMessage}`, 'INFO');
+        bufferStatus(fallbackMessage, pulse, translationKey);
+        // Schedule opportunistic flush attempt (in case ready flag set asynchronously later)
+        if (!statusBufferFlushScheduled) {
+            statusBufferFlushScheduled = true;
+            setTimeout(() => { statusBufferFlushScheduled = false; flushStatusBuffer(); }, 4000);
+        }
+        return;
+    }
     const win = getMainWindow();
     safeSend(win, 'update-status', fallbackMessage, pulse, translationKey);
     handleStatusSound(fallbackMessage, translationKey, pulse);
@@ -1575,7 +1609,9 @@ ipcMain.handle('get-icon-path', () => {
 });
 
 ipcMain.on('app-ready-to-show', () => {
+    rendererReady = true;
     mainWindow.show();
+    flushStatusBuffer();
 });
 
 ipcMain.handle('get-settings', () => {
