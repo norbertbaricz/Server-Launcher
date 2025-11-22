@@ -115,6 +115,19 @@ Settings are always accessible. Only critical fields are locked during "starting
 
 ---
 
+## Versioning
+
+We use the format $MAJOR.MINOR.PATCH$ (example: `2.3.14`).
+
+- MAJOR: Increment when there is a large update that changes core logic, architecture, or major UI flows.
+- MINOR: Increment for UI/design enhancements or new non-breaking features.
+- PATCH: Increment for bug fixes and small internal adjustments. Each additional set of fixes increases this number.
+
+Guideline:
+1. Change MAJOR only when existing integrations might need adjustments.
+2. Change MINOR when adding improvements that are backward compatible.
+3. Change PATCH for corrective releases (no new features).
+
 ## 📄 License
 
 This project is licensed under [ISC](./LICENSE.txt).
