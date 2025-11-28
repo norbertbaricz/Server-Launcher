@@ -958,6 +958,9 @@ function shouldCheckForUpdates() {
     return false;
 }
 
+// Prevent rapid duplicate logging for setup check
+let lastSetupCheckAt = 0;
+
 let autoUpdateWarningShown = false;
 let autoUpdateCheckInFlight = false;
 
@@ -1784,7 +1787,17 @@ ipcMain.handle('get-app-path', () => app.getAppPath());
 ipcMain.handle('check-initial-setup', async () => {
     // Show setup ONLY if the MinecraftServer folder does not exist at all
     const needsSetup = !fs.existsSync(serverFilesDir);
-    if (!needsSetup) sendConsole(`Setup check OK.`, 'INFO');
+    if (!needsSetup) {
+        try {
+            const now = Date.now();
+            if (now - lastSetupCheckAt > 1500) {
+                sendConsole(`Setup check OK.`, 'INFO');
+                lastSetupCheckAt = now;
+            }
+        } catch (_) {
+            sendConsole(`Setup check OK.`, 'INFO');
+        }
+    }
     return { needsSetup, config: readServerConfig() };
 });
 ipcMain.handle('get-available-versions', async (_event, serverType) => {
