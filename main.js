@@ -1,4 +1,18 @@
 const { app, BrowserWindow, ipcMain, shell, dialog, Notification } = require('electron');
+// Funcție pentru curățarea fișierelor lock/pid
+function cleanServerLocks(serverDir) {
+    const fs = require('fs');
+    const path = require('path');
+    if (!fs.existsSync(serverDir)) return;
+    const files = fs.readdirSync(serverDir);
+    files.forEach(file => {
+        if (file.endsWith('.lock') || file.endsWith('.pid') || file.endsWith('.tmp')) {
+            try {
+                fs.unlinkSync(path.join(serverDir, file));
+            } catch (_) {}
+        }
+    });
+}
 const path = require('node:path');
 const fs = require('node:fs');
 const { version } = require('./package.json');
@@ -2593,6 +2607,9 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
 
 ipcMain.on('start-server', async () => {
     resetIdleTimer();
+    // Curăță procesele rămase și fișierele lock/pid înainte de pornire
+    await killStrayServerProcess();
+    cleanServerLocks(serverFilesDir);
     if (serverProcess) {
         sendConsole('Server is already running.', 'WARN');
         return;
@@ -2698,6 +2715,21 @@ ipcMain.on('start-server', async () => {
 
         serverProcess.stdout.on('data', (data) => {
             const rawOutput = data.toString();
+
+            // Funcție pentru curățarea fișierelor lock/pid
+            function cleanServerLocks(serverDir) {
+                const fs = require('fs');
+                const path = require('path');
+                if (!fs.existsSync(serverDir)) return;
+                const files = fs.readdirSync(serverDir);
+                files.forEach(file => {
+                    if (file.endsWith('.lock') || file.endsWith('.pid') || file.endsWith('.tmp')) {
+                        try {
+                            fs.unlinkSync(path.join(serverDir, file));
+                        } catch (_) {}
+                    }
+                });
+            }
             const cleanOutput = stripAnsiCodes(rawOutput).trimEnd();
 
             // Detect /list output for latency probe (Java)
