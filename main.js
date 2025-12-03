@@ -27,7 +27,10 @@ const log = require('electron-log');
 const RPC = require('discord-rpc');
 const pidusage = require('pidusage');
 const AnsiToHtml = require('ansi-to-html');
-const find = require('find-process');
+let find = require('find-process');
+if (typeof find !== 'function' && find?.default) {
+    find = find.default;
+}
 const AdmZip = require('adm-zip');
 const NotificationService = require('./src/services/NotificationService');
 

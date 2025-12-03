@@ -1,6 +1,6 @@
 {
   "name": "server-launcher",
-  "version": "1.2.16",
+  "version": "1.2.17",
   "description": "A simple and powerful launcher to create, manage, and run your own Minecraft server directly from your computer. Get started in minutes!",
   "main": "main.js",
   "scripts": {
@@ -25,17 +25,17 @@
   "email": "maxultimat3@yahoo.com",
   "license": "ISC",
   "devDependencies": {
-    "electron": "^36.2.1",
+    "electron": "^39.2.4",
     "electron-builder": "^26.0.12"
   },
   "dependencies": {
-    "adm-zip": "^0.5.10",
+    "adm-zip": "^0.5.16",
     "ansi-to-html": "^0.7.2",
     "discord-rpc": "^4.0.1",
-    "electron-log": "^5.4.1",
-    "electron-updater": "^6.3.1",
+    "electron-log": "^5.4.3",
+    "electron-updater": "^6.6.2",
     "pidusage": "^4.0.1",
-    "find-process": "^1.4.7"
+    "find-process": "^2.0.0"
   },
   "build": {
     "asar": true,

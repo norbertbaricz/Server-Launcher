@@ -90,6 +90,53 @@ const maximizeBtn = document.getElementById('maximize-btn');
 const closeBtn = document.getElementById('close-btn');
 const maximizeBtnIcon = maximizeBtn.querySelector('i');
 
+const MAX_CONSOLE_LINES = 1000;
+const LINES_PER_FLUSH = 400;
+const pendingConsoleLines = [];
+let consoleFlushScheduled = false;
+
+function scheduleConsoleFlush() {
+    if (consoleFlushScheduled) return;
+    consoleFlushScheduled = true;
+    requestAnimationFrame(flushConsoleLines);
+}
+
+function flushConsoleLines() {
+    consoleFlushScheduled = false;
+    if (!pendingConsoleLines.length || !consoleOutput) return;
+
+    const fragment = document.createDocumentFragment();
+    let processed = 0;
+    while (pendingConsoleLines.length && processed < LINES_PER_FLUSH) {
+        const html = pendingConsoleLines.shift();
+        const line = document.createElement('div');
+        line.classList.add('console-message');
+        line.innerHTML = html;
+        fragment.appendChild(line);
+        processed += 1;
+    }
+
+    consoleOutput.appendChild(fragment);
+
+    while (consoleOutput.childElementCount > MAX_CONSOLE_LINES) {
+        consoleOutput.removeChild(consoleOutput.firstElementChild);
+    }
+
+    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+
+    if (pendingConsoleLines.length) {
+        scheduleConsoleFlush();
+    }
+}
+
+function enqueueConsoleLine(html) {
+    pendingConsoleLines.push(html);
+    if (pendingConsoleLines.length > MAX_CONSOLE_LINES * 2) {
+        pendingConsoleLines.splice(0, pendingConsoleLines.length - MAX_CONSOLE_LINES * 2);
+    }
+    scheduleConsoleFlush();
+}
+
 let localIsServerRunning = false;
 let currentServerConfig = {};
 let isModalAnimating = false;
@@ -108,6 +155,7 @@ let setupRequired = false;
 let activeViewKey = dashboardView ? 'dashboard' : null;
 let isStarting = false;
 let isStopping = false;
+let pendingAutoStartRequest = null;
 
 const viewMap = {
     dashboard: dashboardView,
@@ -319,9 +367,7 @@ async function populateLanguageSelects() {
 
 
 function addToConsole(message, type = 'INFO') {
-    const line = document.createElement('div');
-    line.classList.add('console-message');
-
+    let renderedLine = '';
     if (type === 'SERVER_LOG_HTML') {
         let finalHtml = message;
         const prefixRegex = /\[(\d{2}:\d{2}:\d{2}) (INFO|WARN|ERROR)\]:/g;
@@ -332,7 +378,7 @@ function addToConsole(message, type = 'INFO') {
             return `<span style="color: #9ca3af;">[${timestamp} <span style="color: ${levelColor}; font-weight: bold;">${level}</span>]:</span>`;
         });
         
-        line.innerHTML = finalHtml;
+        renderedLine = finalHtml;
     } else {
         let typeColor = '#82aaff';
         let typeText = type.toUpperCase();
@@ -357,17 +403,10 @@ function addToConsole(message, type = 'INFO') {
             String(now.getSeconds()).padStart(2, '0')
         ].join(':');
 
-        const timestampPrefix = `<span style="color: #9ca3af;">[${timestamp}]</span> `;
-        const typePrefix = `<span style="color: ${typeColor}; font-weight: bold;">[${typeText}]</span> `;
-        line.innerHTML = `${timestampPrefix}${typePrefix}${sanitizedMessage}`;
+        const unifiedPrefix = `<span style="color: #9ca3af;">[${timestamp} <span style="color: ${typeColor}; font-weight: bold;">${typeText}</span>]:</span>`;
+        renderedLine = `${unifiedPrefix} ${sanitizedMessage}`;
     }
-    
-    consoleOutput.appendChild(line);
-    const MAX_CONSOLE_LINES = 1000;
-    while (consoleOutput.childElementCount > MAX_CONSOLE_LINES) {
-        consoleOutput.removeChild(consoleOutput.firstElementChild);
-    }
-    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    enqueueConsoleLine(renderedLine);
 }
 
 function getStatusColor(text) {
@@ -423,8 +462,9 @@ function updateButtonStates(isRunning) {
     applyServerTypeUiState(currentServerConfig?.serverType || 'papermc');
     const setupComplete = !setupRequired;
     
-    startButton.style.display = (isRunning || !setupComplete || autoStartIsActive || isDownloadingFromServer) ? 'none' : 'inline-flex';
-    startButton.disabled = isRunning || !setupComplete || autoStartIsActive || isDownloadingFromServer || isStarting;
+    const shouldHideStart = isRunning || !setupComplete;
+    startButton.style.display = shouldHideStart ? 'none' : 'inline-flex';
+    startButton.disabled = shouldHideStart || autoStartIsActive || isDownloadingFromServer || isStarting;
     
     stopButton.style.display = (!isRunning) ? 'none' : 'inline-flex';
     stopButton.disabled = !isRunning || isStopping;
@@ -819,15 +859,38 @@ settingsButton.addEventListener('click', async () => {
 closeSettingsButton.addEventListener('click', () => closeSettingsView());
 
 saveSettingsButton.addEventListener('click', async () => {
+    const prevAutoStartEnabled = !!launcherSettingsCache.autoStartServer;
+    const prevAutoStartDelay = launcherSettingsCache.autoStartDelay || 5;
+
     launcherSettingsCache.openAtLogin = startWithSystemCheckbox.checked;
-    launcherSettingsCache.autoStartServer = autoStartServerCheckbox.checked;
-    launcherSettingsCache.autoStartDelay = parseInt(autoStartDelaySlider.value, 10);
+    const autoStartEnabled = autoStartServerCheckbox.checked;
+    const selectedAutoStartDelay = parseInt(autoStartDelaySlider.value, 10);
+    launcherSettingsCache.autoStartServer = autoStartEnabled;
+    launcherSettingsCache.autoStartDelay = selectedAutoStartDelay;
     const selectedLanguage = languageSettingsSelect.value;
     const prevLanguage = launcherSettingsCache.language || 'en';
     launcherSettingsCache.language = selectedLanguage;
     launcherSettingsCache.notificationsEnabled = desktopNotificationsCheckbox.checked;
     
     window.electronAPI.setSettings(launcherSettingsCache);
+
+    if (autoStartEnabled) {
+        const delayChanged = selectedAutoStartDelay !== prevAutoStartDelay;
+        if (!localIsServerRunning && !isStarting && !isStopping) {
+            if (!prevAutoStartEnabled || delayChanged || !autoStartIsActive) {
+                if (beginAutoStartCountdown(selectedAutoStartDelay, 'initial')) {
+                    addToConsole(`Auto-start countdown scheduled in ${selectedAutoStartDelay}s.`, 'INFO');
+                }
+            }
+        } else if (!prevAutoStartEnabled || delayChanged) {
+            addToConsole('Auto-start enabled and will trigger after the current session ends.', 'INFO');
+        }
+    } else if (prevAutoStartEnabled || autoStartIsActive) {
+        if (cancelAutoStartCountdown('autoStartCancelled')) {
+            addToConsole('Auto-start countdown stopped via Settings.', 'INFO');
+        }
+    }
+
     // Apply language only if it actually changed
     if (selectedLanguage !== prevLanguage) {
         try { await setLanguage(selectedLanguage); } catch (_) {}
@@ -933,12 +996,7 @@ stopButton.addEventListener('click', () => {
     isStopping = true;
     stopButton.disabled = true;
     stopButton.classList.add('btn-disabled');
-    autoStartIsActive = false;
-    if (countdownInterval) {
-        clearInterval(countdownInterval);
-        countdownInterval = null;
-    }
-    setStatus(currentTranslations['autoStartCancelled'] || "Auto-start cancelled.", false, 'autoStartCancelled');
+    cancelAutoStartCountdown('autoStartCancelled');
     updateButtonStates(localIsServerRunning);
     window.electronAPI.stopServer(); 
 });
@@ -1067,6 +1125,7 @@ window.electronAPI.onSetupFinished(async () => {
 });
 
 window.electronAPI.onServerStateChange(async (isRunning) => {
+    localIsServerRunning = isRunning;
     if (isRunning) {
         isStarting = false;
         autoStartIsActive = false;
@@ -1074,6 +1133,7 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
             clearInterval(countdownInterval);
             countdownInterval = null;
         }
+        pendingAutoStartRequest = null;
         setStatus(currentTranslations['serverRunning'] || 'Server is running.', false, 'serverRunning');
         await fetchAndDisplayIPs(true);
         
@@ -1108,6 +1168,20 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         serverTpsSpan.style.color = '';
         allocatedRamCache = '0'; 
     }
+
+    if (
+        !isRunning &&
+        pendingAutoStartRequest &&
+        !autoStartIsActive &&
+        !isStarting &&
+        !isStopping &&
+        (launcherSettingsCache?.autoStartServer)
+    ) {
+        const { delay, type } = pendingAutoStartRequest;
+        pendingAutoStartRequest = null;
+        beginAutoStartCountdown(delay, type);
+    }
+
     updateButtonStates(isRunning);
     if (!isRunning) {
         await refreshUISetupState();
@@ -1281,17 +1355,41 @@ function startCountdown(seconds, messageKey, callback) {
     countdownInterval = setInterval(updateStatus, 1000);
 }
 
-window.electronAPI.onStartCountdown((type, delay) => {
-    addToConsole(`Received 'start-countdown' event. Type: ${type}, Delay: ${delay}`, 'INFO');
-    
-    if (localIsServerRunning && type === 'initial') {
-        addToConsole('Server is already running, cancelling initial countdown.', 'WARN');
-        return;
+function cancelAutoStartCountdown(reasonKey = null) {
+    const wasActive = autoStartIsActive || !!countdownInterval;
+    const hadPending = !!pendingAutoStartRequest;
+    autoStartIsActive = false;
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
     }
+    pendingAutoStartRequest = null;
+    statusBarContent.classList.remove('status-bar-pulse');
+    if ((wasActive || hadPending) && reasonKey) {
+        const fallback = currentTranslations[reasonKey] || 'Auto-start cancelled.';
+        setStatus(fallback, false, reasonKey);
+    }
+    if (wasActive || hadPending) {
+        updateButtonStates(localIsServerRunning);
+    }
+    return wasActive || hadPending;
+}
 
+function beginAutoStartCountdown(delay, type = 'initial') {
+    if (localIsServerRunning) {
+        addToConsole('Auto-start countdown waiting for server to stop (server currently running).', 'INFO');
+        return false;
+    }
+    if (isStarting) {
+        addToConsole('Auto-start countdown skipped because the server is already starting.', 'INFO');
+        return false;
+    }
+    if (isStopping) {
+        addToConsole('Auto-start countdown delayed until the server fully stops.', 'INFO');
+        return false;
+    }
     autoStartIsActive = true;
     updateButtonStates(localIsServerRunning);
-
     const messageKey = type === 'initial' ? 'autoStartingServer' : 'autoRestartingServer';
     startCountdown(delay, messageKey, () => {
         if (autoStartIsActive && !localIsServerRunning) {
@@ -1303,6 +1401,21 @@ window.electronAPI.onStartCountdown((type, delay) => {
             updateButtonStates(localIsServerRunning);
         }
     });
+    return true;
+}
+
+function queueAutoStartRequest(delay, type, message) {
+    pendingAutoStartRequest = { delay, type };
+    if (message) {
+        addToConsole(message, 'INFO');
+    }
+}
+
+window.electronAPI.onStartCountdown((type, delay) => {
+    addToConsole(`Received 'start-countdown' event. Type: ${type}, Delay: ${delay}`, 'INFO');
+    if (!beginAutoStartCountdown(delay, type)) {
+        queueAutoStartRequest(delay, type, 'Auto-start countdown queued until the server is fully stopped.');
+    }
 });
 
 window.electronAPI.onJavaInstallRequired(() => {
