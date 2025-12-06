@@ -1081,6 +1081,68 @@ function showDesktopNotification(title, body) {
     }
 }
 
+function formatServerLabel(type, version) {
+    const parts = [];
+    if (type) parts.push(type);
+    if (version) parts.push(version);
+    return parts.join(' ').trim() || 'Server';
+}
+
+const EXIT_CODE_HINTS = {
+    0: 'Server stopped normally.',
+    1: 'Generic failure. Check the latest console lines for plugin or mod errors.',
+    64: 'Bad usage or corrupted arguments. Verify your command-line options.',
+    65: 'Data/config format error. Review server.properties and JSON files.',
+    70: 'Software error — usually a plugin/mod crash during startup.',
+    71: 'OS or permissions error when touching the filesystem.',
+    127: 'Java executable not found. Check your Java path.',
+    130: 'Interrupted manually (Ctrl+C or terminal closed).',
+    134: 'Process aborted unexpectedly (native crash or assert).',
+    137: 'Killed by the OS (often out-of-memory).',
+    143: 'Stopped gracefully via Stop/SIGTERM.',
+    255: 'Process exit status out of range. Inspect the logs.'
+};
+
+const SIGNAL_HINTS = {
+    SIGINT: 'Interrupted manually (Ctrl+C or terminal closed).',
+    SIGTERM: 'Stopped by the system (Stop button or shutdown).',
+    SIGKILL: 'Force killed (kill -9 or OS watchdog).',
+    SIGABRT: 'Process aborted (native crash).'
+};
+
+function formatExitTechnicalDetails(code, signal) {
+    const parts = [];
+    if (typeof code === 'number') {
+        parts.push(`code ${code}`);
+    } else if (code !== undefined && code !== null) {
+        parts.push(`code ${code}`);
+    }
+    if (signal) {
+        parts.push(`signal ${signal}`);
+    }
+    return parts.length ? parts.join(', ') : 'unknown reason';
+}
+
+function explainServerExit(code, signal) {
+    if (signal && SIGNAL_HINTS[signal]) {
+        return SIGNAL_HINTS[signal];
+    }
+    if (typeof code === 'number' && EXIT_CODE_HINTS[code]) {
+        return EXIT_CODE_HINTS[code];
+    }
+    if (typeof code === 'number') {
+        return `Process exited with code ${code}. Check the server console for details.`;
+    }
+    return 'Process exited for an unknown reason. Check the last server logs for clues.';
+}
+
+function describeServerShutdown(code, signal) {
+    return {
+        technical: formatExitTechnicalDetails(code, signal),
+        hint: explainServerExit(code, signal)
+    };
+}
+
 function resolveAssetFile(relativePath) {
     try {
         const resources = process.resourcesPath;
@@ -1625,12 +1687,19 @@ function createWindow () {
 });
 
 autoUpdater.on('checking-for-update', () => sendConsole('Updater: Checking for updates...', 'INFO'));
-autoUpdater.on('update-available', (info) => sendConsole(`Updater: Update available! Version: ${info.version}`, 'SUCCESS'));
+autoUpdater.on('update-available', (info) => {
+    sendConsole(`Updater: Update available! Version: ${info.version}`, 'SUCCESS');
+    showDesktopNotification('Update Available', `Version ${info.version} is downloading in the background.`);
+});
 autoUpdater.on('update-not-available', (info) => sendConsole('Updater: No new updates available.', 'INFO'));
-autoUpdater.on('error', (err) => sendConsole('Updater: Error during update. ' + err.message, 'ERROR'));
+autoUpdater.on('error', (err) => {
+    sendConsole('Updater: Error during update. ' + err.message, 'ERROR');
+    showDesktopNotification('Update Error', err.message);
+});
 autoUpdater.on('download-progress', (p) => sendStatus(`Download speed: ${Math.round(p.bytesPerSecond / 1024)} KB/s - Downloaded ${Math.round(p.percent)}%`, true));
 autoUpdater.on('update-downloaded', (info) => {
   sendConsole(`Updater: Update downloaded (${info.version}). It will be installed on restart.`, 'SUCCESS');
+    showDesktopNotification('Update Ready', `Version ${info.version} downloaded. Restart Server Launcher to install.`);
   dialog.showMessageBox({
     type: 'info',
     title: 'Update Ready',
@@ -2109,11 +2178,13 @@ async function startBedrockServer(serverConfig) {
     if (!fs.existsSync(execPath)) {
         sendConsole(`${execName} not found.`, 'ERROR');
         sendStatus('Server executable not found.', false, 'serverJarNotFound');
+        showDesktopNotification('Server Files Missing', 'Bedrock executable not found. Run Configure first.');
         return;
     }
     if (!serverConfig.version) {
         sendConsole('Server version missing in config.', 'ERROR');
         sendStatus('Config error.', false, 'configError');
+        showDesktopNotification('Configuration Needed', 'Select a Bedrock version before starting the server.');
         return;
     }
 
@@ -2151,6 +2222,7 @@ async function startBedrockServer(serverConfig) {
         serverProcess = null;
         sendServerStateChange(false);
         sendStatus('Error starting server.', false, 'error');
+        showDesktopNotification('Server Start Failed', error.message);
         return;
     }
 
@@ -2214,7 +2286,8 @@ async function startBedrockServer(serverConfig) {
                 const cfg = readServerConfig();
                 const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                 const ver = cfg.version || '';
-                showDesktopNotification('Server Started', `${type} ${ver} is now running.`);
+                const serverLabel = formatServerLabel(type, ver);
+                showDesktopNotification('Server Started', `${serverLabel} is now running.`);
                 playSoundEffect('success');
             } catch (_) {}
             // Start periodic /list latency probe (Bedrock)
@@ -2277,31 +2350,34 @@ async function startBedrockServer(serverConfig) {
                 const cfg = readServerConfig();
                 const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                 const ver = cfg.version || '';
-                showDesktopNotification('Server Stopped', `${type} ${ver} was stopped manually.`);
+                const serverLabel = formatServerLabel(type, ver);
+                showDesktopNotification('Server Stopped', `${serverLabel} was stopped manually.`);
             } catch (_) {}
         } else {
+            const exitDetails = describeServerShutdown(code, signal);
             const launcherSettings = readLauncherSettings();
             if (launcherSettings.autoStartServer) {
                 sendConsole('Server stopped unexpectedly. Attempting to auto-restart...', 'WARN');
+                sendConsole(`Crash diagnostics: ${exitDetails.hint} (${exitDetails.technical}).`, 'WARN');
                 const delay = launcherSettings.autoStartDelay || 5;
                 safeSend(mainWindow, 'start-countdown', 'restart', delay);
                 try {
                     const cfg = readServerConfig();
                     const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                     const ver = cfg.version || '';
-                    showDesktopNotification('Server Crashed', `${type} ${ver} crashed. Auto-restarting in ${delay}s...`);
+                    const serverLabel = formatServerLabel(type, ver);
+                    showDesktopNotification('Server Crashed', `${serverLabel} crashed (${exitDetails.technical}). ${exitDetails.hint} Auto-restarting in ${delay}s...`);
                     playSoundEffect('error');
                 } catch (_) {}
             } else {
                 sendStatus('Server stopped unexpectedly.', false, 'serverStoppedUnexpectedly');
-                const formattedCode = typeof code === 'number' ? code : 'unknown';
-                const signalInfo = signal ? ` (signal ${signal})` : '';
-                sendConsole(`Server process exited unexpectedly with code ${formattedCode}${signalInfo}.`, 'ERROR');
+                sendConsole(`Server process exited unexpectedly (${exitDetails.technical}). ${exitDetails.hint}`, 'ERROR');
                 try {
                     const cfg = readServerConfig();
                     const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                     const ver = cfg.version || '';
-                    showDesktopNotification('Server Crashed', `${type} ${ver} exited unexpectedly (code ${formattedCode}${signalInfo}).`);
+                    const serverLabel = formatServerLabel(type, ver);
+                    showDesktopNotification('Server Crashed', `${serverLabel} exited unexpectedly (${exitDetails.technical}). ${exitDetails.hint}`);
                     playSoundEffect('error');
                 } catch (_) {}
             }
@@ -2401,6 +2477,7 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
 
             sendStatus('PaperMC downloaded successfully!', false, 'downloadSuccess');
             sendConsole(`${paperJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
+            showDesktopNotification('Download Complete', `PaperMC ${mcVersion} is ready. Press Start to launch.`);
             const updated = readServerConfig();
             updated.serverType = chosenType;
             updated.version = mcVersion;
@@ -2462,6 +2539,7 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
 
             sendStatus('Fabric Server installed successfully!', false, 'downloadSuccessFabric');
             sendConsole(`${fabricJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
+            showDesktopNotification('Download Complete', `Fabric ${mcVersion} is ready. Press Start to launch.`);
             const updated = readServerConfig();
             updated.serverType = chosenType;
             updated.version = mcVersion;
@@ -2586,6 +2664,7 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
 
             sendStatus('Bedrock server ready!', false, 'downloadSuccess');
             sendConsole(`Bedrock server ${mcVersion} downloaded and extracted.`, 'SUCCESS');
+            showDesktopNotification('Download Complete', `Bedrock ${mcVersion} is ready. Press Start to launch.`);
         }
 
         safeSend(getMainWindow(), 'setup-finished');
@@ -2604,6 +2683,7 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
     } catch (error) {
         sendStatus('Download failed.', false, 'downloadFailed');
         sendConsole(`ERROR: ${error.message}`, 'ERROR');
+        showDesktopNotification('Download Failed', error.message || 'The download was interrupted.');
         safeSend(getMainWindow(), 'setup-finished');
     }
 });
@@ -2615,6 +2695,7 @@ ipcMain.on('start-server', async () => {
     cleanServerLocks(serverFilesDir);
     if (serverProcess) {
         sendConsole('Server is already running.', 'WARN');
+        showDesktopNotification('Server Already Running', 'Stop the current server before starting it again.');
         return;
     }
     const serverConfig = readServerConfig();
@@ -2628,11 +2709,13 @@ ipcMain.on('start-server', async () => {
     if (!fs.existsSync(serverJarPath)) {
         sendConsole(`${jarName} not found.`, 'ERROR');
         sendStatus('Server JAR not found.', false, 'serverJarNotFound');
+        showDesktopNotification('Server Files Missing', `${jarName} not found. Run Configure first.`);
         return;
     }
     if (!serverConfig.version) {
         sendConsole('Server version missing in config.', 'ERROR');
         sendStatus('Config error.', false, 'configError');
+        showDesktopNotification('Configuration Needed', 'Select a Minecraft version before starting the server.');
         return;
     }
     const eulaPath = path.join(serverFilesDir, 'eula.txt');
@@ -2644,6 +2727,7 @@ ipcMain.on('start-server', async () => {
     } catch (error) {
         sendConsole(`EULA file error: ${error.message}`, 'ERROR');
         sendStatus('EULA error.', false, 'eulaError');
+        showDesktopNotification('EULA Error', 'Could not write eula.txt. Check permissions and try again.');
         return;
     }
     let ramToUseForJava = "";
@@ -2766,7 +2850,8 @@ ipcMain.on('start-server', async () => {
                     const cfg = readServerConfig();
                     const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                     const ver = cfg.version || '';
-                    showDesktopNotification('Server Started', `${type} ${ver} is now running.`);
+                    const serverLabel = formatServerLabel(type, ver);
+                    showDesktopNotification('Server Started', `${serverLabel} is now running.`);
                     playSoundEffect('success');
                 } catch (_) {}
                 // Start periodic /list latency probe (Java)
@@ -2829,31 +2914,34 @@ ipcMain.on('start-server', async () => {
                     const cfg = readServerConfig();
                     const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                     const ver = cfg.version || '';
-                    showDesktopNotification('Server Stopped', `${type} ${ver} was stopped manually.`);
+                    const serverLabel = formatServerLabel(type, ver);
+                    showDesktopNotification('Server Stopped', `${serverLabel} was stopped manually.`);
                 } catch (_) {}
             } else {
+                const exitDetails = describeServerShutdown(code, signal);
                 const launcherSettings = readLauncherSettings();
                 if (launcherSettings.autoStartServer) {
                     sendConsole('Server stopped unexpectedly. Attempting to auto-restart...', 'WARN');
+                    sendConsole(`Crash diagnostics: ${exitDetails.hint} (${exitDetails.technical}).`, 'WARN');
                     const delay = launcherSettings.autoStartDelay || 5;
                     safeSend(mainWindow, 'start-countdown', 'restart', delay);
                     try {
                         const cfg = readServerConfig();
                         const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                         const ver = cfg.version || '';
-                        showDesktopNotification('Server Crashed', `${type} ${ver} crashed. Auto-restarting in ${delay}s...`);
+                        const serverLabel = formatServerLabel(type, ver);
+                        showDesktopNotification('Server Crashed', `${serverLabel} crashed (${exitDetails.technical}). ${exitDetails.hint} Auto-restarting in ${delay}s...`);
                         playSoundEffect('error');
                     } catch (_) {}
                 } else {
                     sendStatus('Server stopped unexpectedly.', false, 'serverStoppedUnexpectedly');
-                    const formattedCode = typeof code === 'number' ? code : 'unknown';
-                    const signalInfo = signal ? ` (signal ${signal})` : '';
-                    sendConsole(`Server process exited unexpectedly with code ${formattedCode}${signalInfo}.`, 'ERROR');
+                    sendConsole(`Server process exited unexpectedly (${exitDetails.technical}). ${exitDetails.hint}`, 'ERROR');
                     try {
                         const cfg = readServerConfig();
                         const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                         const ver = cfg.version || '';
-                        showDesktopNotification('Server Crashed', `${type} ${ver} exited unexpectedly (code ${formattedCode}${signalInfo}).`);
+                        const serverLabel = formatServerLabel(type, ver);
+                        showDesktopNotification('Server Crashed', `${serverLabel} exited unexpectedly (${exitDetails.technical}). ${exitDetails.hint}`);
                         playSoundEffect('error');
                     } catch (_) {}
                 }
@@ -2864,6 +2952,7 @@ ipcMain.on('start-server', async () => {
             if (performanceStatsInterval) clearInterval(performanceStatsInterval); 
             sendConsole(`Failed to start process: ${err.message}`, 'ERROR');
             sendStatus(err.message.includes('ENOENT') ? 'Java not found!' : 'Server start failed.', false, err.message.includes('ENOENT') ? 'javaNotFound' : 'serverStartFailed');
+            showDesktopNotification('Server Start Failed', err.message.includes('ENOENT') ? 'Java executable not found. Install Java 17/21 and try again.' : err.message);
             serverProcess = null;
             sendServerStateChange(false);
         });
@@ -2873,6 +2962,7 @@ ipcMain.on('start-server', async () => {
         serverProcess = null;
         sendServerStateChange(false);
         sendStatus('Error starting server.', false, 'error');
+        showDesktopNotification('Server Start Failed', error.message);
     }
 });
 
