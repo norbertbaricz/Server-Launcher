@@ -1,132 +1,106 @@
-# 🎮 Server Launcher — User Guide
+# 🎮 Server Launcher — Download & Play
 
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
-[![Version](https://img.shields.io/badge/Version-1.2.14-green.svg)](https://github.com/norbertbaricz/server-launcher/releases)
+[![Version](https://img.shields.io/badge/Version-1.2.17-green.svg)](https://github.com/norbertbaricz/server-launcher/releases)
 
-Server Launcher is a desktop application that helps you configure and run Minecraft servers (Java: PaperMC/Vanilla, Fabric/Modded; Bedrock) without touching the terminal. This guide explains the interface in detail and what each button does, so you can use it effectively day-to-day.
-
----
-
-## 📋 Overview
-
-- Dashboard with live status, local/public IPs, latency, and memory usage.
-- Quick Start/Stop buttons and command input to the server console.
-- Plugins/Mods/Add-ons page for managing extensions and editing `server.properties`.
-- Settings with three sections: Server Configuration, Server Data Location, Launcher Settings.
-- Guided Setup on first launch or when server files are missing.
+Server Launcher is the easiest way to host your own Minecraft Java (Paper/Fabric/Vanilla) or Bedrock server without touching the terminal. You do **not** need to clone this repository or install any developer tools—simply download the app, press Start, and invite your friends.
 
 ---
 
-## 🖥️ Dashboard (Main Screen)
+## 🚀 Quick Download (takes 1 minute)
 
-- **Status Bar:** Displays current state (e.g., "Server is running.", "Server ready.", "Downloading…"). Color changes based on context.
-- **Local IP / Public IP:** Shows network addresses. Port is automatically appended when the server is running (extracted from `server.properties`).
-- **Latency:** Measured via `/list` command sent periodically (every 1.5s) when server is running. Automatic probes are hidden from console; manual `/list` commands remain visible.
-- **Memory:** Current RAM consumption reported from the server process.
-- **Console:** Displays server logs. The command input below sends commands (press Enter). All commands are sanitized before being sent.
-- **Start:** Launches the server. During "starting", critical settings are automatically locked.
-- **Stop:** Safely stops the server.
+1. Open the [Releases](https://github.com/norbertbaricz/server-launcher/releases) page.
+2. Pick the latest version at the top.
+3. Download the file that matches your computer:
+   - `Server-Launcher-Setup-<version>.exe` for Windows
+   - `Server-Launcher-mac-<version>.zip` for macOS
+   - `Server-Launcher-<version>.AppImage` for Linux
+4. Double-click the download to install/run the app.
 
----
-
-## 🔧 Settings
-
-Settings are always accessible. Only critical fields are locked during "starting" or when the server is running.
-
-### 1) Server Configuration
-- **Server Type:** PaperMC (Vanilla), Fabric (Modded), or Bedrock.
-- **Minecraft Version:** List of available versions for the selected type.
-- **RAM Allocation:** How much memory the server uses (or `auto`).
-- **Java Arguments:** Only applicable for Java servers (Paper/Fabric).
-- **Save & Apply:** Saves settings. Reconfiguration/download only occurs if you modified Server Type/Version/RAM/Java Args. If nothing changed, it skips reconfiguration and refreshes Dashboard IPs correctly.
-
-### 2) Server Data Location
-- Displays the path where server files are stored. Default: `Documents/MinecraftServer` (all operating systems).
-- **Choose:** Change the location (disabled if Locked or server is starting/running).
-- **Lock / Unlock:** Locks/unlocks the ability to change the location.
-  - By default, the path is Locked at application startup.
-  - Both Lock/Unlock and Choose are disabled during "starting" or "running".
-
-### 3) Launcher Settings
-- **Language:** Interface language. Applied ONLY on Save & Apply.
-- **Theme:** Visual theme (Skypixel, Nord, Aurora, Midnight, Emerald, Sunset, Crimson, Ocean, Grape, Neon).
-- **Desktop Notifications:** Notifications with sound for start/stop/crash events.
-- **Start with system:** Launch the launcher with the operating system.
-- **Auto-start server:** Automatically start the server after a configurable countdown.
+That is all—no `git clone`, no coding, no extra software.
 
 ---
 
-## 🧩 Plugins / Mods / Add-ons
+## 🧱 What You Get
 
-- The label adapts automatically based on server type:
-  - PaperMC: "Plugins"
-  - Fabric: "Mods"
-  - Bedrock: "Add-ons"
-- **Upload:** Upload plugins/mods (disabled for Bedrock; manage manually from the server folder).
-- **Open Folder:** Opens the corresponding folder (plugins/mods or Bedrock folder).
-- **Server Properties:** Edit values in `server.properties`; press Save & Apply on the page to save changes.
-- **Delete:** Delete a plugin/mod (disabled for Bedrock).
+- Guided setup that creates your Minecraft server folder for you.
+- Start/Stop buttons, live console, RAM usage, IP + port display, and ping checker.
+- Plugin/Mod/Add-on upload page with one-click folder access.
+- Automatic language, theme, and notification options.
 
 ---
 
-## 🧭 Setup (Initial Configuration)
+## 💾 Install by Operating System
 
-- Setup appears only when the `MinecraftServer` folder is missing from the configured location.
-- Choose server type, version, and RAM. Press Download / Configure.
-- The launcher downloads necessary files and completes setup.
+### 🪟 Windows (10/11)
 
----
+1. Download `Server-Launcher-Setup-<version>.exe` from Releases.
+2. Double-click it and follow the installer (next → next → finish).
+3. If SmartScreen asks for confirmation, click **More info → Run anyway**. This happens because the app is not in the Microsoft Store yet.
+4. You now have Server Launcher in your Start menu and can pin it to the taskbar.
 
-## 🌐 Network & Latency
+### 🍎 macOS (11 Big Sur or newer)
 
-- **Local/Public IP:** Displayed on Dashboard. When server is running, the port from `server.properties` is automatically appended.
-- **Latency:** Measured via `/list` probe every 1.5s. Automatic commands are hidden from console (to avoid spam); manual `/list` commands appear normally.
+1. Download `Server-Launcher-mac-<version>.zip`.
+2. Open the zip and drag `Server Launcher.app` into `Applications`.
+3. First launch: right-click the app → **Open** → **Open** (this lets macOS trust the app).
+4. After that you can open it normally from Launchpad or Spotlight.
 
----
+### 🐧 Linux (Ubuntu, Debian, Fedora, Arch, etc.)
 
-## 🛡️ Safety & Runtime Behavior
+1. Download `Server-Launcher-<version>.AppImage`.
+2. Make it executable:
 
-- **EPIPE Protection:** If the server process exits, the launcher stops writing to stdin and clears related intervals.
-- **Command Sanitization:** Console input is validated before being sent.
-- **Runtime Control Locking:**
-  - "Server Configuration" (critical fields) locks during starting/running.
-  - "Server Data Location" (Choose and Lock/Unlock) are disabled during starting/running.
-- Settings remain accessible at all times (only locked fields are disabled when appropriate).
-- Language applies only on Save & Apply (not immediately on selection).
+   ```bash
+   chmod +x Server-Launcher-<version>.AppImage
+   ```
 
----
+3. Double-click the file or run `./Server-Launcher-<version>.AppImage`.
+4. Optional: move it to `/opt/ServerLauncher/` and create a desktop shortcut for quick access.
 
-## ❓ Frequently Asked Questions
-
-**Where are the server files located?**
-- Default: `Documents/MinecraftServer`. You can choose a different path from Settings → Server Data Location (when not running/starting and if not Locked).
-
-**Why can't I use "Choose" or "Lock/Unlock" when the server is running?**
-- For safety, the location cannot be changed during starting/running.
-
-**Why don't I see the port when the server is stopped?**
-- The port is displayed with the IP when the server is running (read from `server.properties`).
-
-**Why doesn't `/list` appear in the console periodically?**
-- Automatic probe commands are hidden to avoid spam. If you type `/list` manually, it appears normally.
-
-**I pressed Save & Apply without changing Server Configuration settings and the IPs stayed on "fetching".**
-- This has been fixed. IPs now refresh correctly even without reconfiguration.
+> Tip: On Ubuntu you might need to install AppImage/FUSE support (`sudo apt install libfuse2`).
 
 ---
 
-## Versioning
+## 🕹️ First Launch Setup (kid friendly!)
 
-We use the format $MAJOR.MINOR.PATCH$ (example: `2.3.14`).
+1. Pick where the server files should live (default is `Documents/MinecraftServer`).
+2. Choose your server type (Paper, Fabric, or Bedrock) and Minecraft version.
+3. Choose how much RAM to give the server (or leave it on Auto).
+4. Press **Download & Configure** and wait for the progress bar to finish.
+5. Hit **Start Server**. Once the status turns green, share the shown IP + port with your friends.
 
-- MAJOR: Increment when there is a large update that changes core logic, architecture, or major UI flows.
-- MINOR: Increment for UI/design enhancements or new non-breaking features.
-- PATCH: Increment for bug fixes and small internal adjustments. Each additional set of fixes increases this number.
+You can reopen the setup later from Settings if you ever want to change version, folder, or RAM.
 
-Guideline:
-1. Change MAJOR only when existing integrations might need adjustments.
-2. Change MINOR when adding improvements that are backward compatible.
-3. Change PATCH for corrective releases (no new features).
+---
+
+## 🛠 Daily Controls Explained
+
+- **Dashboard:** Shows status (Starting/Running/Stopped), local + public IP, latency, and RAM usage.
+- **Console + Command bar:** Read logs and send commands (e.g., `/op YourName`). Inputs are sanitized to keep things safe.
+- **Start/Stop buttons:** One click to power your server up or down. Critical settings lock automatically while the server runs.
+- **Plugins / Mods / Add-ons page:** Upload or delete files, open the folder, and edit `server.properties` with Save & Apply.
+- **Settings:** Change language, theme, notifications, auto-start options, and the server location whenever the server is stopped.
+
+---
+
+## ❓ FAQ (short answers)
+
+- **Do I need to know coding or Git?** No. Just download the app from Releases.
+- **Where are the server files?** By default in `Documents/MinecraftServer`. Change it anytime in Settings → Server Data Location.
+- **Why is the Choose button greyed out?** The server is starting/running or the folder is locked. Stop the server first.
+- **How do friends join?** Share the public IP + port shown on the Dashboard. Make sure the port is forwarded on your router.
+- **Can it auto-start with my PC?** Yes. Enable "Start with system" and (optionally) "Auto-start server" with a countdown.
+
+---
+
+## 🆘 Need Help?
+
+- Check the [Issues](https://github.com/norbertbaricz/server-launcher/issues) tab to see if someone already solved your problem.
+- Open a new issue with clear steps if you discover a bug.
+- For release announcements download from [Releases](https://github.com/norbertbaricz/server-launcher/releases) only.
+
+---
 
 ## 📄 License
 
