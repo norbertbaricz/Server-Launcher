@@ -86,11 +86,15 @@ You can reopen the setup later from Settings if you ever want to change version,
 
 ## ❓ FAQ (short answers)
 
-- **Do I need to know coding or Git?** No. Just download the app from Releases.
+- **Do I need to know coding or Git?** No. Just download the newest release and run it.
 - **Where are the server files?** By default in `Documents/MinecraftServer`. Change it anytime in Settings → Server Data Location.
 - **Why is the Choose button greyed out?** The server is starting/running or the folder is locked. Stop the server first.
 - **How do friends join?** Share the public IP + port shown on the Dashboard. Make sure the port is forwarded on your router.
+- **What if I cannot port-forward?** You can tunnel the server with [ngrok](https://ngrok.com/) or a similar tool: install ngrok → run `ngrok tcp 25565` (or your port) → give friends the ngrok address instead of your IP.
 - **Can it auto-start with my PC?** Yes. Enable "Start with system" and (optionally) "Auto-start server" with a countdown.
+- **How do I update Server Launcher?** Close the app, download the latest version from Releases, and install/run it over the old one. Your server files stay untouched.
+- **Can I copy my world to another PC?** Yes. Zip the server folder (e.g., `Documents/MinecraftServer`) and move it to the other machine, then point Server Launcher to that folder.
+- **Bedrock plugins?** Bedrock does not support plugins the same way Java does; manage add-ons manually from the folder opened via the Plugins/Add-ons page.
 
 ---
 
