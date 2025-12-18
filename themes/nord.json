@@ -1,0 +1,9 @@
+{
+  "code": "nord",
+  "name": "Nord",
+  "colors": {
+    "primary": "#81a1c1",
+    "primaryHover": "#5e81ac",
+    "accent": "#a3be8c"
+  }
+}

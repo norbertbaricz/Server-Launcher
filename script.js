@@ -59,6 +59,9 @@ const lockServerPathButton = document.getElementById('lock-server-path-button');
 const lockServerPathIcon = document.getElementById('lock-server-path-icon');
 const lockServerPathText = document.getElementById('lock-server-path-text');
 
+let availableThemes = [];
+let themeMap = {};
+
 // Default to locked state until IPC confirms otherwise
 if (chooseServerPathButton) {
     chooseServerPathButton.disabled = true;
@@ -827,9 +830,9 @@ settingsButton.addEventListener('click', async () => {
     }
     
     languageSettingsSelect.value = launcherSettingsCache.language || 'en';
-    const savedTheme = launcherSettingsCache.theme || 'skypixel';
+    const savedTheme = ensureThemeCode(launcherSettingsCache.theme || 'skypixel');
     applyThemeClass(savedTheme);
-    themeSelect.value = savedTheme === 'default' ? 'skypixel' : savedTheme;
+    if (themeSelect) themeSelect.value = savedTheme;
 
     const serverConfig = await window.electronAPI.getServerConfig();
     const currentType = serverConfig.serverType || 'papermc';
@@ -1081,7 +1084,7 @@ languageJavaSelect.addEventListener('change', async (event) => {
 });
 
 themeJavaSelect.addEventListener('change', (event) => {
-    const newTheme = event.target.value;
+    const newTheme = ensureThemeCode(event.target.value);
     // Apply immediately for Java page since it's a standalone page
     launcherSettingsCache.theme = newTheme;
     window.electronAPI.setSettings(launcherSettingsCache);
@@ -1280,10 +1283,19 @@ async function initializeApp() {
         document.title = titleText;
         document.getElementById('app-title-version').textContent = titleText;
 
+        try {
+            const themes = await window.electronAPI.getAvailableThemes();
+            availableThemes = Array.isArray(themes) && themes.length ? themes : getFallbackThemes();
+        } catch (_) {
+            availableThemes = getFallbackThemes();
+        }
+        rebuildThemeMap(availableThemes);
+        populateThemeSelectors();
+
         launcherSettingsCache = await window.electronAPI.getSettings();
-        const savedTheme = launcherSettingsCache.theme || 'skypixel';
+        const savedTheme = ensureThemeCode(launcherSettingsCache.theme || 'skypixel');
         applyThemeClass(savedTheme);
-        themeSelect.value = savedTheme === 'default' ? 'skypixel' : savedTheme;
+        if (themeSelect) themeSelect.value = savedTheme;
         // Initialize server path lock state early to avoid clickable window
         try {
             const pathInfo = await window.electronAPI.getServerPathInfo();
@@ -1299,7 +1311,7 @@ async function initializeApp() {
         languageJavaSelect.value = savedLang;
         
         // Set theme selector initial value for Java page
-        themeJavaSelect.value = savedTheme === 'default' ? 'skypixel' : savedTheme;
+        if (themeJavaSelect) themeJavaSelect.value = savedTheme;
         
         await setLanguage(savedLang);
         
@@ -1648,30 +1660,90 @@ pluginsSaveApplyButton?.addEventListener('click', () => {
     }
     closePluginsView();
 });
-// Java page is now a full page, not a modal
-function applyThemeClass(theme) {
-    const classes = ['theme-skypixel','theme-nord','theme-aurora','theme-midnight','theme-emerald','theme-sunset','theme-crimson','theme-ocean','theme-grape','theme-neon'];
-    document.body.classList.remove(...classes);
-    if (theme === 'default') theme = 'skypixel';
-    const classMap = {
-        skypixel: null,
-        nord: 'theme-nord',
-        aurora: 'theme-aurora',
-        midnight: 'theme-midnight',
-        emerald: 'theme-emerald',
-        sunset: 'theme-sunset',
-        crimson: 'theme-crimson',
-        ocean: 'theme-ocean',
-        grape: 'theme-grape',
-        neon: 'theme-neon'
-    };
-    const cls = classMap[theme];
-    if (cls) document.body.classList.add(cls);
+function hexToRgbString(hexColor) {
+    const hex = (hexColor || '').replace('#', '');
+    if (hex.length !== 6) return '59, 130, 246';
+    const num = parseInt(hex, 16);
+    const r = (num >> 16) & 255;
+    const g = (num >> 8) & 255;
+    const b = num & 255;
+    return `${r}, ${g}, ${b}`;
+}
+
+function getFallbackThemes() {
+    return [
+        { code: 'skypixel', name: 'Skypixel Blue', colors: { primary: '#3b82f6', primaryHover: '#2563eb', accent: '#60a5fa' } },
+        { code: 'nord', name: 'Nord', colors: { primary: '#88c0d0', primaryHover: '#81a1c1', accent: '#a3be8c' } },
+        { code: 'aurora', name: 'Aurora', colors: { primary: '#06b6d4', primaryHover: '#0891b2', accent: '#a78bfa' } },
+        { code: 'midnight', name: 'Midnight', colors: { primary: '#6366f1', primaryHover: '#4f46e5', accent: '#14b8a6' } },
+        { code: 'emerald', name: 'Emerald', colors: { primary: '#22c55e', primaryHover: '#16a34a', accent: '#34d399' } },
+        { code: 'sunset', name: 'Sunset', colors: { primary: '#f97316', primaryHover: '#ea580c', accent: '#fb7185' } },
+        { code: 'crimson', name: 'Crimson', colors: { primary: '#ef4444', primaryHover: '#dc2626', accent: '#fca5a5' } },
+        { code: 'ocean', name: 'Ocean', colors: { primary: '#0ea5e9', primaryHover: '#0284c7', accent: '#22d3ee' } },
+        { code: 'grape', name: 'Grape', colors: { primary: '#8b5cf6', primaryHover: '#7c3aed', accent: '#d8b4fe' } },
+        { code: 'neon', name: 'Neon', colors: { primary: '#22d3ee', primaryHover: '#06b6d4', accent: '#a3e635' } }
+    ];
+}
+
+function rebuildThemeMap(themes) {
+    themeMap = {};
+    themes.forEach((t) => {
+        if (t?.code) {
+            themeMap[t.code] = {
+                code: t.code,
+                name: t.name || t.code,
+                colors: {
+                    primary: t.colors?.primary || '#3b82f6',
+                    primaryHover: t.colors?.primaryHover || t.colors?.primary || '#2563eb',
+                    accent: t.colors?.accent || t.colors?.primary || '#60a5fa'
+                }
+            };
+        }
+    });
+}
+
+function ensureThemeCode(code) {
+    if (code && themeMap[code]) return code;
+    if (themeMap['skypixel']) return 'skypixel';
+    const first = availableThemes[0]?.code;
+    return first || 'skypixel';
+}
+
+function populateThemeSelect(selectEl) {
+    if (!selectEl) return;
+    selectEl.innerHTML = '';
+    availableThemes.forEach((theme) => {
+        const opt = document.createElement('option');
+        opt.value = theme.code;
+        opt.textContent = theme.name || theme.code;
+        selectEl.appendChild(opt);
+    });
+}
+
+function populateThemeSelectors() {
+    populateThemeSelect(themeSelect);
+    populateThemeSelect(themeJavaSelect);
+}
+
+function applyThemeClass(themeCode) {
+    const code = ensureThemeCode(themeCode);
+    const theme = themeMap[code] || getFallbackThemes()[0];
+    const primary = theme.colors?.primary || '#3b82f6';
+    const primaryHover = theme.colors?.primaryHover || primary;
+    const accent = theme.colors?.accent || primary;
+    const primaryRgb = hexToRgbString(primary);
+    const root = document.documentElement;
+    root.style.setProperty('--color-primary', primary);
+    root.style.setProperty('--color-primary-hover', primaryHover);
+    root.style.setProperty('--color-primary-rgb', primaryRgb);
+    root.style.setProperty('--color-accent', accent);
+    document.body.dataset.theme = code;
 }
 
 themeSelect.addEventListener('change', (e) => {
-    const value = e.target.value;
+    const value = ensureThemeCode(e.target.value);
     applyThemeClass(value);
     launcherSettingsCache.theme = value;
     window.electronAPI.setSettings({ theme: value });
+    if (themeJavaSelect) themeJavaSelect.value = value;
 });

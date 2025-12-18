@@ -9,6 +9,7 @@ node_modules/
 release/
 dist/
 dist_electron/
+index.html
 
 # Server files (user-generated)
 MinecraftServer/

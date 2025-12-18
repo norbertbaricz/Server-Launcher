@@ -1,0 +1,9 @@
+{
+  "code": "aurora",
+  "name": "Aurora",
+  "colors": {
+    "primary": "#2dd4bf",
+    "primaryHover": "#14b8a6",
+    "accent": "#a78bfa"
+  }
+}

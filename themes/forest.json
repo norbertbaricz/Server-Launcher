@@ -1,0 +1,9 @@
+{
+  "code": "forest",
+  "name": "Forest",
+  "colors": {
+    "primary": "#166534",
+    "primaryHover": "#15803d",
+    "accent": "#8B4513"
+  }
+}

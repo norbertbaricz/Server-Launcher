@@ -21,6 +21,7 @@ const http = require('node:http');
 const { spawn, exec } = require('node:child_process');
 const { promisify } = require('node:util');
 const { pathToFileURL } = require('node:url');
+const ejs = require('ejs');
 const os = require('node:os');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
@@ -96,6 +97,18 @@ const SUCCESS_SOUND_KEYWORDS = ['success', 'successfully', 'ready', 'completed',
 const NGROK_API_ENDPOINT = 'http://127.0.0.1:4040/api/tunnels';
 const PUBLIC_IP_USER_AGENT = 'MyMinecraftLauncher/1.0';
 const DISCORD_CONSOLE_SUPPRESS_REGEX = /discord/i;
+const DEFAULT_THEMES = [
+    { code: 'skypixel', name: 'Skypixel Blue', colors: { primary: '#3b82f6', primaryHover: '#2563eb', accent: '#60a5fa' } },
+    { code: 'nord', name: 'Nord', colors: { primary: '#88c0d0', primaryHover: '#81a1c1', accent: '#a3be8c' } },
+    { code: 'aurora', name: 'Aurora', colors: { primary: '#06b6d4', primaryHover: '#0891b2', accent: '#a78bfa' } },
+    { code: 'midnight', name: 'Midnight', colors: { primary: '#6366f1', primaryHover: '#4f46e5', accent: '#14b8a6' } },
+    { code: 'emerald', name: 'Emerald', colors: { primary: '#22c55e', primaryHover: '#16a34a', accent: '#34d399' } },
+    { code: 'sunset', name: 'Sunset', colors: { primary: '#f97316', primaryHover: '#ea580c', accent: '#fb7185' } },
+    { code: 'crimson', name: 'Crimson', colors: { primary: '#ef4444', primaryHover: '#dc2626', accent: '#fca5a5' } },
+    { code: 'ocean', name: 'Ocean', colors: { primary: '#0ea5e9', primaryHover: '#0284c7', accent: '#22d3ee' } },
+    { code: 'grape', name: 'Grape', colors: { primary: '#8b5cf6', primaryHover: '#7c3aed', accent: '#d8b4fe' } },
+    { code: 'neon', name: 'Neon', colors: { primary: '#22d3ee', primaryHover: '#06b6d4', accent: '#a3e635' } }
+];
 
 // Set app name before app.whenReady for proper notifications
 if (process.platform === 'linux') {
@@ -422,6 +435,8 @@ let rpcStartTime;
 let startupSoundPlayed = false;
 let lastStatusSoundSignature = null;
 let lastStatusSoundAt = 0;
+let lastPlaySoundAt = 0;
+let lastPlaySoundType = null;
 
 let serverFilesDir;
 const paperJarName = 'paper.jar';
@@ -1173,6 +1188,13 @@ function getSoundFilePath(type) {
 
 function playSoundEffect(requestedType = DEFAULT_SOUND_TYPE) {
     const type = SOUND_CANDIDATES[requestedType] ? requestedType : DEFAULT_SOUND_TYPE;
+    const now = Date.now();
+    // Throttle identical sounds to avoid rapid overlap
+    if (type === lastPlaySoundType && (now - lastPlaySoundAt) < 500) {
+        return;
+    }
+    lastPlaySoundType = type;
+    lastPlaySoundAt = now;
     let win = null;
     try {
         const settings = readLauncherSettings();
@@ -1508,6 +1530,18 @@ async function ensureNgrokTunnelForCurrentServerPort(existingInfo = null) {
 }
 
 function createWindow () {
+    const renderIndexTemplate = () => {
+        const templatePath = path.join(__dirname, 'index.ejs');
+        const baseHref = pathToFileURL(path.join(__dirname, '/')).href;
+        try {
+            const template = fs.readFileSync(templatePath, 'utf8');
+            return ejs.render(template, { baseHref });
+        } catch (error) {
+            log.error('Failed to render index.ejs', error);
+            return null;
+        }
+    };
+
   const resolveIconForWindow = () => {
     try {
       const resBase = process.resourcesPath;
@@ -1534,7 +1568,8 @@ function createWindow () {
     resizable: true,
     fullscreenable: true,
     frame: false,
-    show: false,
+        show: false, // hide until ready to avoid white flash
+        backgroundColor: '#0f172a', // match app dark background to avoid flash
     icon: resolveIconForWindow(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -1545,11 +1580,42 @@ function createWindow () {
     }
   });
 
-  mainWindow.loadFile('index.html');
+    // Ensure the window becomes visible once its content is ready
+    mainWindow.once('ready-to-show', () => {
+        if (!mainWindow.isDestroyed()) {
+            mainWindow.show();
+        }
+    });
+
+    const renderedHtml = renderIndexTemplate();
+    if (renderedHtml) {
+        try {
+            // Write rendered EJS to a temp file so file:// assets (script/style) can load normally
+            const renderedPath = path.join(app.getPath('userData'), 'rendered-index.html');
+            fs.writeFileSync(renderedPath, renderedHtml, 'utf8');
+            mainWindow.loadURL(pathToFileURL(renderedPath).href);
+        } catch (err) {
+            log.error('Failed to write rendered index.html', err);
+            const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(renderedHtml)}`;
+            mainWindow.loadURL(dataUrl);
+        }
+    } else {
+        const fallback = '<h1>Failed to load UI</h1>';
+        mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fallback)}`);
+    }
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     try { shell.openExternal(url); } catch (_) {}
     return { action: 'deny' };
   });
+    mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
+        log.info(`Renderer console [${level}] ${sourceId}:${line} -> ${message}`);
+    });
+    mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+        log.error(`Renderer failed to load ${validatedURL}: ${errorCode} ${errorDescription}`);
+    });
+    mainWindow.webContents.on('render-process-gone', (_event, details) => {
+        log.error(`Renderer process gone: ${JSON.stringify(details)}`);
+    });
   mainWindow.webContents.on('will-navigate', (e, url) => {
     const currentUrl = mainWindow.webContents.getURL();
     if (url !== currentUrl) {
@@ -2170,6 +2236,44 @@ ipcMain.handle('get-translations', async (event, lang) => {
     log.error(`Could not load language file for ${lang}:`, error);
   }
   return null;
+});
+
+function readAvailableThemes() {
+    const themesDir = path.join(__dirname, 'themes');
+    try {
+        const entries = fs.readdirSync(themesDir, { withFileTypes: true });
+        const themes = [];
+        for (const entry of entries) {
+            if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+            const fullPath = path.join(themesDir, entry.name);
+            try {
+                const raw = fs.readFileSync(fullPath, 'utf8');
+                const parsed = JSON.parse(raw);
+                if (!parsed || typeof parsed !== 'object') continue;
+                const { code, name, colors } = parsed;
+                if (!code || typeof code !== 'string') continue;
+                themes.push({
+                    code,
+                    name: typeof name === 'string' && name.trim() ? name : code,
+                    colors: {
+                        primary: colors?.primary || '#3b82f6',
+                        primaryHover: colors?.primaryHover || colors?.primary || '#2563eb',
+                        accent: colors?.accent || colors?.primary || '#60a5fa'
+                    }
+                });
+            } catch (err) {
+                log.warn(`Failed to parse theme file ${fullPath}:`, err);
+            }
+        }
+        return themes.length ? themes : DEFAULT_THEMES;
+    } catch (error) {
+        log.error('Could not read themes directory:', error);
+        return DEFAULT_THEMES;
+    }
+}
+
+ipcMain.handle('get-available-themes', async () => {
+    return readAvailableThemes();
 });
 
 async function startBedrockServer(serverConfig) {

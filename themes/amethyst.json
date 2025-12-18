@@ -1,0 +1,9 @@
+{
+  "code": "amethyst",
+  "name": "Amethyst",
+  "colors": {
+    "primary": "#7e22ce",
+    "primaryHover": "#9333ea",
+    "accent": "#8A2BE2"
+  }
+}

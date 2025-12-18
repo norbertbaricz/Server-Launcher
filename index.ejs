@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; img-src 'self' data: file:; media-src 'self' file:; connect-src 'self' https://api.ipify.org https://api.papermc.io https://meta.fabricmc.net; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' file: https://cdn.tailwindcss.com; style-src 'self' file: 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; img-src 'self' data: file:; media-src 'self' file:; connect-src 'self' file: https://api.ipify.org https://api.papermc.io https://meta.fabricmc.net; object-src 'none'; base-uri 'self' file:; frame-ancestors 'none';">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <base href="<%= baseHref %>">
     <title>Server Launcher</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -223,7 +224,7 @@
                             </div>
                             <div>
                                 <label for="theme-java-select" class="block text-sm font-medium text-gray-300 mb-1" data-key="themeLabel">Theme</label>
-                                <select id="theme-java-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus-border-blue-500 cursor-pointer">
+                                <select id="theme-java-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
                                     <option value="skypixel">Skypixel Blue</option>
                                     <option value="nord">Nord</option>
                                     <option value="aurora">Aurora</option>
@@ -461,7 +462,6 @@
             </div>
         </div>
     </div>
-
 
 
 

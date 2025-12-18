@@ -1,0 +1,9 @@
+{
+  "code": "skypixel",
+  "name": "Skypixel (Default)",
+  "colors": {
+    "primary": "#3b82f6",
+    "primaryHover": "#2563eb",
+    "accent": "#60a5fa"
+  }
+}

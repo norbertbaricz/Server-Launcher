@@ -1,0 +1,9 @@
+{
+  "code": "grape",
+  "name": "Grape",
+  "colors": {
+    "primary": "#8b5cf6",
+    "primaryHover": "#7c3aed",
+    "accent": "#d8b4fe"
+  }
+}

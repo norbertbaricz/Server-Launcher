@@ -491,15 +491,15 @@ select:disabled {
 
 /* Themes */
 .theme-nord {
-    --color-primary: #88c0d0;
-    --color-primary-hover: #81a1c1;
-    --color-primary-rgb: 136, 192, 208;
+    --color-primary: #81a1c1;
+    --color-primary-hover: #5e81ac;
+    --color-primary-rgb: 129, 161, 193;
     --color-accent: #a3be8c;
 }
 .theme-aurora {
-    --color-primary: #06b6d4;
-    --color-primary-hover: #0891b2;
-    --color-primary-rgb: 6, 182, 212;
+    --color-primary: #2dd4bf;
+    --color-primary-hover: #14b8a6;
+    --color-primary-rgb: 45, 212, 191;
     --color-accent: #a78bfa;
 }
 .theme-midnight {
@@ -553,10 +553,10 @@ select:disabled {
 }
 
 .theme-neon {
-    --color-primary: #22d3ee; /* cyan-400 */
-    --color-primary-hover: #06b6d4; /* cyan-500 */
-    --color-primary-rgb: 34, 211, 238;
-    --color-accent: #a3e635; /* lime-400 */
+    --color-primary: #a3e635;
+    --color-primary-hover: #84cc16;
+    --color-primary-rgb: 163, 230, 53;
+    --color-accent: #22d3ee;
 }
 
 .accent-text { color: var(--color-accent) !important; }
@@ -570,4 +570,39 @@ select:disabled {
     );
     border: 1px solid rgba(var(--color-primary-rgb), 0.35);
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.theme-forest {
+    --color-primary: #166534;
+    --color-primary-hover: #15803d;
+    --color-primary-rgb: 22, 101, 52;
+    --color-accent: #8B4513;
+}
+
+.theme-fire {
+    --color-primary: #f97316;
+    --color-primary-hover: #ea580c;
+    --color-primary-rgb: 249, 115, 22;
+    --color-accent: #DC143C;
+}
+
+.theme-amethyst {
+    --color-primary: #7e22ce;
+    --color-primary-hover: #9333ea;
+    --color-primary-rgb: 126, 34, 206;
+    --color-accent: #8A2BE2;
+}
+
+.theme-coffee {
+    --color-primary: #6F4E37;
+    --color-primary-hover: #A0522D;
+    --color-primary-rgb: 111, 78, 55;
+    --color-accent: #F5F5DC;
+}
+
+.theme-starry {
+    --color-primary: #000080;
+    --color-primary-hover: #191970;
+    --color-primary-rgb: 0, 0, 128;
+    --color-accent: #FFD700;
 }

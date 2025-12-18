@@ -4,7 +4,7 @@
   "description": "A simple and powerful launcher to create, manage, and run your own Minecraft server directly from your computer. Get started in minutes!",
   "main": "main.js",
   "scripts": {
-    "start": "electron .",
+    "start": "electron . --no-sandbox",
     "dev": "electron . --dev",
     "clean": "rm -rf release dist node_modules/.cache",
     "dist": "electron-builder",
@@ -29,6 +29,7 @@
     "electron-builder": "^26.0.12"
   },
   "dependencies": {
+    "ejs": "^3.1.9",
     "adm-zip": "^0.5.16",
     "ansi-to-html": "^0.7.2",
     "discord-rpc": "^4.0.1",

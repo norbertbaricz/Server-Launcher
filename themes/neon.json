@@ -1,0 +1,9 @@
+{
+  "code": "neon",
+  "name": "Neon",
+  "colors": {
+    "primary": "#a3e635",
+    "primaryHover": "#84cc16",
+    "accent": "#22d3ee"
+  }
+}

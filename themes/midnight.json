@@ -1,0 +1,9 @@
+{
+  "code": "midnight",
+  "name": "Midnight",
+  "colors": {
+    "primary": "#6366f1",
+    "primaryHover": "#4f46e5",
+    "accent": "#14b8a6"
+  }
+}

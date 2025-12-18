@@ -1,0 +1,9 @@
+{
+  "code": "coffee",
+  "name": "Coffee",
+  "colors": {
+    "primary": "#6F4E37",
+    "primaryHover": "#A0522D",
+    "accent": "#F5F5DC"
+  }
+}

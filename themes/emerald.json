@@ -1,0 +1,9 @@
+{
+  "code": "emerald",
+  "name": "Emerald",
+  "colors": {
+    "primary": "#22c55e",
+    "primaryHover": "#16a34a",
+    "accent": "#34d399"
+  }
+}

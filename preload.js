@@ -49,4 +49,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ,getServerPathInfo: () => ipcRenderer.invoke('get-server-path-info')
     ,selectServerLocation: () => ipcRenderer.invoke('select-server-location')
     ,setServerPathLock: (locked) => ipcRenderer.send('set-server-path-lock', locked)
+    ,getAvailableThemes: () => ipcRenderer.invoke('get-available-themes')
 });

@@ -1,0 +1,9 @@
+{
+  "code": "ocean",
+  "name": "Ocean",
+  "colors": {
+    "primary": "#0ea5e9",
+    "primaryHover": "#0284c7",
+    "accent": "#22d3ee"
+  }
+}
