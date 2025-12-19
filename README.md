@@ -62,6 +62,12 @@ That is all—no `git clone`, no coding, no extra software.
 
 ---
 
+## 🩺 Troubleshooting
+
+- **Linux font-antialiasing warning:** Electron may print `Schema org.gnome.desktop.interface does not have key font-antialiasing` on some desktop environments. Installing your distro's `gsettings-desktop-schemas` package (or the GLib settings schemas equivalent) silences it; the message is harmless for the app.
+
+---
+
 ## 🕹️ First Launch Setup (kid friendly!)
 
 1. Pick where the server files should live (default is `Documents/MinecraftServer`).

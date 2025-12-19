@@ -6,6 +6,7 @@
   "scripts": {
     "start": "electron . --no-sandbox",
     "dev": "electron . --dev",
+    "build:css": "tailwindcss -i ./src/styles/tailwind.input.css -o ./build/tailwind.css --minify",
     "clean": "rm -rf release dist node_modules/.cache",
     "dist": "electron-builder",
     "dist:win": "electron-builder --publish never --win nsis",
@@ -26,7 +27,8 @@
   "license": "ISC",
   "devDependencies": {
     "electron": "^39.2.4",
-    "electron-builder": "^26.0.12"
+    "electron-builder": "^26.0.12",
+    "tailwindcss": "^3.4.15"
   },
   "dependencies": {
     "ejs": "^3.1.9",

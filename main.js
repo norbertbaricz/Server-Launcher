@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, Notification } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Notification, session } = require('electron');
 // Funcție pentru curățarea fișierelor lock/pid
 function cleanServerLocks(serverDir) {
     const fs = require('fs');
@@ -110,6 +110,19 @@ const DEFAULT_THEMES = [
     { code: 'neon', name: 'Neon', colors: { primary: '#22d3ee', primaryHover: '#06b6d4', accent: '#a3e635' } }
 ];
 
+const CONTENT_SECURITY_POLICY = [
+    "default-src 'self' file: data:",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com",
+    "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:",
+    "img-src 'self' data: file:",
+    "media-src 'self' file:",
+    "connect-src 'self' file: https://api.ipify.org https://api.papermc.io https://meta.fabricmc.net",
+    "object-src 'none'",
+    "base-uri 'self' file:",
+    "frame-ancestors 'none'"
+].join('; ');
+
 // Set app name before app.whenReady for proper notifications
 if (process.platform === 'linux') {
     app.name = 'Server Launcher';
@@ -120,6 +133,20 @@ if (process.platform === 'linux') {
     app.name = 'Server Launcher';
 }
 const DEFAULT_JAVA_SERVER_PORT = 25565;
+
+function applyContentSecurityPolicy(targetSession = session?.defaultSession) {
+    if (!targetSession || typeof targetSession.webRequest?.onHeadersReceived !== 'function') {
+        return;
+    }
+
+    targetSession.webRequest.onHeadersReceived((details, callback) => {
+        const responseHeaders = { ...(details.responseHeaders || {}) };
+        delete responseHeaders['Content-Security-Policy'];
+        delete responseHeaders['content-security-policy'];
+        responseHeaders['Content-Security-Policy'] = [CONTENT_SECURITY_POLICY];
+        callback({ responseHeaders });
+    });
+}
 
 // ===== RESOURCE OPTIMIZATION & IDLE MODE =====
 // IMPORTANT: Optimizations apply ONLY when server is STOPPED
@@ -1607,8 +1634,13 @@ function createWindow () {
     try { shell.openExternal(url); } catch (_) {}
     return { action: 'deny' };
   });
-    mainWindow.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-        log.info(`Renderer console [${level}] ${sourceId}:${line} -> ${message}`);
+    mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+        const params = event?.params || (event && typeof event === 'object' && 'level' in event ? event : null);
+        const resolvedLevel = params?.level ?? level ?? 'info';
+        const resolvedMessage = params?.message ?? message ?? '';
+        const resolvedLine = params?.lineNumber ?? params?.line ?? line ?? '?';
+        const resolvedSource = params?.sourceId ?? params?.sourceURL ?? params?.source ?? sourceId ?? 'renderer';
+        log.info(`Renderer console [${resolvedLevel}] ${resolvedSource}:${resolvedLine} -> ${resolvedMessage}`);
     });
     mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
         log.error(`Renderer failed to load ${validatedURL}: ${errorCode} ${errorDescription}`);
@@ -1669,6 +1701,8 @@ function createWindow () {
 }
 
     app.whenReady().then(async () => {
+        applyContentSecurityPolicy(session.defaultSession);
+
         const userDataPath = app.getPath('userData');
         launcherSettingsFilePath = path.join(userDataPath, launcherSettingsFileName);
     // Read launcher settings early to see if user picked a custom path
