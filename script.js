@@ -14,6 +14,8 @@ const serverTpsSpan = document.getElementById('server-tps');
 const localIpWidget = document.getElementById('local-ip-widget');
 const publicIpWidget = document.getElementById('public-ip-widget');
 const serverVersionWidget = document.getElementById('server-version-widget');
+const copyLocalIpButton = document.getElementById('copy-local-ip-btn');
+const copyPublicIpButton = document.getElementById('copy-public-ip-btn');
 
 const pluginsFolderButton = document.getElementById('plugins-folder-button');
 const pluginsFolderIcon = document.getElementById('plugins-folder-icon');
@@ -410,6 +412,57 @@ function addToConsole(message, type = 'INFO') {
         renderedLine = `${unifiedPrefix} ${sanitizedMessage}`;
     }
     enqueueConsoleLine(renderedLine);
+}
+
+function flashCopyFeedback(button) {
+    if (!button) return;
+    button.classList.add('copied');
+    const icon = button.querySelector('i');
+    if (icon) {
+        icon.dataset.originalClass = icon.dataset.originalClass || icon.className;
+        icon.className = 'fas fa-check';
+    }
+    setTimeout(() => {
+        if (icon && icon.dataset.originalClass) icon.className = icon.dataset.originalClass;
+        button.classList.remove('copied');
+    }, 900);
+}
+
+async function copyTextToClipboardSafe(text) {
+    if (!text) return false;
+    if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        return true;
+    }
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    textarea.style.pointerEvents = 'none';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    let success = false;
+    try { success = document.execCommand('copy'); } catch (_) { success = false; }
+    textarea.remove();
+    return success;
+}
+
+async function handleCopyIp(targetEl, button, label) {
+    if (!targetEl) return;
+    const value = (targetEl.textContent || '').trim();
+    const invalid = !value || value === '-' || value.toLowerCase() === 'error' || value.toLowerCase().includes('fetching');
+    if (invalid) {
+        addToConsole(`${label} not ready to copy.`, 'WARN');
+        return;
+    }
+    const success = await copyTextToClipboardSafe(value);
+    if (success) {
+        flashCopyFeedback(button);
+        addToConsole(`${label} copied to clipboard.`, 'SUCCESS');
+    } else {
+        addToConsole(`Could not copy ${label}.`, 'ERROR');
+    }
 }
 
 function getStatusColor(text) {
@@ -985,6 +1038,9 @@ lockServerPathButton?.addEventListener('click', async () => {
     addToConsole(newLocked ? 'Server path locked.' : 'Server path unlocked.', 'INFO');
 });
 
+copyLocalIpButton?.addEventListener('click', () => handleCopyIp(localIpAddressSpan, copyLocalIpButton, 'Local IP'));
+copyPublicIpButton?.addEventListener('click', () => handleCopyIp(publicIpAddressSpan, copyPublicIpButton, 'Public IP'));
+
 
 startButton.addEventListener('click', () => { 
     isStarting = true;
@@ -1206,16 +1262,16 @@ window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, tps, la
 
                 const usagePercent = (finalMemUsage / allocatedRam) * 100;
 
-                if (usagePercent >= 90) {
-                    memoryUsageSpan.style.color = '#ef4444';
-                } else if (usagePercent >= 70) {
-                    memoryUsageSpan.style.color = '#facc15';
-                } else {
-                    memoryUsageSpan.style.color = '#4ade80';
-                }
+                    if (usagePercent >= 90) {
+                        memoryUsageSpan.style.color = '#ef4444';
+                    } else if (usagePercent >= 70) {
+                        memoryUsageSpan.style.color = '#facc15';
+                    } else {
+                        memoryUsageSpan.style.color = '#4ade80';
+                    }
             } else {
                 memoryUsageSpan.textContent = `${finalMemUsage.toFixed(1)} GB`;
-                memoryUsageSpan.style.color = '';
+                    memoryUsageSpan.style.color = '';
             }
         }
     }
@@ -1224,13 +1280,13 @@ window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, tps, la
     if (typeof cmdLatencyMs !== 'undefined' && cmdLatencyMs !== null) {
         const ms = Math.max(0, parseInt(cmdLatencyMs, 10) || 0);
         serverTpsSpan.textContent = `${ms} ms`;
-        if (ms >= 300) {
-            serverTpsSpan.style.color = '#ef4444';
-        } else if (ms >= 150) {
-            serverTpsSpan.style.color = '#facc15';
-        } else {
-            serverTpsSpan.style.color = '#4ade80';
-        }
+            if (ms >= 300) {
+                serverTpsSpan.style.color = '#ef4444';
+            } else if (ms >= 150) {
+                serverTpsSpan.style.color = '#facc15';
+            } else {
+                serverTpsSpan.style.color = '#4ade80';
+            }
     }
 });
 

@@ -7,8 +7,7 @@
     <base href="<%= baseHref %>">
     <title>Server Launcher</title>
     <link rel="stylesheet" href="build/tailwind.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="style.css">
 </head>
@@ -67,19 +66,25 @@
             </div>
 
             <div id="ip-info-bar" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 animate-fadeIn flex-shrink-0" style="animation-delay: 0.25s;">
-                <div id="local-ip-widget" class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
+                <div id="local-ip-widget" class="ip-widget bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
                     <i class="fas fa-network-wired accent-text text-xl w-6 text-center"></i>
-                    <div>
+                    <div class="flex-1 min-w-0">
                         <p class="text-xs text-gray-400 font-medium" data-key="localIpLabel">Local IP</p>
                         <p id="local-ip-address" class="text-sm font-semibold text-gray-200 truncate" data-key="fetching">Fetching...</p>
                     </div>
+                    <button id="copy-local-ip-btn" class="ip-copy-btn" type="button" aria-label="Copy local IP" title="Copy local IP">
+                        <i class="fas fa-copy"></i>
+                    </button>
                 </div>
-                <div id="public-ip-widget" class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
+                <div id="public-ip-widget" class="ip-widget bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
                     <i class="fas fa-globe accent-text text-xl w-6 text-center"></i>
-                    <div>
+                    <div class="flex-1 min-w-0">
                         <p class="text-xs text-gray-400 font-medium" data-key="publicIpLabel">Public IP</p>
                         <p id="public-ip-address" class="text-sm font-semibold text-gray-200 truncate" data-key="fetching">Fetching...</p>
                     </div>
+                    <button id="copy-public-ip-btn" class="ip-copy-btn" type="button" aria-label="Copy public IP" title="Copy public IP">
+                        <i class="fas fa-copy"></i>
+                    </button>
                 </div>
                 <div id="server-version-widget" class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
                     <i class="fas fa-tag accent-text text-xl w-6 text-center"></i>
@@ -88,16 +93,16 @@
                         <p id="server-version" class="text-sm font-semibold text-gray-200 truncate">N/A</p>
                     </div>
                 </div>
-                <div class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
+                <div class="ip-widget bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
                     <i class="fas fa-memory accent-text text-xl w-6 text-center"></i>
-                    <div>
+                    <div class="flex-1 min-w-0">
                         <p class="text-xs text-gray-400 font-medium" data-key="memoryLabel">Memory</p>
                         <p id="memory-usage" class="text-sm font-semibold text-gray-200 truncate">N/A</p>
                     </div>
                 </div>
-                <div class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
+                <div class="ip-widget bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
                     <i class="fas fa-tachometer-alt accent-text text-xl w-6 text-center"></i>
-                    <div>
+                    <div class="flex-1 min-w-0">
                         <p class="text-xs text-gray-400 font-medium" data-key="tpsLabel">Latency (ms)</p>
                         <p id="server-tps" class="text-sm font-semibold text-gray-200 truncate">0 ms</p>
                     </div>
