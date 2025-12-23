@@ -117,7 +117,7 @@ const CONTENT_SECURITY_POLICY = [
     "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:",
     "img-src 'self' data: file:",
     "media-src 'self' file:",
-    "connect-src 'self' file: https://api.ipify.org https://api.papermc.io https://meta.fabricmc.net",
+    "connect-src 'self' file: https://api.ipify.org https://api.purpurmc.org https://meta.fabricmc.net",
     "object-src 'none'",
     "base-uri 'self' file:",
     "frame-ancestors 'none'"
@@ -163,12 +163,14 @@ const DISCORD_RPC_INTERVAL_IDLE = 60000; // 60 seconds when idle/stopped
 // ============================================
 
 const SERVER_TYPES = {
-  PAPER: 'papermc',
-  FABRIC: 'fabric',
-  BEDROCK: 'bedrock'
+    PAPER: 'purpur',
+    FABRIC: 'fabric',
+    BEDROCK: 'bedrock'
 };
 
 function normalizeServerType(type) {
+    if (type === 'papermc' || type === 'paper') return SERVER_TYPES.PAPER; // Backward compatibility
+    if (type === 'purpur') return SERVER_TYPES.PAPER;
   if (type === SERVER_TYPES.FABRIC) return SERVER_TYPES.FABRIC;
   if (type === SERVER_TYPES.BEDROCK) return SERVER_TYPES.BEDROCK;
   return SERVER_TYPES.PAPER;
@@ -466,7 +468,7 @@ let lastPlaySoundAt = 0;
 let lastPlaySoundType = null;
 
 let serverFilesDir;
-const paperJarName = 'paper.jar';
+const purpurJarName = 'purpur.jar';
 let serverProcess = null;
 const fabricJarName = 'fabric-server-launch.jar';
 const fabricInstallerJarName = 'fabric-installer.jar';
@@ -479,7 +481,7 @@ function getConfiguredServerType() {
 }
 
 function getServerJarNameForType(serverType) {
-  return serverType === SERVER_TYPES.FABRIC ? fabricJarName : paperJarName;
+    return serverType === SERVER_TYPES.FABRIC ? fabricJarName : purpurJarName;
 }
 
 let serverConfigFilePath;
@@ -527,7 +529,7 @@ if (!gotTheLock) {
 async function killStrayServerProcess() {
     try {
         const processes = await find('name', 'java', true);
-        const serverJarPaper = path.join(serverFilesDir, paperJarName);
+        const serverJarPaper = path.join(serverFilesDir, purpurJarName);
         const serverJarFabric = path.join(serverFilesDir, fabricJarName);
         const bedrockExecutableName = getBedrockExecutableName();
         const bedrockExecutablePath = path.join(serverFilesDir, bedrockExecutableName);
@@ -1990,10 +1992,11 @@ ipcMain.handle('get-available-versions', async (_event, serverType) => {
     const type = normalizeServerType(serverType);
     try {
         if (type === SERVER_TYPES.PAPER) {
-            const projectApiUrl = 'https://api.papermc.io/v2/projects/paper';
-            const projectResponseData = await fetchJson(projectApiUrl, 'PaperMC versions');
-            if (projectResponseData.versions?.length > 0) {
-                return sortVersionsDesc(projectResponseData.versions);
+            const projectApiUrl = 'https://api.purpurmc.org/v2/purpur';
+            const projectResponseData = await fetchJson(projectApiUrl, 'Purpur versions');
+            const versions = projectResponseData?.versions || projectResponseData?.all || [];
+            if (Array.isArray(versions) && versions.length > 0) {
+                return sortVersionsDesc(versions);
             }
             throw new Error('No versions found.');
         } else if (type === SERVER_TYPES.FABRIC) {
@@ -2015,7 +2018,7 @@ ipcMain.handle('get-available-versions', async (_event, serverType) => {
         }
         return [];
     } catch (error) {
-        const label = type === SERVER_TYPES.FABRIC ? 'Fabric' : (type === SERVER_TYPES.BEDROCK ? 'Bedrock' : 'PaperMC');
+        const label = type === SERVER_TYPES.FABRIC ? 'Fabric' : (type === SERVER_TYPES.BEDROCK ? 'Bedrock' : 'Purpur');
         sendConsole(`Could not fetch ${label} versions: ${error.message}`, 'ERROR');
         return [];
     }
@@ -2536,7 +2539,7 @@ async function startBedrockServer(serverConfig) {
 ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocation, javaArgs }) => {
     resetIdleTimer();
     const chosenType = normalizeServerType(serverType);
-    const typeLabel = chosenType === SERVER_TYPES.FABRIC ? 'Fabric' : (chosenType === SERVER_TYPES.BEDROCK ? 'Bedrock' : 'PaperMC');
+    const typeLabel = chosenType === SERVER_TYPES.FABRIC ? 'Fabric' : (chosenType === SERVER_TYPES.BEDROCK ? 'Bedrock' : 'Purpur');
     sendConsole(`Configuring: Type ${typeLabel}, Version ${mcVersion || 'N/A'}, RAM ${ramAllocation || 'Auto'}`, 'INFO');
 
     // Ensure the MinecraftServer folder exists only when configuring
@@ -2567,17 +2570,23 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
 
     try {
         if (chosenType === SERVER_TYPES.PAPER) {
-            sendStatus(`Downloading PaperMC ${mcVersion}...`, true, 'downloading');
-            const buildsApiUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds`;
-            const buildsResponseData = await fetchJson(buildsApiUrl, 'PaperMC builds list');
-            if (!Array.isArray(buildsResponseData.builds) || buildsResponseData.builds.length === 0) {
-                throw new Error('No builds found for this PaperMC version.');
+            sendStatus(`Downloading Purpur ${mcVersion}...`, true, 'downloading');
+            const buildsApiUrl = `https://api.purpurmc.org/v2/purpur/${mcVersion}`;
+            const buildsResponseData = await fetchJson(buildsApiUrl, 'Purpur builds list');
+            const buildsList = Array.isArray(buildsResponseData?.builds?.all)
+                ? buildsResponseData.builds.all
+                : (Array.isArray(buildsResponseData?.builds) ? buildsResponseData.builds : []);
+            let latestBuild = buildsResponseData?.builds?.latest ?? (buildsList.length ? buildsList[buildsList.length - 1] : null);
+            if (latestBuild && typeof latestBuild === 'object' && latestBuild.build) {
+                latestBuild = latestBuild.build;
             }
-            const latestBuild = buildsResponseData.builds[buildsResponseData.builds.length - 1];
-            const downloadUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds/${latestBuild.build}/downloads/${latestBuild.downloads.application.name}`;
+            if (latestBuild === null || latestBuild === undefined) {
+                throw new Error('No builds found for this Purpur version.');
+            }
+            const downloadUrl = `https://api.purpurmc.org/v2/purpur/${mcVersion}/${latestBuild}/download`;
             sendStatus(`Downloading (0%)`, true, 'downloading');
 
-            const paperDest = path.join(serverFilesDir, paperJarName);
+            const purpurDest = path.join(serverFilesDir, purpurJarName);
             await new Promise((resolve, reject) => {
                 const doDownload = (url) => {
                     https.get(url, { headers: { 'User-Agent': 'Server-Launcher/1.0' } }, (response) => {
@@ -2589,7 +2598,7 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
                         const total = parseInt(response.headers['content-length'] || '0', 10);
                         let downloaded = 0;
                         let lastPercent = -1, lastMB = -1;
-                        const fileStream = fs.createWriteStream(paperDest);
+                        const fileStream = fs.createWriteStream(purpurDest);
                         response.on('data', chunk => {
                             downloaded += chunk.length;
                             if (total > 0) {
@@ -2613,9 +2622,9 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
                 doDownload(downloadUrl);
             });
 
-            sendStatus('PaperMC downloaded successfully!', false, 'downloadSuccess');
-            sendConsole(`${paperJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
-            showDesktopNotification('Download Complete', `PaperMC ${mcVersion} is ready. Press Start to launch.`);
+            sendStatus('Purpur downloaded successfully!', false, 'downloadSuccess');
+            sendConsole(`${purpurJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
+            showDesktopNotification('Download Complete', `Purpur ${mcVersion} is ready. Press Start to launch.`);
             const updated = readServerConfig();
             updated.serverType = chosenType;
             updated.version = mcVersion;

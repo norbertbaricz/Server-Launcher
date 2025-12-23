@@ -170,6 +170,12 @@ const viewMap = {
     plugins: pluginsPage
 };
 
+function normalizeUiServerType(type) {
+    if (!type) return 'purpur';
+    if (type === 'papermc' || type === 'paper') return 'purpur';
+    return type;
+}
+
 const ramAllocationModalContainer = ramAllocationModalSelect?.closest('div');
 const ramAllocationSettingsContainer = ramAllocationSettingsSelect?.closest('div');
 const javaArgumentsSettingsContainer = javaArgumentsSettingsSelect?.closest('div');
@@ -210,7 +216,7 @@ function applyServerTypeUiState(type) {
 }
 
 function updatePluginsButtonAppearance(serverType) {
-    const type = serverType || 'papermc';
+    const type = normalizeUiServerType(serverType);
     const label = getAddonLabel(type);
     const iconClass = getAddonIcon(type);
     const isFabric = type === 'fabric';
@@ -267,11 +273,12 @@ function updatePluginsButtonAppearance(serverType) {
 
 function populateServerTypeSelect(selectEl, currentType) {
     if (!selectEl) return;
-    const options = [
-        { value: 'papermc', label: currentTranslations['serverTypeJavaDefault'] || 'Java - PaperMC (Vanilla)' },
-        { value: 'fabric', label: currentTranslations['serverTypeJavaModded'] || 'Java - Fabric (Modded)' },
-        { value: 'bedrock', label: currentTranslations['serverTypeBedrock'] || 'Bedrock - Dedicated Server' }
-    ];
+    const normalizedType = normalizeUiServerType(currentType);
+        const options = [
+            { value: 'purpur', label: currentTranslations['serverTypeJavaDefault'] || 'Java - Purpur (Vanilla)' },
+            { value: 'fabric', label: currentTranslations['serverTypeJavaModded'] || 'Java - Fabric (Modded)' },
+            { value: 'bedrock', label: currentTranslations['serverTypeBedrock'] || 'Bedrock - Dedicated Server' }
+        ];
     selectEl.innerHTML = '';
     for (const opt of options) {
         const o = document.createElement('option');
@@ -279,7 +286,7 @@ function populateServerTypeSelect(selectEl, currentType) {
         o.textContent = opt.label;
         selectEl.appendChild(o);
     }
-    selectEl.value = currentType && ['papermc','fabric','bedrock'].includes(currentType) ? currentType : 'papermc';
+    selectEl.value = normalizedType && ['purpur','fabric','bedrock'].includes(normalizedType) ? normalizedType : 'purpur';
 }
 
 async function setLanguage(lang) {
@@ -326,7 +333,7 @@ async function setLanguage(lang) {
         updatePluginsButtonAppearance(currentServerConfig?.serverType);
 
         // Repopulate dropdowns with translated labels
-        const serverType = currentServerConfig?.serverType || 'papermc';
+        const serverType = normalizeUiServerType(currentServerConfig?.serverType);
         populateServerTypeSelect(serverTypeModalSelect, serverType);
         populateServerTypeSelect(serverTypeSettingsSelect, serverType);
         
@@ -515,7 +522,7 @@ function hideDownloadLoading() {
 function updateButtonStates(isRunning) {
     localIsServerRunning = isRunning;
     updatePluginsButtonAppearance(currentServerConfig?.serverType);
-    applyServerTypeUiState(currentServerConfig?.serverType || 'papermc');
+    applyServerTypeUiState(normalizeUiServerType(currentServerConfig?.serverType));
     const setupComplete = !setupRequired;
     
     const shouldHideStart = isRunning || !setupComplete;
@@ -695,7 +702,7 @@ function openSettingsView(callback) {
         closePluginsView(() => openSettingsView(callback));
         return;
     }
-    setActiveView('settings', callback);
+        setActiveView('settings', callback);
 }
 
 function closeSettingsView(callback) {
@@ -761,13 +768,14 @@ async function refreshUISetupState() {
     }
     currentServerConfig = config || {};
     setupRequired = !!needsSetup;
-    updatePluginsButtonAppearance(currentServerConfig?.serverType);
-    applyServerTypeUiState(currentServerConfig?.serverType || 'papermc');
+    const normalizedType = normalizeUiServerType(currentServerConfig?.serverType);
+    updatePluginsButtonAppearance(normalizedType);
+    applyServerTypeUiState(normalizedType);
     if (needsSetup) {
         if (isSettingsViewOpen) closeSettingsView();
         if (isPluginsViewOpen) closePluginsView();
         openSetupView();
-        const serverType = currentServerConfig.serverType || 'papermc';
+        const serverType = normalizedType;
         populateServerTypeSelect(serverTypeModalSelect, serverType);
         applyServerTypeUiState(serverType);
         serverTypeModalSelect.onchange = async () => {
@@ -846,7 +854,7 @@ downloadModalButton.addEventListener('click', () => {
     if (downloadModalButton.disabled) return;
     const version = mcVersionModalSelect.value;
     const ram = ramAllocationModalSelect.value;
-    const serverType = serverTypeModalSelect?.value || 'papermc';
+    const serverType = normalizeUiServerType(serverTypeModalSelect?.value);
     if (!version) {
         addToConsole("No Minecraft version selected.", "ERROR");
         return;
@@ -888,7 +896,7 @@ settingsButton.addEventListener('click', async () => {
     if (themeSelect) themeSelect.value = savedTheme;
 
     const serverConfig = await window.electronAPI.getServerConfig();
-    const currentType = serverConfig.serverType || 'papermc';
+    const currentType = normalizeUiServerType(serverConfig.serverType);
     // Load server path info
     try {
         const info = await window.electronAPI.getServerPathInfo();
@@ -897,7 +905,7 @@ settingsButton.addEventListener('click', async () => {
     } catch (e) { addToConsole(`Failed to load server path info: ${e.message}`, 'ERROR'); }
     populateServerTypeSelect(serverTypeSettingsSelect, currentType);
     serverTypeSettingsSelect.onchange = async () => {
-        const selectedType = serverTypeSettingsSelect.value;
+        const selectedType = normalizeUiServerType(serverTypeSettingsSelect.value);
         await populateMcVersionSelect(mcVersionSettingsSelect, null, selectedType);
         applyServerTypeUiState(selectedType);
         updatePluginsButtonAppearance(selectedType);
@@ -958,11 +966,11 @@ saveSettingsButton.addEventListener('click', async () => {
     });
     if (Object.keys(newProperties).length > 0) window.electronAPI.setServerProperties(newProperties);
     
-    const newServerType = serverTypeSettingsSelect?.value || 'papermc';
+    const newServerType = normalizeUiServerType(serverTypeSettingsSelect?.value);
     const newMcVersion = mcVersionSettingsSelect.value || '';
     const newRam = ramAllocationSettingsSelect.value || 'auto';
     const newJavaArgs = javaArgumentsSettingsSelect.value || 'Default';
-    const prevType = (currentServerConfig?.serverType) || 'papermc';
+    const prevType = normalizeUiServerType(currentServerConfig?.serverType);
     const prevVersion = (currentServerConfig?.version) || '';
     const prevRam = (currentServerConfig?.ram) || 'auto';
     const prevJavaArgs = (currentServerConfig?.javaArgs) || 'Default';

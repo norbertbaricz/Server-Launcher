@@ -40,6 +40,12 @@ function enqueueConsoleLine(html) {
     scheduleConsoleFlush();
 }
 
+function normalizeUiServerType(type) {
+    if (!type) return 'purpur';
+    if (type === 'papermc' || type === 'paper') return 'purpur';
+    return type;
+}
+
 function getAddonLabel(type) {
     if (type === 'fabric') return currentTranslations['modsLabel'] || 'Mods';
     if (type === 'bedrock') return currentTranslations['addonsLabel'] || 'Add-ons';
@@ -76,7 +82,7 @@ function applyServerTypeUiState(type) {
 }
 
 function updatePluginsButtonAppearance(serverType) {
-    const type = serverType || 'papermc';
+    const type = normalizeUiServerType(serverType);
     const label = getAddonLabel(type);
     const iconClass = getAddonIcon(type);
     const isFabric = type === 'fabric';
@@ -133,8 +139,9 @@ function updatePluginsButtonAppearance(serverType) {
 
 function populateServerTypeSelect(selectEl, currentType) {
     if (!selectEl) return;
+    const normalizedType = normalizeUiServerType(currentType);
     const options = [
-        { value: 'papermc', label: currentTranslations['serverTypeJavaDefault'] || 'Java - PaperMC (Vanilla)' },
+        { value: 'purpur', label: currentTranslations['serverTypeJavaDefault'] || 'Java - Purpur (Vanilla)' },
         { value: 'fabric', label: currentTranslations['serverTypeJavaModded'] || 'Java - Fabric (Modded)' },
         { value: 'bedrock', label: currentTranslations['serverTypeBedrock'] || 'Bedrock - Dedicated Server' }
     ];
@@ -145,7 +152,7 @@ function populateServerTypeSelect(selectEl, currentType) {
         o.textContent = opt.label;
         selectEl.appendChild(o);
     }
-    selectEl.value = currentType && ['papermc','fabric','bedrock'].includes(currentType) ? currentType : 'papermc';
+    selectEl.value = normalizedType && ['purpur','fabric','bedrock'].includes(normalizedType) ? normalizedType : 'purpur';
 }
 
 async function setLanguage(lang) {
@@ -192,7 +199,7 @@ async function setLanguage(lang) {
         updatePluginsButtonAppearance(currentServerConfig?.serverType);
 
         // Repopulate dropdowns with translated labels
-        const serverType = currentServerConfig?.serverType || 'papermc';
+        const serverType = normalizeUiServerType(currentServerConfig?.serverType);
         populateServerTypeSelect(serverTypeModalSelect, serverType);
         populateServerTypeSelect(serverTypeSettingsSelect, serverType);
         
@@ -330,7 +337,7 @@ function hideDownloadLoading() {
 function updateButtonStates(isRunning) {
     localIsServerRunning = isRunning;
     updatePluginsButtonAppearance(currentServerConfig?.serverType);
-    applyServerTypeUiState(currentServerConfig?.serverType || 'papermc');
+    applyServerTypeUiState(normalizeUiServerType(currentServerConfig?.serverType));
     const setupComplete = !setupRequired;
     
     const shouldHideStart = isRunning || !setupComplete;
@@ -576,13 +583,14 @@ async function refreshUISetupState() {
     }
     currentServerConfig = config || {};
     setupRequired = !!needsSetup;
-    updatePluginsButtonAppearance(currentServerConfig?.serverType);
-    applyServerTypeUiState(currentServerConfig?.serverType || 'papermc');
+    const normalizedType = normalizeUiServerType(currentServerConfig?.serverType);
+    updatePluginsButtonAppearance(normalizedType);
+    applyServerTypeUiState(normalizedType);
     if (needsSetup) {
         if (isSettingsViewOpen) closeSettingsView();
         if (isPluginsViewOpen) closePluginsView();
         openSetupView();
-        const serverType = currentServerConfig.serverType || 'papermc';
+        const serverType = normalizedType;
         populateServerTypeSelect(serverTypeModalSelect, serverType);
         applyServerTypeUiState(serverType);
         serverTypeModalSelect.onchange = async () => {

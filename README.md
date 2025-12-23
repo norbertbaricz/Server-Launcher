@@ -3,7 +3,7 @@
 [![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
 [![Version](https://img.shields.io/badge/Version-1.2.17-green.svg)](https://github.com/norbertbaricz/server-launcher/releases)
 
-Server Launcher is the easiest way to host your own Minecraft Java (Paper/Fabric/Vanilla) or Bedrock server without touching the terminal. You do **not** need to clone this repository or install any developer tools—simply download the app, press Start, and invite your friends.
+Server Launcher is the easiest way to host your own Minecraft Java (Purpur/Fabric/Vanilla) or Bedrock server without touching the terminal. You do **not** need to clone this repository or install any developer tools—simply download the app, press Start, and invite your friends.
 
 ---
 
@@ -71,7 +71,7 @@ That is all—no `git clone`, no coding, no extra software.
 ## 🕹️ First Launch Setup (kid friendly!)
 
 1. Pick where the server files should live (default is `Documents/MinecraftServer`).
-2. Choose your server type (Paper, Fabric, or Bedrock) and Minecraft version.
+2. Choose your server type (Purpur, Fabric, or Bedrock) and Minecraft version.
 3. Choose how much RAM to give the server (or leave it on Auto).
 4. Press **Download & Configure** and wait for the progress bar to finish.
 5. Hit **Start Server**. Once the status turns green, share the shown IP + port with your friends.
