@@ -538,6 +538,22 @@ function setDiscordActivity() {
     } catch (_) { /* ignore */ }
 }
 
+function startDiscordRpc() {
+    if (rpc) return;
+    rpc = new RPC.Client({ transport: 'ipc' });
+    rpc.on('ready', () => {
+        sendConsole('Discord Rich Presence is active.', 'INFO');
+        rpcStartTime = new Date();
+        setDiscordActivity();
+        resetIdleTimer();
+        if (discordRpcInterval) clearInterval(discordRpcInterval);
+        discordRpcInterval = setInterval(setDiscordActivity, DISCORD_RPC_INTERVAL_IDLE);
+    });
+    rpc.login({ clientId }).catch(() => {
+        // Intenționat ignorat pentru a nu bloca pornirea
+    });
+}
+
 const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
     app.quit();
@@ -843,7 +859,7 @@ function safeSend(win, channel, ...args) {
     return false;
 }
 
-function sendStatus(fallbackMessage, pulse = false, translationKey = null) {
+function sendStatus(fallbackMessage, pulse = false, translationKey = null, soundType = null) {
     if (!rendererReady) {
         // Store message until renderer defines its status handler; log for visibility
         sendConsole(`[STATUS-buffered] ${fallbackMessage}`, 'INFO');
@@ -857,7 +873,7 @@ function sendStatus(fallbackMessage, pulse = false, translationKey = null) {
     }
     const win = getMainWindow();
     safeSend(win, 'update-status', fallbackMessage, pulse, translationKey);
-    handleStatusSound(fallbackMessage, translationKey, pulse);
+    handleStatusSound(fallbackMessage, translationKey, pulse, soundType);
 }
 function sendConsole(message, type = 'INFO') {
     try {
@@ -1149,7 +1165,7 @@ function getNotificationIconPath() {
     } catch (_) { return undefined; }
 }
 
-function showDesktopNotification(title, body) {
+function showDesktopNotification(title, body, options = {}) {
     try {
         if (!notificationService) {
             return;
@@ -1159,7 +1175,7 @@ function showDesktopNotification(title, body) {
         const enabled = settings ? settings.notificationsEnabled !== false : true;
         notificationService.setEnabled(enabled);
         
-        notificationService.show(title, body);
+        notificationService.show(title, body, options);
     } catch (error) {
         // Silent error
     }
@@ -1293,8 +1309,14 @@ function isProgressStatusMessage(message, key) {
     return false;
 }
 
-function handleStatusSound(fallbackMessage, translationKey, pulse) {
+function handleStatusSound(fallbackMessage, translationKey, pulse, soundType = null) {
     try {
+        // If explicit soundType is provided, use it directly
+        if (soundType) {
+            playSoundEffect(soundType);
+            return;
+        }
+
         const message = (fallbackMessage || '').toLowerCase();
         const key = (translationKey || '').toLowerCase();
         if (!message && !key) return;
@@ -1306,7 +1328,18 @@ function handleStatusSound(fallbackMessage, translationKey, pulse) {
             return;
         }
 
-        if (stringContainsKeyword(key, ERROR_SOUND_KEYWORDS) || stringContainsKeyword(message, ERROR_SOUND_KEYWORDS)) {
+        const stopSuccess =
+            key === 'serverstopped' ||
+            key === 'servershutdowncomplete' ||
+            message.includes('server stopped') ||
+            message.includes('server oprit');
+        const stopUnexpected = key === 'serverstoppedunexpectedly' || message.includes('unexpectedly');
+        
+        if (stopUnexpected) {
+            playSoundEffect('error');
+        } else if (stopSuccess) {
+            playSoundEffect('success');
+        } else if (stringContainsKeyword(key, ERROR_SOUND_KEYWORDS) || stringContainsKeyword(message, ERROR_SOUND_KEYWORDS)) {
             playSoundEffect('error');
         } else if (stringContainsKeyword(key, SUCCESS_SOUND_KEYWORDS) || stringContainsKeyword(message, SUCCESS_SOUND_KEYWORDS)) {
             playSoundEffect('success');
@@ -1803,9 +1836,13 @@ function createWindow () {
     playSoundEffect(soundType);
   });
 
-    // Do not create MinecraftServer folder at startup; create it during setup/configure
-  await killStrayServerProcess();
-  createWindow();
+        // Do not create MinecraftServer folder at startup; create it during setup/configure
+    createWindow();
+    setImmediate(() => {
+        killStrayServerProcess().catch((err) => {
+            log.warn('Background stray-server check failed:', err);
+        });
+    });
 
   // Set desktop file name for Linux notifications
   if (process.platform === 'linux') {
@@ -1818,21 +1855,8 @@ function createWindow () {
     }
   }
 
-    rpc = new RPC.Client({ transport: 'ipc' });
-    rpc.on('ready', () => {
-        sendConsole('Discord Rich Presence is active.', 'INFO');
-        rpcStartTime = new Date();
-        setDiscordActivity();
-        resetIdleTimer();
-        // Începe cu intervalul pentru idle/stopped (60s)
-        if (discordRpcInterval) clearInterval(discordRpcInterval);
-        discordRpcInterval = setInterval(setDiscordActivity, DISCORD_RPC_INTERVAL_IDLE);
-    });
-    // Keep original behavior; suppress UI error logs on login failure
-    rpc.login({ clientId }).catch(() => {
-            // No UI log
-    });
-    triggerAutoUpdateCheck('startup', { silent: true });
+        setTimeout(startDiscordRpc, 1200);
+        setTimeout(() => triggerAutoUpdateCheck('startup', { silent: true }), 2000);
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow();});
 });
 
@@ -2057,11 +2081,16 @@ ipcMain.handle('check-initial-setup', async () => {
         try {
             const now = Date.now();
             if (now - lastSetupCheckAt > 1500) {
-                pushStatus('Setup check OK.', false, 'setup-ok');
+                // Startup-only: show this in the loading screen, not the status bar.
+                if (!rendererReady) {
+                    pushStatus('Setup check OK.', false, 'setup-ok');
+                }
                 lastSetupCheckAt = now;
             }
         } catch (_) {
-            pushStatus('Setup check OK.', false, 'setup-ok');
+            if (!rendererReady) {
+                pushStatus('Setup check OK.', false, 'setup-ok');
+            }
         }
     }
     return { needsSetup, config: readServerConfig() };
@@ -2560,17 +2589,16 @@ async function startBedrockServer(serverConfig) {
             return;
         }
 
-        sendServerStateChange(false);
-
         if (killedInternally) {
             sendConsole('Server process stopped normally.', 'INFO');
-            sendStatus('Server stopped.', false, 'serverStopped');
+            sendStatus('Server stopped.', false, 'serverStopped', 'success');
+            sendServerStateChange(false);
             try {
                 const cfg = readServerConfig();
                 const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                 const ver = cfg.version || '';
                 const serverLabel = formatServerLabel(type, ver);
-                showDesktopNotification('Server Stopped', `${serverLabel} was stopped manually.`);
+                showDesktopNotification('Server Stopped', `${serverLabel} was stopped manually.`, { soundType: 'success' });
             } catch (_) {}
         } else {
             const exitDetails = describeServerShutdown(code, signal);
@@ -2600,6 +2628,8 @@ async function startBedrockServer(serverConfig) {
                     playSoundEffect('error');
                 } catch (_) {}
             }
+            // Ensure renderer unlocks UI and start button after an unexpected stop
+            sendServerStateChange(false);
         }
     });
 
@@ -2700,7 +2730,7 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
                 doDownload(downloadUrl);
             });
 
-            sendStatus('Purpur downloaded successfully!', false, 'downloadSuccess');
+            sendStatus('Vanilla downloaded successfully!', false, 'downloadSuccessPaper');
             sendConsole(`${purpurJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
             showDesktopNotification('Download Complete', `Purpur ${mcVersion} is ready. Press Start to launch.`);
             const updated = readServerConfig();
@@ -2762,7 +2792,7 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
                 doDownload(downloadUrl);
             });
 
-            sendStatus('Fabric Server installed successfully!', false, 'downloadSuccessFabric');
+            sendStatus('Modded download successfully', false, 'downloadSuccessFabric');
             sendConsole(`${fabricJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
             showDesktopNotification('Download Complete', `Fabric ${mcVersion} is ready. Press Start to launch.`);
             const updated = readServerConfig();
@@ -2887,7 +2917,7 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
             updated.version = mcVersion;
             writeServerConfig(updated);
 
-            sendStatus('Bedrock server ready!', false, 'downloadSuccess');
+            sendStatus('Bedrock installed successfully', false, 'downloadSuccess');
             sendConsole(`Bedrock server ${mcVersion} downloaded and extracted.`, 'SUCCESS');
             showDesktopNotification('Download Complete', `Bedrock ${mcVersion} is ready. Press Start to launch.`);
         }
@@ -3130,17 +3160,16 @@ ipcMain.on('start-server', async () => {
                 return;
             }
 
-            sendServerStateChange(false);
-        
             if (killedInternally) {
                 sendConsole('Server process stopped normally.', 'INFO');
-                sendStatus('Server stopped.', false, 'serverStopped');
+                sendStatus('Server stopped.', false, 'serverStopped', 'success');
+                sendServerStateChange(false);
                 try {
                     const cfg = readServerConfig();
                     const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                     const ver = cfg.version || '';
                     const serverLabel = formatServerLabel(type, ver);
-                    showDesktopNotification('Server Stopped', `${serverLabel} was stopped manually.`);
+                    showDesktopNotification('Server Stopped', `${serverLabel} was stopped manually.`, { soundType: 'success' });
                 } catch (_) {}
             } else {
                 const exitDetails = describeServerShutdown(code, signal);
@@ -3170,6 +3199,8 @@ ipcMain.on('start-server', async () => {
                         playSoundEffect('error');
                     } catch (_) {}
                 }
+                // Ensure renderer unlocks UI and start button after an unexpected stop
+                sendServerStateChange(false);
             }
         });
         

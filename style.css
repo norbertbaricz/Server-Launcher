@@ -526,6 +526,55 @@ input:checked + .switch-track .switch-thumb {
     overflow: visible; /* ensure inner elements are fully shown */
 }
 
+/* Range slider uses theme colors so it matches selected theme */
+#auto-start-delay-slider,
+input[type="range"].themed-slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 6px;
+    border-radius: 9999px;
+    background: rgba(var(--color-primary-rgb), 0.15);
+    outline: none;
+    transition: background-color 0.2s ease;
+}
+
+#auto-start-delay-slider::-webkit-slider-thumb,
+input[type="range"].themed-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 9999px;
+    background: var(--color-primary);
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25), 0 0 0 4px rgba(var(--color-primary-rgb), 0.2);
+    transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+#auto-start-delay-slider::-moz-range-thumb,
+input[type="range"].themed-slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 9999px;
+    background: var(--color-primary);
+    border: 2px solid rgba(255, 255, 255, 0.15);
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.25), 0 0 0 4px rgba(var(--color-primary-rgb), 0.2);
+    transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+}
+
+#auto-start-delay-slider:active::-webkit-slider-thumb,
+input[type="range"].themed-slider:active::-webkit-slider-thumb,
+#auto-start-delay-slider:active::-moz-range-thumb,
+input[type="range"].themed-slider:active::-moz-range-thumb {
+    transform: scale(1.05);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.3), 0 0 0 6px rgba(var(--color-primary-rgb), 0.28);
+}
+
+#auto-start-delay-slider:hover,
+input[type="range"].themed-slider:hover {
+    background: rgba(var(--color-primary-rgb), 0.24);
+}
+
 /* Settings cards: internal scroll areas while outer cards stay equal height */
 #settings-page .equal-card-grid > section {
     display: flex;

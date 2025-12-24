@@ -559,11 +559,10 @@ async function startBedrockServer(serverConfig) {
             return;
         }
 
-        sendServerStateChange(false);
-
         if (killedInternally) {
             sendConsole('Server process stopped normally.', 'INFO');
-            sendStatus('Server stopped.', false, 'serverStopped');
+            sendStatus('Server stopped.', false, 'serverStopped', 'success');
+            sendServerStateChange(false);
             try {
                 const cfg = readServerConfig();
                 const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
@@ -1090,7 +1089,7 @@ function setupIpcHandlers() {
                     doDownload(downloadUrl);
                 });
 
-                sendStatus('Purpur downloaded successfully!', false, 'downloadSuccess');
+                sendStatus('Vanilla downloaded successfully!', false, 'downloadSuccessPaper');
                 sendConsole(`${purpurJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
                 showDesktopNotification('Download Complete', `Purpur ${mcVersion} is ready. Press Start to launch.`);
                 const updated = readServerConfig();
@@ -1152,7 +1151,7 @@ function setupIpcHandlers() {
                     doDownload(downloadUrl);
                 });
 
-                sendStatus('Fabric Server installed successfully!', false, 'downloadSuccessFabric');
+                sendStatus('Modded download successfully', false, 'downloadSuccessFabric');
                 sendConsole(`${fabricJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
                 showDesktopNotification('Download Complete', `Fabric ${mcVersion} is ready. Press Start to launch.`);
                 const updated = readServerConfig();
@@ -1277,7 +1276,7 @@ function setupIpcHandlers() {
                 updated.version = mcVersion;
                 writeServerConfig(updated);
 
-                sendStatus('Bedrock server ready!', false, 'downloadSuccess');
+                sendStatus('Bedrock installed successfully', false, 'downloadSuccess');
                 sendConsole(`Bedrock server ${mcVersion} downloaded and extracted.`, 'SUCCESS');
                 showDesktopNotification('Download Complete', `Bedrock ${mcVersion} is ready. Press Start to launch.`);
             }

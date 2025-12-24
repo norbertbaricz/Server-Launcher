@@ -153,9 +153,10 @@ class NotificationService {
 
       notification.show();
 
-      // Play sound if callback is set
+      // Play sound if callback is set; allow explicit override when provided
       if (this.soundCallback && !options.silent) {
-        const soundType = this.determineSoundType(title, body);
+        const explicitType = (options.soundType || '').trim();
+        const soundType = explicitType || this.determineSoundType(title, body);
         this.soundCallback(soundType);
       }
 
@@ -244,7 +245,19 @@ class NotificationService {
     const text = `${title} ${body}`.toLowerCase();
 
     const errorKeywords = ['error', 'failed', 'fail', 'crash', 'stopped unexpectedly', 'not found'];
-    const successKeywords = ['success', 'ready', 'started', 'running', 'completed', 'installed'];
+    const successKeywords = [
+      'success',
+      'ready',
+      'started',
+      'running',
+      'completed',
+      'installed',
+      'stopped',
+      'shutdown complete',
+      'server stopped',
+      'server shutdown',
+      'server oprit'
+    ];
 
     if (errorKeywords.some(keyword => text.includes(keyword))) {
       return 'error';

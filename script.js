@@ -90,6 +90,8 @@ const pluginsList = document.getElementById('plugins-list');
 const uploadPluginButton = document.getElementById('upload-plugin-button');
 const openPluginsFolderButton = document.getElementById('open-plugins-folder-button');
 
+const loadingLauncherText = document.querySelector('#loading-screen [data-key="loadingLauncher"]');
+
 const minimizeBtn = document.getElementById('minimize-btn');
 const maximizeBtn = document.getElementById('maximize-btn');
 const closeBtn = document.getElementById('close-btn');
@@ -791,9 +793,6 @@ async function refreshUISetupState() {
         if (isPluginsViewOpen) closePluginsView();
 
         const afterClose = async () => {
-            if (!localIsServerRunning && !autoStartIsActive) {
-                setStatus(currentTranslations['serverReady'] || "Server ready.", false, 'serverReady');
-            }
             updateButtonStates(localIsServerRunning);
             await fetchAndDisplayIPs();
             updatePluginsButtonAppearance(currentServerConfig?.serverType);
@@ -1171,20 +1170,6 @@ window.electronAPI.onWindowMaximized((isMaximized) => {
 
 window.electronAPI.onUpdateConsole((message, type) => addToConsole(message, type));
 
-window.electronAPI.onUpdateStatus(async (fallbackMessage, pulse, translationKey) => {
-    setStatus(fallbackMessage, pulse, translationKey);
-    const lowerMessage = (currentTranslations[translationKey] || fallbackMessage).toLowerCase();
-
-    if (lowerMessage.includes('downloading') || lowerMessage.includes('se descarcă')) {
-        isDownloadingFromServer = true;
-        updateButtonStates(localIsServerRunning);
-    }
-
-    if ((lowerMessage.includes('failed') || lowerMessage.includes('error')) && isSetupViewOpen) {
-        hideDownloadLoading();
-    }
-});
-
 window.electronAPI.onSetupFinished(async () => {
     isDownloadingFromServer = false;
     hideDownloadLoading();
@@ -1225,10 +1210,8 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         // Ensure starting/stopping flags reset so UI re-enables controls after crashes
         isStarting = false;
         isStopping = false;
-        if (!autoStartIsActive) {
-            setStatus(currentTranslations['serverStopped'] || "Server stopped.", false, 'serverStopped');
-        }
-        await fetchAndDisplayIPs(false);
+        // Status și sunet sunt gestionate de main process prin sendStatus()
+        await fetchAndDisplayIPs();
         memoryUsageSpan.textContent = '0 GB';
         memoryUsageSpan.style.color = '';
         serverTpsSpan.textContent = '0 ms';
@@ -1304,7 +1287,7 @@ window.electronAPI.onRequestStatusCheckForFail(() => {
     }
 });
 
-async function fetchAndDisplayIPs(showPort = false) {
+async function fetchAndDisplayIPs(showPort = true) {
     let port = '';
     if (showPort) {
         try {
@@ -1342,65 +1325,67 @@ async function fetchAndDisplayIPs(showPort = false) {
 }
 
 let loadingScreenActive = true;
-const loadingMessagesContainer = document.getElementById('loading-messages');
 
-function appendLoadingMessage(msg) {
-    if (!loadingScreenActive || !loadingMessagesContainer || !msg) return;
-    const line = document.createElement('div');
-    line.textContent = msg;
-    loadingMessagesContainer.appendChild(line);
-    loadingMessagesContainer.scrollTop = loadingMessagesContainer.scrollHeight;
+function setLoadingText(fallbackText, translationKey = null) {
+    if (!loadingLauncherText) return;
+    const key = translationKey || loadingLauncherText.dataset.key;
+    const translated = key ? currentTranslations[key] : null;
+    const text = (translated && typeof translated === 'string' && translated.trim())
+        ? translated
+        : (fallbackText || currentTranslations['loadingLauncher'] || 'Loading Launcher...');
+    loadingLauncherText.textContent = text;
 }
 
 async function initializeApp() {
     try {
-        const iconPath = await window.electronAPI.getIconPath();
+        const iconPromise = window.electronAPI.getIconPath();
+        const versionPromise = window.electronAPI.getAppVersion();
+        const isDevPromise = (window.electronAPI.isDev ? window.electronAPI.isDev() : Promise.resolve(false)).catch(() => false);
+        const settingsPromise = window.electronAPI.getSettings();
+        const themesPromise = window.electronAPI.getAvailableThemes().catch(() => null);
+        const pathInfoPromise = window.electronAPI.getServerPathInfo().catch(() => null);
+
+        const [iconPath, version, isDevRaw, settings, themes, pathInfo] = await Promise.all([
+            iconPromise,
+            versionPromise,
+            isDevPromise,
+            settingsPromise,
+            themesPromise,
+            pathInfoPromise
+        ]);
+
         document.getElementById('app-icon').src = iconPath;
-        const version = await window.electronAPI.getAppVersion();
-        let isDev = false;
-        try {
-            isDev = await (window.electronAPI.isDev ? window.electronAPI.isDev() : Promise.resolve(false));
-        } catch (_) { isDev = false; }
+        const isDev = !!isDevRaw;
         const titleText = `Server Launcher v${version}${isDev ? ' — Development Version' : ''}`;
         document.title = titleText;
         document.getElementById('app-title-version').textContent = titleText;
 
-        try {
-            const themes = await window.electronAPI.getAvailableThemes();
-            availableThemes = Array.isArray(themes) && themes.length ? themes : getFallbackThemes();
-        } catch (_) {
-            availableThemes = getFallbackThemes();
-        }
+        availableThemes = Array.isArray(themes) && themes?.length ? themes : getFallbackThemes();
         rebuildThemeMap(availableThemes);
         populateThemeSelectors();
 
-        launcherSettingsCache = await window.electronAPI.getSettings();
+        launcherSettingsCache = settings || {};
         const savedTheme = ensureThemeCode(launcherSettingsCache.theme || 'skypixel');
         applyThemeClass(savedTheme);
         if (themeSelect) themeSelect.value = savedTheme;
-        // Initialize server path lock state early to avoid clickable window
-        try {
-            const pathInfo = await window.electronAPI.getServerPathInfo();
+
+        if (pathInfo) {
             if (serverPathDisplay && pathInfo?.path) serverPathDisplay.value = pathInfo.path;
             updateServerPathLockState(!!pathInfo?.locked);
-        } catch (_) {}
+        }
         
         await populateLanguageSelects();
         const savedLang = launcherSettingsCache.language || 'en';
-        
         languageModalSelect.value = savedLang;
         languageSettingsSelect.value = savedLang;
         languageJavaSelect.value = savedLang;
-        
-        // Set theme selector initial value for Java page
         if (themeJavaSelect) themeJavaSelect.value = savedTheme;
         
         await setLanguage(savedLang);
-        
-        setStatus(currentTranslations['initializing'] || "Initializing...", true, 'initializing');
+        // Keep startup progress in the loading screen (not the status bar)
+        setLoadingText('Launcher initializing...', 'launcherInitializing');
         
         await refreshUISetupState();
-        addToConsole("Launcher initialized.", "INFO");
 
     } catch (error) {
         addToConsole(`Initialization failed: ${error.message}`, 'ERROR');
@@ -1410,6 +1395,10 @@ async function initializeApp() {
         setTimeout(() => {
             loadingScreen.classList.add('hidden');
             loadingScreenActive = false;
+            // After startup finishes, show a stable state in the status bar.
+            if (!localIsServerRunning) {
+                setStatus(currentTranslations['launcherInitialized'] || 'Launcher initialized.', false, 'launcherInitialized');
+            }
             window.electronAPI.appReadyToShow();
         }, 500);
     }
@@ -1428,13 +1417,26 @@ const startupStatusKeys = new Set([
 
 window.electronAPI.onUpdateStatus((message, pulse = false, key = null) => {
     if (loadingScreenActive) {
-        appendLoadingMessage(message || '');
+        setLoadingText(message || '', key);
         return;
     }
     if (key && startupStatusKeys.has(key)) {
         return; // keep startup-only messages off the status bar
     }
+
     setStatus(message || '', pulse, key);
+
+    const translatedOrFallback = (key && currentTranslations[key]) ? currentTranslations[key] : (message || '');
+    const lowerMessage = String(translatedOrFallback).toLowerCase();
+
+    if (lowerMessage.includes('downloading') || lowerMessage.includes('se descarcă')) {
+        isDownloadingFromServer = true;
+        updateButtonStates(localIsServerRunning);
+    }
+
+    if ((lowerMessage.includes('failed') || lowerMessage.includes('error')) && isSetupViewOpen) {
+        hideDownloadLoading();
+    }
 });
 
 function startCountdown(seconds, messageKey, callback) {

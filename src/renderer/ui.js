@@ -701,7 +701,7 @@ function updateSettingsLockState(locked) {
     // Keep non-critical settings enabled (autostart, notifications, theme, language, etc.)
 }
 
-async function fetchAndDisplayIPs(showPort = false) {
+async function fetchAndDisplayIPs(showPort = true) {
     let port = '';
     if (showPort) {
         try {
@@ -732,14 +732,16 @@ async function fetchAndDisplayIPs(showPort = false) {
 }
 
 let loadingScreenActive = true;
-const loadingMessagesContainer = document.getElementById('loading-messages');
+const loadingLauncherText = document.querySelector('#loading-screen [data-key="loadingLauncher"]');
 
-function appendLoadingMessage(msg) {
-    if (!loadingScreenActive || !loadingMessagesContainer || !msg) return;
-    const line = document.createElement('div');
-    line.textContent = msg;
-    loadingMessagesContainer.appendChild(line);
-    loadingMessagesContainer.scrollTop = loadingMessagesContainer.scrollHeight;
+function setLoadingText(fallbackText, translationKey = null) {
+    if (!loadingLauncherText) return;
+    const key = translationKey || loadingLauncherText.dataset.key;
+    const translated = key ? currentTranslations[key] : null;
+    const text = (translated && typeof translated === 'string' && translated.trim())
+        ? translated
+        : (fallbackText || currentTranslations['loadingLauncher'] || 'Loading Launcher...');
+    loadingLauncherText.textContent = text;
 }
 
 async function initializeApp() {
@@ -777,8 +779,8 @@ async function initializeApp() {
         themeJavaSelect.value = savedTheme === 'default' ? 'skypixel' : savedTheme;
         
         await setLanguage(savedLang);
-        
-        setStatus(currentTranslations['initializing'] || "Initializing...", true, 'initializing');
+
+        setLoadingText('Launcher initializing...', 'launcherInitializing');
         
         await refreshUISetupState();
         addToConsole("Launcher initialized.", "INFO");
@@ -807,7 +809,7 @@ const startupStatusKeys = new Set([
 
 window.electronAPI.onUpdateStatus((message, pulse = false, key = null) => {
     if (loadingScreenActive) {
-        appendLoadingMessage(message || '');
+        setLoadingText(message || '', key);
         return;
     }
     if (key && startupStatusKeys.has(key)) {
