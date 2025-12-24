@@ -1318,20 +1318,38 @@ async function fetchAndDisplayIPs(showPort = false) {
     }
     try {
         const localIP = await window.electronAPI.getLocalIP() || '-';
-        localIpAddressSpan.textContent = (localIP !== '-' && localIP !== 'Error') ? `${localIP}${port}` : localIP;
-    } catch (error) { localIpAddressSpan.textContent = 'Error'; }
+        const safeLocal = (localIP !== '-' && localIP !== 'Error') ? localIP : 'localhost';
+        localIpAddressSpan.textContent = showPort ? `${safeLocal}${port}` : safeLocal;
+    } catch (error) { localIpAddressSpan.textContent = showPort ? `localhost${port}` : 'localhost'; }
     try {
         const publicIpResponse = await window.electronAPI.getPublicIP();
         let publicIP = publicIpResponse;
         let appendServerPort = true;
+        let source = null;
         if (publicIpResponse && typeof publicIpResponse === 'object') {
             publicIP = publicIpResponse.address ?? '-';
             appendServerPort = publicIpResponse.includeServerPort !== false;
+            source = publicIpResponse.source || null;
         }
         publicIP = publicIP || '-';
-        const shouldAppendPort = appendServerPort && publicIP !== '-' && publicIP !== 'Error';
+        if (source === 'offline' || publicIP === '-' || publicIP === 'Error') {
+            publicIP = 'Offline';
+            appendServerPort = false;
+        }
+        const shouldAppendPort = appendServerPort && publicIP !== 'Offline' && publicIP !== 'Error';
         publicIpAddressSpan.textContent = shouldAppendPort ? `${publicIP}${port}` : publicIP;
-    } catch (error) { publicIpAddressSpan.textContent = 'Error'; }
+    } catch (error) { publicIpAddressSpan.textContent = 'Offline'; }
+}
+
+let loadingScreenActive = true;
+const loadingMessagesContainer = document.getElementById('loading-messages');
+
+function appendLoadingMessage(msg) {
+    if (!loadingScreenActive || !loadingMessagesContainer || !msg) return;
+    const line = document.createElement('div');
+    line.textContent = msg;
+    loadingMessagesContainer.appendChild(line);
+    loadingMessagesContainer.scrollTop = loadingMessagesContainer.scrollHeight;
 }
 
 async function initializeApp() {
@@ -1379,7 +1397,6 @@ async function initializeApp() {
         
         await setLanguage(savedLang);
         
-        addToConsole("Launcher initializing...", "INFO");
         setStatus(currentTranslations['initializing'] || "Initializing...", true, 'initializing');
         
         await refreshUISetupState();
@@ -1392,12 +1409,33 @@ async function initializeApp() {
         loadingScreen.style.opacity = '0';
         setTimeout(() => {
             loadingScreen.classList.add('hidden');
+            loadingScreenActive = false;
             window.electronAPI.appReadyToShow();
         }, 500);
     }
 }
 
 document.addEventListener('DOMContentLoaded', initializeApp);
+
+// Mirror status updates from main: show on loading screen; after load, ignore startup-only keys
+const startupStatusKeys = new Set([
+    'updater-unavailable',
+    'updater-in-progress',
+    'updater-check-failed',
+    'updater-check-start-failed',
+    'setup-ok'
+]);
+
+window.electronAPI.onUpdateStatus((message, pulse = false, key = null) => {
+    if (loadingScreenActive) {
+        appendLoadingMessage(message || '');
+        return;
+    }
+    if (key && startupStatusKeys.has(key)) {
+        return; // keep startup-only messages off the status bar
+    }
+    setStatus(message || '', pulse, key);
+});
 
 function startCountdown(seconds, messageKey, callback) {
     if (countdownInterval) clearInterval(countdownInterval);
@@ -1550,30 +1588,42 @@ window.electronAPI.onJavaInstallStatus((status, progress) => {
 // Prevent sound overlap - only one sound at a time
 let currentAudio = null;
 
-window.electronAPI.onPlaySound((soundPath) => {
+window.electronAPI.onPlaySound((payload) => {
+    const normalizePayload = () => {
+        if (!payload) return { url: null, volume: 0.32 };
+        if (typeof payload === 'string') return { url: payload, volume: 0.32 };
+        if (typeof payload === 'object') {
+            const vol = Math.max(0, Math.min(1, Number(payload.volume ?? 0.32)));
+            return { url: payload.url || null, volume: Number.isFinite(vol) ? vol : 0.32 };
+        }
+        return { url: null, volume: 0.32 };
+    };
+
+    const { url, volume } = normalizePayload();
+
     try {
-        if (soundPath) {
+        if (url) {
             // Stop current audio if playing
             if (currentAudio) {
                 currentAudio.pause();
                 currentAudio.currentTime = 0;
                 currentAudio = null;
             }
-            
-            const audio = new Audio(soundPath);
-            audio.volume = 0.3;
+
+            const audio = new Audio(url);
+            audio.volume = volume;
             currentAudio = audio;
-            
+
             // Clear reference when sound finishes
             audio.addEventListener('ended', () => {
                 if (currentAudio === audio) {
                     currentAudio = null;
                 }
             });
-            
-            audio.play().catch(() => { 
+
+            audio.play().catch(() => {
                 currentAudio = null;
-                /* fallback below */ 
+                /* fallback below */
             });
             return;
         }

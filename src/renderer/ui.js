@@ -731,6 +731,17 @@ async function fetchAndDisplayIPs(showPort = false) {
     } catch (error) { publicIpAddressSpan.textContent = 'Error'; }
 }
 
+let loadingScreenActive = true;
+const loadingMessagesContainer = document.getElementById('loading-messages');
+
+function appendLoadingMessage(msg) {
+    if (!loadingScreenActive || !loadingMessagesContainer || !msg) return;
+    const line = document.createElement('div');
+    line.textContent = msg;
+    loadingMessagesContainer.appendChild(line);
+    loadingMessagesContainer.scrollTop = loadingMessagesContainer.scrollHeight;
+}
+
 async function initializeApp() {
     try {
         const iconPath = await window.electronAPI.getIconPath();
@@ -767,7 +778,6 @@ async function initializeApp() {
         
         await setLanguage(savedLang);
         
-        addToConsole("Launcher initializing...", "INFO");
         setStatus(currentTranslations['initializing'] || "Initializing...", true, 'initializing');
         
         await refreshUISetupState();
@@ -780,10 +790,31 @@ async function initializeApp() {
         loadingScreen.style.opacity = '0';
         setTimeout(() => {
             loadingScreen.classList.add('hidden');
+            loadingScreenActive = false;
             window.electronAPI.appReadyToShow();
         }, 500);
     }
 }
+
+// Mirror status updates from main: show on loading screen; after load, ignore startup-only keys
+const startupStatusKeys = new Set([
+    'updater-unavailable',
+    'updater-in-progress',
+    'updater-check-failed',
+    'updater-check-start-failed',
+    'setup-ok'
+]);
+
+window.electronAPI.onUpdateStatus((message, pulse = false, key = null) => {
+    if (loadingScreenActive) {
+        appendLoadingMessage(message || '');
+        return;
+    }
+    if (key && startupStatusKeys.has(key)) {
+        return; // keep startup-only messages off the status bar
+    }
+    setStatus(message || '', pulse, key);
+});
 
 function startCountdown(seconds, messageKey, callback) {
     if (countdownInterval) clearInterval(countdownInterval);

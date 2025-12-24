@@ -36,10 +36,17 @@ const AdmZip = require('adm-zip');
 const NotificationService = require('./src/services/NotificationService');
 
 const SOUND_CANDIDATES = {
-  error: ['error.mp3', 'error.wav'],
-  startup: ['startup.mp3', 'startup.wav'],
-  status: ['status.mp3', 'status.wav'],
-  success: ['success.mp3', 'success.wav']
+    error: ['error.mp3', 'error.wav'],
+    startup: ['startup.mp3', 'startup.wav'],
+    status: ['status.mp3', 'status.wav'],
+    success: ['success.mp3', 'success.wav']
+};
+const SOUND_BASE_VOLUME = 0.32;
+const SOUND_VOLUME_MAP = {
+    startup: 0.35,
+    success: 0.32,
+    status: 0.32,
+    error: 0.34
 };
 const DEFAULT_SOUND_TYPE = 'status';
 // Renderer readiness + buffered status messages for backward compatibility with older renderer bundles
@@ -58,11 +65,29 @@ function bufferStatus(msg, pulse, key) {
     statusBuffer.push({ msg, pulse, key });
 }
 
+function pushStatus(msg, pulse = false, key = null) {
+    try { bufferStatus(msg, pulse, key); } catch (_) {}
+    try {
+        const win = getMainWindow();
+        safeSend(win, 'update-status', msg, pulse, key);
+    } catch (_) {}
+}
+
+const STARTUP_STATUS_KEYS = new Set([
+    'updater-unavailable',
+    'updater-in-progress',
+    'updater-check-failed',
+    'updater-check-start-failed',
+    'setup-ok'
+]);
+
 function flushStatusBuffer() {
     if (!rendererReady) return;
     // Flush in order of arrival
     while (statusBuffer.length) {
         const { msg, pulse, key } = statusBuffer.shift();
+        // Skip startup-only statuses after renderer is ready to avoid polluting status bar
+        if (key && STARTUP_STATUS_KEYS.has(key)) continue;
         const win = getMainWindow();
         safeSend(win, 'update-status', msg, pulse, key);
         handleStatusSound(msg, key, pulse);
@@ -1024,20 +1049,27 @@ let lastSetupCheckAt = 0;
 
 let autoUpdateWarningShown = false;
 let autoUpdateCheckInFlight = false;
+let updaterSilentMode = false;
 
-function triggerAutoUpdateCheck(reason = 'manual') {
+function triggerAutoUpdateCheck(reason = 'manual', opts = {}) {
+    const { silent = false } = opts;
+    updaterSilentMode = !!silent;
     if (!shouldCheckForUpdates()) {
         if (!autoUpdateWarningShown) {
             const hint = app.isPackaged
                 ? 'Run the AppImage/installer build to enable automatic updates on this platform.'
                 : 'Auto-updates are disabled while running an unpackaged/development build.';
-            sendConsole(`Updater: Automatic updates unavailable. ${hint}`, 'WARN');
+            if (!silent) {
+                pushStatus(`Updater: ${hint}`, true, 'updater-unavailable');
+            } else {
+                log.info(`Updater: Automatic updates unavailable. ${hint}`);
+            }
             autoUpdateWarningShown = true;
         }
         return { supported: false, reason: 'unsupported' };
     }
     if (autoUpdateCheckInFlight) {
-        sendConsole('Updater: A previous update check is still in progress.', 'INFO');
+        if (!silent) { pushStatus('Updater: A previous update check is still in progress.', false, 'updater-in-progress'); }
         return { supported: true, reason: 'in-progress' };
     }
     autoUpdateCheckInFlight = true;
@@ -1051,13 +1083,21 @@ function triggerAutoUpdateCheck(reason = 'manual') {
         if (pending && typeof pending.catch === 'function') {
             pending.catch((error) => {
                 autoUpdateCheckInFlight = false;
-                sendConsole(`Updater: Failed to complete update check: ${error.message}`, 'ERROR');
+                if (!silent) {
+                    pushStatus('Updater: Check failed (offline or blocked).', false, 'updater-check-failed');
+                } else {
+                    log.warn(`Updater: Failed to complete update check: ${error.message}`);
+                }
             });
         }
         return { supported: true, reason };
     } catch (error) {
         autoUpdateCheckInFlight = false;
-        sendConsole(`Updater: Could not start update check: ${error.message}`, 'ERROR');
+        if (!silent) {
+            pushStatus('Updater: Could not start update check.', false, 'updater-check-start-failed');
+        } else {
+            log.warn(`Updater: Could not start update check: ${error.message}`);
+        }
         return { supported: true, reason: 'error', error: error.message };
     }
 }
@@ -1085,7 +1125,7 @@ function getLocalIPv4() {
             }
         }
     }
-    return '-';
+    return 'localhost';
 }
 
 function getNotificationIconPath() {
@@ -1231,11 +1271,12 @@ function playSoundEffect(requestedType = DEFAULT_SOUND_TYPE) {
         const soundPath = getSoundFilePath(type);
         win = getMainWindow();
         if (!win || win.isDestroyed()) return;
-        const payload = soundPath ? pathToFileURL(soundPath).href : null;
+        const volume = Math.max(0, Math.min(1, SOUND_VOLUME_MAP[type] ?? SOUND_BASE_VOLUME));
+        const payload = soundPath ? { url: pathToFileURL(soundPath).href, type, volume } : { url: null, type, volume };
         safeSend(win, 'play-sound', payload);
     } catch (_) {
         if (!win) win = getMainWindow();
-        safeSend(win, 'play-sound', null);
+        safeSend(win, 'play-sound', { url: null, type: requestedType, volume: SOUND_BASE_VOLUME });
     }
 }
 
@@ -1398,28 +1439,35 @@ async function fetchPublicIPFromIpify() {
 }
 
 async function resolvePublicAddress() {
-    let ngrokInfo = await getNgrokTcpTunnelInfo();
-    if ((!ngrokInfo || !ngrokInfo.publicUrl) && localIsServerRunningGlobal) {
-        const started = await ensureNgrokTunnelForCurrentServerPort(ngrokInfo);
-        if (started) {
-            await delay(800);
-            ngrokInfo = await getNgrokTcpTunnelInfo();
+    try {
+        let ngrokInfo = await getNgrokTcpTunnelInfo();
+        if ((!ngrokInfo || !ngrokInfo.publicUrl) && localIsServerRunningGlobal) {
+            const started = await ensureNgrokTunnelForCurrentServerPort(ngrokInfo).catch(() => false);
+            if (started) {
+                await delay(800);
+                ngrokInfo = await getNgrokTcpTunnelInfo();
+            }
         }
-    }
-    if (ngrokInfo?.publicUrl) {
-        const ngrokAddress = ngrokInfo.publicUrl.replace(/^tcp:\/\//, '');
-        if (lastPublicAddressSource !== 'ngrok') {
-            log.info('Using ngrok TCP tunnel for public address.');
+        if (ngrokInfo?.publicUrl) {
+            const ngrokAddress = ngrokInfo.publicUrl.replace(/^tcp:\/\//, '');
+            if (lastPublicAddressSource !== 'ngrok') {
+                log.info('Using ngrok TCP tunnel for public address.');
+            }
+            lastPublicAddressSource = 'ngrok';
+            return { address: ngrokAddress, includeServerPort: false, source: 'ngrok' };
         }
-        lastPublicAddressSource = 'ngrok';
-        return { address: ngrokAddress, includeServerPort: false, source: 'ngrok' };
+
+        const directIp = await fetchPublicIPFromIpify();
+        if (lastPublicAddressSource !== 'direct') {
+            log.info('Using direct public IP fallback.');
+        }
+        lastPublicAddressSource = 'direct';
+        return { address: directIp, includeServerPort: true, source: 'direct' };
+    } catch (error) {
+        log.warn(`Public IP unavailable (offline?): ${error.message}`);
+        lastPublicAddressSource = 'offline';
+        return { address: 'Offline', includeServerPort: false, source: 'offline' };
     }
-    const directIp = await fetchPublicIPFromIpify();
-    if (lastPublicAddressSource !== 'direct') {
-        log.info('Using direct public IP fallback.');
-    }
-    lastPublicAddressSource = 'direct';
-    return { address: directIp, includeServerPort: true, source: 'direct' };
 }
 
 function getConfiguredJavaServerPort() {
@@ -1784,19 +1832,38 @@ function createWindow () {
     rpc.login({ clientId }).catch(() => {
             // No UI log
     });
-    triggerAutoUpdateCheck('startup');
+    triggerAutoUpdateCheck('startup', { silent: true });
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow();});
 });
 
-autoUpdater.on('checking-for-update', () => sendConsole('Updater: Checking for updates...', 'INFO'));
+autoUpdater.on('checking-for-update', () => {
+    if (!updaterSilentMode) {
+        sendConsole('Updater: Checking for updates...', 'INFO');
+    } else {
+        log.info('Updater: Checking for updates (silent).');
+    }
+});
 autoUpdater.on('update-available', (info) => {
+    updaterSilentMode = false; // surface progress now that we have an update
     sendConsole(`Updater: Update available! Version: ${info.version}`, 'SUCCESS');
     showDesktopNotification('Update Available', `Version ${info.version} is downloading in the background.`);
 });
-autoUpdater.on('update-not-available', (info) => sendConsole('Updater: No new updates available.', 'INFO'));
+autoUpdater.on('update-not-available', (info) => {
+    if (!updaterSilentMode) {
+        sendConsole('Updater: No new updates available.', 'INFO');
+    } else {
+        log.info('Updater: No updates (silent).');
+    }
+    updaterSilentMode = false;
+});
 autoUpdater.on('error', (err) => {
-    sendConsole('Updater: Error during update. ' + err.message, 'ERROR');
-    showDesktopNotification('Update Error', err.message);
+    if (!updaterSilentMode) {
+        sendConsole('Updater: Error during update. ' + err.message, 'ERROR');
+        showDesktopNotification('Update Error', err.message);
+    } else {
+        log.warn(`Updater: Error during update (silent run): ${err.message}`);
+    }
+    updaterSilentMode = false;
 });
 autoUpdater.on('download-progress', (p) => sendStatus(`Download speed: ${Math.round(p.bytesPerSecond / 1024)} KB/s - Downloaded ${Math.round(p.percent)}%`, true));
 autoUpdater.on('update-downloaded', (info) => {
@@ -1886,6 +1953,17 @@ ipcMain.handle('get-settings', () => {
         theme: settings.theme || 'default',
         notificationsEnabled: (settings.notificationsEnabled !== false)
     };
+});
+
+// Manual update trigger from renderer
+ipcMain.handle('check-for-updates', async () => {
+    try {
+        const result = triggerAutoUpdateCheck('manual', { silent: false });
+        return result || { supported: true, reason: 'started' };
+    } catch (error) {
+        log.warn(`Manual update check failed: ${error.message}`);
+        return { supported: false, reason: 'error', error: error.message };
+    }
 });
 
 ipcMain.on('set-settings', (event, settings) => {
@@ -1979,11 +2057,11 @@ ipcMain.handle('check-initial-setup', async () => {
         try {
             const now = Date.now();
             if (now - lastSetupCheckAt > 1500) {
-                sendConsole(`Setup check OK.`, 'INFO');
+                pushStatus('Setup check OK.', false, 'setup-ok');
                 lastSetupCheckAt = now;
             }
         } catch (_) {
-            sendConsole(`Setup check OK.`, 'INFO');
+            pushStatus('Setup check OK.', false, 'setup-ok');
         }
     }
     return { needsSetup, config: readServerConfig() };
@@ -3172,7 +3250,7 @@ ipcMain.handle('get-public-ip', async () => {
     try {
         return await resolvePublicAddress();
     } catch (error) {
-        sendConsole(`Could not fetch Public IP: ${error.message}`, 'ERROR');
-        return { address: '- (Error)', includeServerPort: true, source: 'error' };
+        log.warn(`Public IP lookup failed: ${error.message}`);
+        return { address: 'Offline', includeServerPort: false, source: 'offline' };
     }
 });
