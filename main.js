@@ -120,6 +120,25 @@ const SOUND_SEARCH_DIRS = ['', 'sounds'];
 const ERROR_SOUND_KEYWORDS = ['error', 'failed', 'fail', 'not found', 'crash', 'stopped unexpectedly', 'timed out', 'unavailable', 'unable'];
 const SUCCESS_SOUND_KEYWORDS = ['success', 'successfully', 'ready', 'completed', 'installed', 'configured', 'downloaded', 'server started', 'server ready', 'done'];
 const NGROK_API_ENDPOINT = 'http://127.0.0.1:4040/api/tunnels';
+const NGROK_REGION_DEFAULT = 'us';
+const NGROK_REGION_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const NGROK_GEO_ENDPOINT = 'https://ipapi.co/json/';
+const NGROK_REGION_CODES = new Set(['ap', 'au', 'eu', 'in', 'jp', 'sa', 'us', 'us-cal-1']);
+const NGROK_WEST_COAST_TZ = new Set([
+    'america/los_angeles', 'america/vancouver', 'america/phoenix', 'america/denver', 'america/dawson',
+    'america/tijuana', 'america/anchorage', 'america/adak', 'pacific/honolulu', 'america/juneau',
+    'america/sitka', 'america/nome', 'america/yakutat'
+]);
+const NGROK_WEST_COAST_STATES = new Set(['AK', 'AZ', 'CA', 'CO', 'HI', 'ID', 'MT', 'NV', 'NM', 'OR', 'UT', 'WA', 'WY']);
+const NGROK_SOUTH_AMERICA_COUNTRIES = new Set(['AR', 'BO', 'BR', 'CL', 'CO', 'EC', 'GF', 'GY', 'PE', 'PY', 'SR', 'UY', 'VE']);
+const NGROK_EUROPE_COUNTRIES = new Set([
+    'AD', 'AL', 'AM', 'AT', 'AX', 'BA', 'BE', 'BG', 'BY', 'CH', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FO', 'FR', 'GB', 'GE',
+    'GG', 'GI', 'GR', 'HR', 'HU', 'IE', 'IM', 'IS', 'IT', 'JE', 'KZ', 'LI', 'LT', 'LU', 'LV', 'MC', 'MD', 'ME', 'MK', 'MT', 'NL',
+    'NO', 'PL', 'PT', 'RO', 'RS', 'RU', 'SE', 'SI', 'SK', 'SM', 'TJ', 'TR', 'UA', 'UZ', 'VA', 'XK'
+]);
+const NGROK_APAC_COUNTRIES = new Set([
+    'BD', 'BN', 'BT', 'CN', 'HK', 'ID', 'KH', 'KR', 'LA', 'LK', 'MM', 'MN', 'MO', 'MV', 'MY', 'NP', 'PH', 'PK', 'SG', 'TH', 'TL', 'TW', 'VN'
+]);
 const PUBLIC_IP_USER_AGENT = 'MyMinecraftLauncher/1.0';
 const DISCORD_CONSOLE_SUPPRESS_REGEX = /discord/i;
 const DEFAULT_THEMES = [
@@ -270,6 +289,9 @@ let ngrokTargetPort = null;
 let ngrokUnavailablePermanently = false;
 let ngrokStopRequested = false;
 let lastNgrokDiagnosticCode = null;
+let cachedNgrokRegion = null;
+let cachedNgrokRegionAt = 0;
+let lastAnnouncedNgrokRegion = null;
 
 // Notification service
 let notificationService = null;
@@ -1440,6 +1462,90 @@ async function getNgrokTcpTunnelInfo() {
     }
 }
 
+function coerceNgrokRegion(value) {
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim().toLowerCase();
+    return NGROK_REGION_CODES.has(normalized) ? normalized : null;
+}
+
+function mapGeoToNgrokRegion(geo) {
+    const country = (geo?.country_code || geo?.country || '').toUpperCase();
+    const regionCode = (geo?.region_code || geo?.region || '').toUpperCase();
+    const timezone = (geo?.timezone || '').toLowerCase();
+    const continent = (geo?.continent_code || '').toUpperCase();
+
+    if (country === 'JP') return 'jp';
+    if (country === 'IN') return 'in';
+    if (country === 'AU' || country === 'NZ') return 'au';
+
+    if (country === 'US') {
+        if (NGROK_WEST_COAST_STATES.has(regionCode) || NGROK_WEST_COAST_TZ.has(timezone)) {
+            return 'us-cal-1';
+        }
+        return 'us';
+    }
+
+    if (country === 'CA' || country === 'MX') return 'us';
+    if (NGROK_SOUTH_AMERICA_COUNTRIES.has(country)) return 'sa';
+    if (NGROK_EUROPE_COUNTRIES.has(country)) return 'eu';
+    if (NGROK_APAC_COUNTRIES.has(country)) return 'ap';
+
+    if (continent === 'SA') return 'sa';
+    if (continent === 'EU' || continent === 'AF') return 'eu';
+    if (continent === 'AS' || continent === 'OC') return 'ap';
+    return null;
+}
+
+function fetchNgrokGeoHint() {
+    return new Promise((resolve, reject) => {
+        const request = https.get(
+            NGROK_GEO_ENDPOINT,
+            { headers: { 'User-Agent': PUBLIC_IP_USER_AGENT } },
+            (res) => {
+                if (res.statusCode !== 200) {
+                    res.resume();
+                    return reject(new Error(`Ngrok geo endpoint status ${res.statusCode}`));
+                }
+                let raw = '';
+                res.on('data', (chunk) => { raw += chunk; });
+                res.on('end', () => {
+                    try { resolve(JSON.parse(raw)); }
+                    catch (err) { reject(new Error(`Ngrok geo response parse failed: ${err.message}`)); }
+                });
+            }
+        );
+        request.setTimeout(3000, () => {
+            request.destroy(new Error('Ngrok geo request timed out'));
+        });
+        request.on('error', (err) => reject(err));
+    });
+}
+
+async function resolveNgrokRegion(preferredRegion = null) {
+    const manual = coerceNgrokRegion(preferredRegion) || coerceNgrokRegion(process.env.NGROK_REGION);
+    if (manual) return manual;
+
+    const now = Date.now();
+    if (cachedNgrokRegion && (now - cachedNgrokRegionAt) < NGROK_REGION_CACHE_TTL_MS) {
+        return cachedNgrokRegion;
+    }
+
+    try {
+        const geo = await fetchNgrokGeoHint();
+        const derived = coerceNgrokRegion(mapGeoToNgrokRegion(geo));
+        cachedNgrokRegion = derived || NGROK_REGION_DEFAULT;
+        cachedNgrokRegionAt = now;
+        return cachedNgrokRegion;
+    } catch (error) {
+        if (typeof log?.debug === 'function') {
+            log.debug(`Ngrok region lookup failed: ${error.message}`);
+        }
+        cachedNgrokRegion = NGROK_REGION_DEFAULT;
+        cachedNgrokRegionAt = now;
+        return cachedNgrokRegion;
+    }
+}
+
 async function fetchPublicIPFromIpify() {
     return new Promise((resolve, reject) => {
         const request = https.get(
@@ -1526,14 +1632,23 @@ function handleNgrokProcessOutput(data) {
     }
 }
 
-function startNgrokTunnel(port) {
+function startNgrokTunnel(port, region = null) {
     if (ngrokUnavailablePermanently) return false;
     try {
         if (ngrokProcess && !ngrokProcess.killed) {
             if (ngrokTargetPort === port) return true;
             stopNgrokTunnel();
         }
-        const args = ['tcp', String(port)];
+        const finalRegion = coerceNgrokRegion(region);
+        const args = ['tcp'];
+        if (finalRegion) {
+            args.push(`--region=${finalRegion}`);
+            if (lastAnnouncedNgrokRegion !== finalRegion) {
+                sendConsole(`Ngrok region selected: ${finalRegion}`, 'INFO');
+                lastAnnouncedNgrokRegion = finalRegion;
+            }
+        }
+        args.push(String(port));
         ngrokStopRequested = false;
         sendConsole(`Attempting to start ngrok TCP tunnel on port ${port}...`, 'INFO');
         log.info(`Attempting to start ngrok TCP tunnel on port ${port}`);
@@ -1620,6 +1735,9 @@ async function ensureNgrokTunnelForCurrentServerPort(existingInfo = null) {
     const desiredPort = getConfiguredJavaServerPort();
     if (!desiredPort) return false;
 
+    const userRegionPreference = serverConfig?.ngrokRegion || serverConfig?.ngrok?.region;
+    const region = await resolveNgrokRegion(userRegionPreference);
+
     const tunnelInfo = existingInfo ?? await getNgrokTcpTunnelInfo();
     if (tunnelInfo?.configAddr) {
         const activePort = extractPortFromAddress(tunnelInfo.configAddr);
@@ -1628,7 +1746,7 @@ async function ensureNgrokTunnelForCurrentServerPort(existingInfo = null) {
         }
     }
 
-    const result = startNgrokTunnel(desiredPort);
+    const result = startNgrokTunnel(desiredPort, region);
     if (result && typeof result.then === 'function') {
         const outcome = await result;
         if (!outcome.success && outcome.error) {
