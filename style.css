@@ -17,6 +17,7 @@ body {
     text-rendering: optimizeLegibility;
 }
 
+
 /* Block text selection globally, but keep it enabled for the console and form fields */
 body * {
     -webkit-user-select: none;

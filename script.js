@@ -144,11 +144,41 @@ function enqueueConsoleLine(html) {
     scheduleConsoleFlush();
 }
 
+// In-app toasts removed; rely on desktop notifications only
+
+function renderMemoryUsage() {
+    const allocated = parseFloat(allocatedRamCache);
+    const hasAllocated = !Number.isNaN(allocated) && allocated > 0;
+    const hasMemory = typeof lastMemoryGB === 'number' && !Number.isNaN(lastMemoryGB);
+
+    if (hasMemory) {
+        const finalMemUsage = Math.max(0, lastMemoryGB);
+        if (hasAllocated) {
+            memoryUsageSpan.textContent = `${finalMemUsage.toFixed(2)} / ${allocatedRamCache} GB`;
+            const usagePercent = (finalMemUsage / allocated) * 100;
+            if (usagePercent >= 90) {
+                memoryUsageSpan.style.color = '#ef4444';
+            } else if (usagePercent >= 70) {
+                memoryUsageSpan.style.color = '#facc15';
+            } else {
+                memoryUsageSpan.style.color = '#4ade80';
+            }
+        } else {
+            memoryUsageSpan.textContent = `${finalMemUsage.toFixed(2)} GB`;
+            memoryUsageSpan.style.color = '';
+        }
+    } else {
+        memoryUsageSpan.textContent = hasAllocated ? `— / ${allocatedRamCache} GB` : '— GB';
+        memoryUsageSpan.style.color = '';
+    }
+}
+
 let localIsServerRunning = false;
 let currentServerConfig = {};
 let isModalAnimating = false;
 let availableMcVersionsCache = {};
 let allocatedRamCache = '-';
+let lastMemoryGB = null;
 let autoStartIsActive = false; 
 let countdownInterval = null;
 let isDownloadingFromServer = false;
@@ -1201,17 +1231,14 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         publicIpWidget.addEventListener('animationend', () => removeAnimation(publicIpWidget), { once: true });
         serverVersionWidget.addEventListener('animationend', () => removeAnimation(serverVersionWidget), { once: true });
 
-        const allocatedNumeric = !Number.isNaN(parseFloat(allocatedRamCache)) && parseFloat(allocatedRamCache) > 0;
-        memoryUsageSpan.textContent = allocatedNumeric
-            ? `— / ${allocatedRamCache} GB`
-            : '— GB';
-        memoryUsageSpan.style.color = '';
+        renderMemoryUsage();
     } else {
         // Ensure starting/stopping flags reset so UI re-enables controls after crashes
         isStarting = false;
         isStopping = false;
         // Status și sunet sunt gestionate de main process prin sendStatus()
         await fetchAndDisplayIPs();
+        lastMemoryGB = null;
         memoryUsageSpan.textContent = '0 GB';
         memoryUsageSpan.style.color = '';
         serverTpsSpan.textContent = '0 ms';
@@ -1239,45 +1266,36 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
 });
 
 window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, tps, latencyMs, mspt, cmdLatencyMs }) => {
-    if (allocatedRamGB) {
+    let shouldRenderMemory = false;
+    if (typeof allocatedRamGB !== 'undefined' && allocatedRamGB !== null) {
         allocatedRamCache = allocatedRamGB;
+        shouldRenderMemory = true;
     }
-    
+
     if (typeof memoryGB !== 'undefined') {
         const memUsage = parseFloat(memoryGB);
         if (!Number.isNaN(memUsage)) {
-            const finalMemUsage = Math.max(0, memUsage);
-            const allocatedRam = parseFloat(allocatedRamCache);
-            if (!Number.isNaN(allocatedRam) && allocatedRam > 0) {
-                memoryUsageSpan.textContent = `${finalMemUsage.toFixed(1)} / ${allocatedRamCache} GB`;
-
-                const usagePercent = (finalMemUsage / allocatedRam) * 100;
-
-                    if (usagePercent >= 90) {
-                        memoryUsageSpan.style.color = '#ef4444';
-                    } else if (usagePercent >= 70) {
-                        memoryUsageSpan.style.color = '#facc15';
-                    } else {
-                        memoryUsageSpan.style.color = '#4ade80';
-                    }
-            } else {
-                memoryUsageSpan.textContent = `${finalMemUsage.toFixed(1)} GB`;
-                    memoryUsageSpan.style.color = '';
-            }
+            lastMemoryGB = memUsage;
+            shouldRenderMemory = true;
         }
     }
 
-    // Display command latency from /list response time
+    if (shouldRenderMemory) {
+        renderMemoryUsage();
+    }
+
+    // Display command latency from /list response time (higher precision)
     if (typeof cmdLatencyMs !== 'undefined' && cmdLatencyMs !== null) {
-        const ms = Math.max(0, parseInt(cmdLatencyMs, 10) || 0);
-        serverTpsSpan.textContent = `${ms} ms`;
-            if (ms >= 300) {
-                serverTpsSpan.style.color = '#ef4444';
-            } else if (ms >= 150) {
-                serverTpsSpan.style.color = '#facc15';
-            } else {
-                serverTpsSpan.style.color = '#4ade80';
-            }
+        const ms = Math.max(0, parseFloat(cmdLatencyMs) || 0);
+        const msText = ms >= 100 ? ms.toFixed(0) : ms.toFixed(1);
+        serverTpsSpan.textContent = `${msText} ms`;
+        if (ms >= 300) {
+            serverTpsSpan.style.color = '#ef4444';
+        } else if (ms >= 150) {
+            serverTpsSpan.style.color = '#facc15';
+        } else {
+            serverTpsSpan.style.color = '#4ade80';
+        }
     }
 });
 

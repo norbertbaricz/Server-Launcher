@@ -295,6 +295,7 @@ let lastAnnouncedNgrokRegion = null;
 
 // Notification service
 let notificationService = null;
+const notificationCooldowns = new Map();
 const execAsync = promisify(exec);
 
 try { app.setName('Server Launcher'); } catch (_) {}
@@ -519,6 +520,7 @@ const purpurJarName = 'purpur.jar';
 let serverProcess = null;
 const fabricJarName = 'fabric-server-launch.jar';
 const fabricInstallerJarName = 'fabric-installer.jar';
+const nowHr = () => process.hrtime.bigint();
 
 function getConfiguredServerType() {
   try {
@@ -544,7 +546,7 @@ let performanceStatsInterval = null;
 let manualListCheck = false;
 let commandLatencyInterval = null;
 let awaitingListProbe = false;
-let listProbeSentAt = 0;
+let listProbeSentAtNs = 0n;
 let lastManualListAt = 0;
 let listProbeTimeout = null;
 
@@ -1187,18 +1189,44 @@ function getNotificationIconPath() {
     } catch (_) { return undefined; }
 }
 
+function inferNotificationSeverity(title, body, provided) {
+    if (provided) return provided;
+    const text = `${title} ${body}`.toLowerCase();
+    if (/crash|fail|error|missing|not found|could not|unable/.test(text)) return 'error';
+    if (/warning|need|required|configuration needed|missing/i.test(text)) return 'warning';
+    if (/complete|ready|started|installed|success/.test(text)) return 'success';
+    return 'info';
+}
+
 function showDesktopNotification(title, body, options = {}) {
     try {
-        if (!notificationService) {
-            return;
-        }
-        
+        if (!notificationService) return;
+
         const settings = readLauncherSettings();
         const enabled = settings ? settings.notificationsEnabled !== false : true;
         notificationService.setEnabled(enabled);
-        
-        notificationService.show(title, body, options);
-    } catch (error) {
+
+        const normalizedSeverity = inferNotificationSeverity(
+            title,
+            body,
+            options.severity || (options.urgency === 'critical' ? 'error' : null)
+        );
+
+        const sticky = options.sticky ?? normalizedSeverity === 'error';
+        const cooldownMs = Number.isFinite(options.cooldownMs) ? options.cooldownMs : (normalizedSeverity === 'error' ? 0 : 5000);
+        const key = options.key || `${title}|${body}|${normalizedSeverity}`;
+
+        if (cooldownMs > 0) {
+            const lastAt = notificationCooldowns.get(key) || 0;
+            const now = Date.now();
+            if (now - lastAt < cooldownMs) return;
+            notificationCooldowns.set(key, now);
+        }
+
+        const payload = { ...options, severity: normalizedSeverity, sticky, cooldownMs };
+
+        notificationService.show(title, body, payload);
+    } catch (_) {
         // Silent error
     }
 }
@@ -1941,13 +1969,8 @@ function createWindow () {
   // Initialize notification service
   notificationService = new NotificationService();
   
-  // Set fallback callback to send in-app notifications
-  notificationService.setFallbackCallback((title, body) => {
-    const win = getMainWindow();
-    if (win && !win.isDestroyed()) {
-      safeSend(win, 'show-in-app-notification', { title, body });
-    }
-  });
+    // Set fallback callback (no-op: prefer desktop notifications; skip in-app toasts)
+    notificationService.setFallbackCallback(() => {});
   
   // Set sound callback
   notificationService.setSoundCallback((soundType) => {
@@ -2604,7 +2627,8 @@ async function startBedrockServer(serverConfig) {
         try {
             const stats = await pidusage(serverProcess.pid);
             const memoryGB = stats.memory / (1024 * 1024 * 1024);
-            safeSend(getMainWindow(), 'update-performance-stats', { memoryGB });
+            const memoryRounded = Number(memoryGB.toFixed(3));
+            safeSend(getMainWindow(), 'update-performance-stats', { memoryGB: memoryRounded });
         } catch (e) {
             clearInterval(performanceStatsInterval);
             if (localIsServerRunningGlobal) {
@@ -2613,7 +2637,7 @@ async function startBedrockServer(serverConfig) {
                 sendServerStateChange(false);
             }
         }
-    }, 2000);
+    }, 1000);
 
     const startedRegex = /server started\b/i;
 
@@ -2630,7 +2654,7 @@ async function startBedrockServer(serverConfig) {
                 const now = Date.now();
                 if (now - lastManualListAt > 2000) {
                     isAutomaticProbe = true;
-                    const latency = Math.max(0, now - listProbeSentAt);
+                    const latency = Math.max(0, Number(nowHr() - listProbeSentAtNs) / 1e6);
                     awaitingListProbe = false;
                     if (listProbeTimeout) { clearTimeout(listProbeTimeout); listProbeTimeout = null; }
                     safeSend(getMainWindow(), 'update-performance-stats', { cmdLatencyMs: latency });
@@ -2675,13 +2699,13 @@ async function startBedrockServer(serverConfig) {
                     ) {
                         try {
                             awaitingListProbe = true;
-                            listProbeSentAt = Date.now();
+                            listProbeSentAtNs = nowHr();
                             serverProcess.stdin.write('list\n');
                             if (listProbeTimeout) clearTimeout(listProbeTimeout);
                             listProbeTimeout = setTimeout(() => { awaitingListProbe = false; }, 3000);
                         } catch (_) { awaitingListProbe = false; }
                     }
-                }, 1500);
+                }, 1200);
             } catch (_) {}
         }
     });
@@ -3162,7 +3186,8 @@ ipcMain.on('start-server', async () => {
             try {
                 const stats = await pidusage(serverProcess.pid);
                 const memoryGB = stats.memory / (1024 * 1024 * 1024);
-                safeSend(getMainWindow(), 'update-performance-stats', { memoryGB });
+                const memoryRounded = Number(memoryGB.toFixed(3));
+                safeSend(getMainWindow(), 'update-performance-stats', { memoryGB: memoryRounded });
             } catch (e) {
                 clearInterval(performanceStatsInterval);
                 if (localIsServerRunningGlobal) {
@@ -3171,7 +3196,7 @@ ipcMain.on('start-server', async () => {
                     sendServerStateChange(false);
                 }
             }
-        }, 2000);
+        }, 1000);
 
         serverProcess.stdout.on('data', (data) => {
             const rawOutput = data.toString();
@@ -3201,7 +3226,7 @@ ipcMain.on('start-server', async () => {
                     const now = Date.now();
                     if (now - lastManualListAt > 2000) {
                         isAutomaticProbe = true;
-                        const latency = Math.max(0, now - listProbeSentAt);
+                        const latency = Math.max(0, Number(nowHr() - listProbeSentAtNs) / 1e6);
                         awaitingListProbe = false;
                         if (listProbeTimeout) { clearTimeout(listProbeTimeout); listProbeTimeout = null; }
                         safeSend(getMainWindow(), 'update-performance-stats', { cmdLatencyMs: latency });
@@ -3246,13 +3271,13 @@ ipcMain.on('start-server', async () => {
                         ) {
                             try {
                                 awaitingListProbe = true;
-                                listProbeSentAt = Date.now();
+                                listProbeSentAtNs = nowHr();
                                 serverProcess.stdin.write('list\n');
                                 if (listProbeTimeout) clearTimeout(listProbeTimeout);
                                 listProbeTimeout = setTimeout(() => { awaitingListProbe = false; }, 3000);
                             } catch (_) { awaitingListProbe = false; }
                         }
-                    }, 1500);
+                    }, 1200);
                 } catch (_) {}
             }
         });

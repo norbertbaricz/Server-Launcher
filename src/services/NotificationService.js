@@ -70,7 +70,7 @@ class NotificationService {
 
   /**
    * Set fallback callback for when notifications fail
-   * @param {Function} callback - Callback(title, body)
+   * @param {Function} callback - Callback(title, body, options)
    */
   setFallbackCallback(callback) {
     this.fallbackCallback = callback;
@@ -101,6 +101,7 @@ class NotificationService {
    */
   show(title, body, options = {}) {
     try {
+      const normalizedOptions = { ...options };
       // Check if notifications are enabled
       if (!this.isEnabled) {
         return false;
@@ -108,13 +109,13 @@ class NotificationService {
 
       // Check support
       if (!this.isSupported) {
-        this.useFallback(title, body);
+        this.useFallback(title, body, normalizedOptions);
         return false;
       }
 
       // Check permissions
       if (!this.hasPermission) {
-        this.useFallback(title, body);
+        this.useFallback(title, body, normalizedOptions);
         return false;
       }
 
@@ -126,14 +127,14 @@ class NotificationService {
         title,
         body,
         icon: iconPath,
-        silent: options.silent || false,
-        urgency: options.urgency || 'normal',
-        timeoutType: options.timeoutType || 'default'
+        silent: normalizedOptions.silent || false,
+        urgency: normalizedOptions.urgency || 'normal',
+        timeoutType: normalizedOptions.timeoutType || 'default'
       });
 
       // Handle click event
-      if (options.onClick) {
-        notification.on('click', options.onClick);
+      if (normalizedOptions.onClick) {
+        notification.on('click', normalizedOptions.onClick);
       }
 
       // Handle close event
@@ -148,14 +149,14 @@ class NotificationService {
 
       // Handle failed event
       notification.on('failed', () => {
-        this.useFallback(title, body);
+        this.useFallback(title, body, normalizedOptions);
       });
 
       notification.show();
 
       // Play sound if callback is set; allow explicit override when provided
-      if (this.soundCallback && !options.silent) {
-        const explicitType = (options.soundType || '').trim();
+      if (this.soundCallback && !normalizedOptions.silent) {
+        const explicitType = (normalizedOptions.soundType || '').trim();
         const soundType = explicitType || this.determineSoundType(title, body);
         this.soundCallback(soundType);
       }
@@ -163,7 +164,7 @@ class NotificationService {
       return true;
 
     } catch (error) {
-      this.useFallback(title, body);
+      this.useFallback(title, body, options || {});
       return false;
     }
   }
@@ -172,10 +173,10 @@ class NotificationService {
    * Use fallback method (send to renderer)
    * @private
    */
-  useFallback(title, body) {
+  useFallback(title, body, options = {}) {
     if (this.fallbackCallback) {
       try {
-        this.fallbackCallback(title, body);
+        this.fallbackCallback(title, body, options);
       } catch (error) {
         // Silent error - fallback failed
       }
