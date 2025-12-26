@@ -1,3 +1,8 @@
+import { createViewManager } from './views/viewManager.js';
+import { createLoadingView } from './views/loadingView.js';
+import { createSettingsView } from './views/settingsView.js';
+import { createSetupView } from './views/setupView.js';
+
 const loadingScreen = document.getElementById('loading-screen');
 const statusMessageSpan = document.getElementById('status-message');
 const localIpAddressSpan = document.getElementById('local-ip-address');
@@ -184,12 +189,14 @@ let countdownInterval = null;
 let isDownloadingFromServer = false;
 let currentTranslations = {};
 let launcherSettingsCache = {};
-let isSettingsViewOpen = false;
-let isPluginsViewOpen = false;
-let isSetupViewOpen = false;
-let isJavaViewOpen = false;
 let setupRequired = false;
-let activeViewKey = dashboardView ? 'dashboard' : null;
+const viewState = {
+    activeViewKey: dashboardView ? 'dashboard' : null,
+    isSettingsViewOpen: false,
+    isPluginsViewOpen: false,
+    isSetupViewOpen: false,
+    isJavaViewOpen: false
+};
 let isStarting = false;
 let isStopping = false;
 let pendingAutoStartRequest = null;
@@ -201,6 +208,20 @@ const viewMap = {
     settings: settingsPage,
     plugins: pluginsPage
 };
+
+const { setActiveView } = createViewManager({
+    viewMap,
+    mainContentArea,
+    viewState
+});
+
+const loadingView = createLoadingView({
+    loadingScreen,
+    loadingTextEl: loadingLauncherText
+});
+
+const settingsView = createSettingsView({ setActiveView, viewState });
+const setupView = createSetupView({ setActiveView, viewState });
 
 function normalizeUiServerType(type) {
     if (!type) return 'purpur';
@@ -566,7 +587,7 @@ function updateButtonStates(isRunning) {
     sendCommandButton.disabled = !isRunning;
     commandInput.disabled = !isRunning;
     pluginsFolderButton.disabled = !setupComplete;
-    settingsButton.disabled = !setupComplete;
+    settingsButton.disabled = false;
 
     // Lock server configuration while starting or running, and respect user lock
     const lockNow = isRunning || isStarting;
@@ -591,9 +612,13 @@ function updateButtonStates(isRunning) {
     pluginsFolderButton.classList.toggle('btn-disabled', pluginsFolderButton.disabled);
     settingsButton.classList.toggle('btn-disabled', settingsButton.disabled);
     
-    statusAndOpenFolderArea.classList.toggle('hidden', !setupComplete);
-    statusAndOpenFolderArea.classList.toggle('flex', setupComplete);
-    setupActivePlaceholderTop.classList.toggle('hidden', setupComplete);
+    if (statusAndOpenFolderArea) {
+        statusAndOpenFolderArea.classList.remove('hidden');
+        statusAndOpenFolderArea.classList.add('flex');
+    }
+    if (setupActivePlaceholderTop) {
+        setupActivePlaceholderTop.classList.add('hidden');
+    }
     if (!isRunning) commandInput.value = "";
 
     if (currentServerConfig && currentServerConfig.version) {
@@ -669,84 +694,13 @@ function hideModal(modal, content, callback) {
     }, { once: true });
 }
 
-function setActiveView(target, callback) {
-    if (!viewMap[target]) {
-        if (typeof callback === 'function') callback();
-        return;
-    }
-
-    if (activeViewKey === target) {
-        if (typeof callback === 'function') callback();
-        return;
-    }
-
-    const incoming = viewMap[target];
-    const outgoing = activeViewKey ? viewMap[activeViewKey] : null;
-
-    if (incoming) {
-        incoming.classList.add('active-view');
-        incoming.setAttribute('aria-hidden', 'false');
-        incoming.scrollTop = 0;
-    }
-
-    if (outgoing && outgoing !== incoming) {
-        outgoing.classList.remove('active-view');
-        outgoing.setAttribute('aria-hidden', 'true');
-    }
-
-    activeViewKey = target;
-    isSettingsViewOpen = target === 'settings';
-    isPluginsViewOpen = target === 'plugins';
-    isSetupViewOpen = target === 'setup';
-    isJavaViewOpen = target === 'java';
-    isJavaViewOpen = target === 'java';
-
-    if (mainContentArea) {
-        mainContentArea.scrollTop = 0;
-        mainContentArea.scrollLeft = 0;
-    }
-
-    const prefersReducedMotion = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (typeof callback === 'function') {
-        if (prefersReducedMotion) {
-            callback();
-        } else {
-            setTimeout(callback, 300);
-        }
-    }
-}
 
 function openSettingsView(callback) {
-    if (!settingsPage) return;
-    if (setupRequired) {
-        if (typeof callback === 'function') callback();
-        return;
-    }
-    if (isSettingsViewOpen) {
-        if (typeof callback === 'function') callback();
-        return;
-    }
-    if (isSetupViewOpen) {
-        closeSetupView(() => openSettingsView(callback));
-        return;
-    }
-    if (isPluginsViewOpen) {
-        closePluginsView(() => openSettingsView(callback));
-        return;
-    }
-        setActiveView('settings', callback);
+    return settingsView.open({ closeSetupView, closePluginsView }, callback);
 }
 
 function closeSettingsView(callback) {
-    if (!settingsPage) {
-        if (typeof callback === 'function') callback();
-        return;
-    }
-    if (!isSettingsViewOpen) {
-        if (typeof callback === 'function') callback();
-        return;
-    }
-    setActiveView('dashboard', callback);
+    return settingsView.close(callback);
 }
 
 function closePluginsView(callback) {
@@ -754,7 +708,7 @@ function closePluginsView(callback) {
         if (typeof callback === 'function') callback();
         return;
     }
-    if (!isPluginsViewOpen) {
+    if (!viewState.isPluginsViewOpen) {
         if (typeof callback === 'function') callback();
         return;
     }
@@ -762,32 +716,11 @@ function closePluginsView(callback) {
 }
 
 function openSetupView(callback) {
-    if (!setupPage) return;
-    if (isSetupViewOpen) {
-        if (typeof callback === 'function') callback();
-        return;
-    }
-    if (isSettingsViewOpen) {
-        closeSettingsView(() => openSetupView(callback));
-        return;
-    }
-    if (isPluginsViewOpen) {
-        closePluginsView(() => openSetupView(callback));
-        return;
-    }
-    setActiveView('setup', callback);
+    return setupView.open({ closeSettingsView, closePluginsView }, callback);
 }
 
 function closeSetupView(callback) {
-    if (!setupPage) {
-        if (typeof callback === 'function') callback();
-        return;
-    }
-    if (!isSetupViewOpen) {
-        if (typeof callback === 'function') callback();
-        return;
-    }
-    setActiveView('dashboard', callback);
+    return setupView.close(callback);
 }
 
 async function refreshUISetupState() {
@@ -804,8 +737,8 @@ async function refreshUISetupState() {
     updatePluginsButtonAppearance(normalizedType);
     applyServerTypeUiState(normalizedType);
     if (needsSetup) {
-        if (isSettingsViewOpen) closeSettingsView();
-        if (isPluginsViewOpen) closePluginsView();
+        if (viewState.isSettingsViewOpen) closeSettingsView();
+        if (viewState.isPluginsViewOpen) closePluginsView();
         openSetupView();
         const serverType = normalizedType;
         populateServerTypeSelect(serverTypeModalSelect, serverType);
@@ -819,8 +752,8 @@ async function refreshUISetupState() {
         ramAllocationModalSelect.value = currentServerConfig.ram || 'auto';
         updateButtonStates(localIsServerRunning);
     } else {
-        if (isSettingsViewOpen) closeSettingsView();
-        if (isPluginsViewOpen) closePluginsView();
+        if (viewState.isSettingsViewOpen) closeSettingsView();
+        if (viewState.isPluginsViewOpen) closePluginsView();
 
         const afterClose = async () => {
             updateButtonStates(localIsServerRunning);
@@ -1345,13 +1278,13 @@ async function fetchAndDisplayIPs(showPort = true) {
 let loadingScreenActive = true;
 
 function setLoadingText(fallbackText, translationKey = null) {
-    if (!loadingLauncherText) return;
-    const key = translationKey || loadingLauncherText.dataset.key;
-    const translated = key ? currentTranslations[key] : null;
-    const text = (translated && typeof translated === 'string' && translated.trim())
-        ? translated
-        : (fallbackText || currentTranslations['loadingLauncher'] || 'Loading Launcher...');
-    loadingLauncherText.textContent = text;
+    const key = translationKey || loadingLauncherText?.dataset.key;
+    const getter = () => {
+        if (!key) return null;
+        const t = currentTranslations[key];
+        return (t && typeof t === 'string' && t.trim()) ? t : null;
+    };
+    loadingView.setText(fallbackText || currentTranslations['loadingLauncher'] || 'Loading Launcher...', getter);
 }
 
 async function initializeApp() {
@@ -1452,7 +1385,7 @@ window.electronAPI.onUpdateStatus((message, pulse = false, key = null) => {
         updateButtonStates(localIsServerRunning);
     }
 
-    if ((lowerMessage.includes('failed') || lowerMessage.includes('error')) && isSetupViewOpen) {
+    if ((lowerMessage.includes('failed') || lowerMessage.includes('error')) && viewState.isSetupViewOpen) {
         hideDownloadLoading();
     }
 });
@@ -1668,12 +1601,12 @@ window.electronAPI.onPlaySound((payload) => {
 async function openPluginsView() {
     if (!pluginsPage) return;
     if (setupRequired) return;
-    if (isPluginsViewOpen) return;
-    if (isSettingsViewOpen) {
+    if (viewState.isPluginsViewOpen) return;
+    if (viewState.isSettingsViewOpen) {
         closeSettingsView(() => openPluginsView());
         return;
     }
-    if (isSetupViewOpen) {
+    if (viewState.isSetupViewOpen) {
         closeSetupView(() => openPluginsView());
         return;
     }
@@ -1761,14 +1694,37 @@ async function refreshPluginsList() {
 }
 
 uploadPluginButton?.addEventListener('click', async () => {
-    if (currentServerConfig?.serverType === 'bedrock') {
-        addToConsole(currentTranslations['addonsUploadUnavailable'] || 'Bedrock add-ons must be managed manually.', 'WARN');
+    if (setupRequired) return;
+    const isFabric = currentServerConfig?.serverType === 'fabric';
+    const isBedrock = currentServerConfig?.serverType === 'bedrock';
+    if (localIsServerRunning) {
+        const warnMsg = isFabric
+            ? (currentTranslations['stopBeforeUploadingMods'] || 'Stop the server before uploading mods.')
+            : (currentTranslations['stopBeforeUploadingPlugins'] || 'Stop the server before uploading plugins.');
+        addToConsole(warnMsg, 'WARN');
         return;
     }
-    const res = await window.electronAPI.uploadPlugins();
-    if (!res.ok) addToConsole(`Upload failed: ${res.error}`, 'ERROR');
-    else if (res.added?.length) addToConsole(`Uploaded: ${res.added.join(', ')}`, 'SUCCESS');
-    await refreshPluginsList();
+
+    try {
+        loadingView.show(currentTranslations['uploadingLabel'] || 'Uploading...');
+        const res = await window.electronAPI.uploadPlugins();
+        if (!res.ok) {
+            addToConsole(`Upload failed: ${res.error}`, 'ERROR');
+        } else if (res.added?.length) {
+            const label = getAddonLabel(currentServerConfig?.serverType).slice(0, -1).toLowerCase();
+            addToConsole(`Uploaded ${label}: ${res.added.join(', ')}`, 'SUCCESS');
+        }
+        await refreshPluginsList();
+        await populateServerProperties();
+    } catch (error) {
+        addToConsole(`Upload failed: ${error.message}`, 'ERROR');
+    } finally {
+        loadingView.hide();
+        setTimeout(() => {
+            loadingScreenActive = false;
+            window.electronAPI.appReadyToShow();
+        }, 300);
+    }
 });
 
 openPluginsFolderButton?.addEventListener('click', () => window.electronAPI.openPluginsFolder());

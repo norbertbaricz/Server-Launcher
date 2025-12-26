@@ -349,7 +349,7 @@ function updateButtonStates(isRunning) {
     sendCommandButton.disabled = !isRunning;
     commandInput.disabled = !isRunning;
     pluginsFolderButton.disabled = !setupComplete;
-    settingsButton.disabled = !setupComplete;
+    settingsButton.disabled = false;
 
     // Lock server configuration while starting or running, and respect user lock
     const lockNow = isRunning || isStarting;
@@ -374,9 +374,13 @@ function updateButtonStates(isRunning) {
     pluginsFolderButton.classList.toggle('btn-disabled', pluginsFolderButton.disabled);
     settingsButton.classList.toggle('btn-disabled', settingsButton.disabled);
     
-    statusAndOpenFolderArea.classList.toggle('hidden', !setupComplete);
-    statusAndOpenFolderArea.classList.toggle('flex', setupComplete);
-    setupActivePlaceholderTop.classList.toggle('hidden', setupComplete);
+    if (statusAndOpenFolderArea) {
+        statusAndOpenFolderArea.classList.remove('hidden');
+        statusAndOpenFolderArea.classList.add('flex');
+    }
+    if (setupActivePlaceholderTop) {
+        setupActivePlaceholderTop.classList.add('hidden');
+    }
     if (!isRunning) commandInput.value = "";
 
     if (currentServerConfig && currentServerConfig.version) {

@@ -1,3 +1,5 @@
+// Avoid noisy portal warnings on some Linux desktops
+process.env.GTK_USE_PORTAL = process.env.GTK_USE_PORTAL || '0';
 const { app, BrowserWindow, ipcMain, shell, dialog, Notification, session } = require('electron');
 // Funcție pentru curățarea fișierelor lock/pid
 function cleanServerLocks(serverDir) {
@@ -34,21 +36,9 @@ if (typeof find !== 'function' && find?.default) {
 }
 const AdmZip = require('adm-zip');
 const NotificationService = require('./src/services/NotificationService');
+const { readAvailableThemes } = require('./src/main/themeService');
+const { createSoundService } = require('./src/main/soundService');
 
-const SOUND_CANDIDATES = {
-    error: ['error.mp3', 'error.wav'],
-    startup: ['startup.mp3', 'startup.wav'],
-    status: ['status.mp3', 'status.wav'],
-    success: ['success.mp3', 'success.wav']
-};
-const SOUND_BASE_VOLUME = 0.32;
-const SOUND_VOLUME_MAP = {
-    startup: 0.35,
-    success: 0.32,
-    status: 0.32,
-    error: 0.34
-};
-const DEFAULT_SOUND_TYPE = 'status';
 // Renderer readiness + buffered status messages for backward compatibility with older renderer bundles
 let rendererReady = false; // Set when renderer signals app-ready-to-show
 const statusBuffer = []; // { msg, pulse, key }
@@ -116,9 +106,6 @@ function flushConsoleBuffer() {
         safeSend(win, 'update-console', message, type);
     }
 }
-const SOUND_SEARCH_DIRS = ['', 'sounds'];
-const ERROR_SOUND_KEYWORDS = ['error', 'failed', 'fail', 'not found', 'crash', 'stopped unexpectedly', 'timed out', 'unavailable', 'unable'];
-const SUCCESS_SOUND_KEYWORDS = ['success', 'successfully', 'ready', 'completed', 'installed', 'configured', 'downloaded', 'server started', 'server ready', 'done'];
 const NGROK_API_ENDPOINT = 'http://127.0.0.1:4040/api/tunnels';
 const NGROK_REGION_DEFAULT = 'us';
 const NGROK_REGION_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -141,19 +128,6 @@ const NGROK_APAC_COUNTRIES = new Set([
 ]);
 const PUBLIC_IP_USER_AGENT = 'MyMinecraftLauncher/1.0';
 const DISCORD_CONSOLE_SUPPRESS_REGEX = /discord/i;
-const DEFAULT_THEMES = [
-    { code: 'skypixel', name: 'Skypixel Blue', colors: { primary: '#3b82f6', primaryHover: '#2563eb', accent: '#60a5fa' } },
-    { code: 'nord', name: 'Nord', colors: { primary: '#88c0d0', primaryHover: '#81a1c1', accent: '#a3be8c' } },
-    { code: 'aurora', name: 'Aurora', colors: { primary: '#06b6d4', primaryHover: '#0891b2', accent: '#a78bfa' } },
-    { code: 'midnight', name: 'Midnight', colors: { primary: '#6366f1', primaryHover: '#4f46e5', accent: '#14b8a6' } },
-    { code: 'emerald', name: 'Emerald', colors: { primary: '#22c55e', primaryHover: '#16a34a', accent: '#34d399' } },
-    { code: 'sunset', name: 'Sunset', colors: { primary: '#f97316', primaryHover: '#ea580c', accent: '#fb7185' } },
-    { code: 'crimson', name: 'Crimson', colors: { primary: '#ef4444', primaryHover: '#dc2626', accent: '#fca5a5' } },
-    { code: 'ocean', name: 'Ocean', colors: { primary: '#0ea5e9', primaryHover: '#0284c7', accent: '#22d3ee' } },
-    { code: 'grape', name: 'Grape', colors: { primary: '#8b5cf6', primaryHover: '#7c3aed', accent: '#d8b4fe' } },
-    { code: 'neon', name: 'Neon', colors: { primary: '#22d3ee', primaryHover: '#06b6d4', accent: '#a3e635' } }
-];
-
 const CONTENT_SECURITY_POLICY = [
     "default-src 'self' file: data:",
     "script-src 'self'",
@@ -510,10 +484,6 @@ const clientId = '1397585400553541682';
 let rpc;
 let rpcStartTime;
 let startupSoundPlayed = false;
-let lastStatusSoundSignature = null;
-let lastStatusSoundAt = 0;
-let lastPlaySoundAt = 0;
-let lastPlaySoundType = null;
 
 let serverFilesDir;
 const purpurJarName = 'purpur.jar';
@@ -883,6 +853,12 @@ function safeSend(win, channel, ...args) {
     return false;
 }
 
+const { handleStatusSound, playSoundEffect } = createSoundService({
+    getMainWindow,
+    readLauncherSettings,
+    safeSend,
+});
+
 function sendStatus(fallbackMessage, pulse = false, translationKey = null, soundType = null) {
     if (!rendererReady) {
         // Store message until renderer defines its status handler; log for visibility
@@ -1172,7 +1148,7 @@ function getNotificationIconPath() {
     try {
         const platform = process.platform;
         const resources = process.resourcesPath;
-        const buildDir = path.join(__dirname, 'build');
+        const buildDir = path.join(__dirname, 'src', 'build');
         if (platform === 'win32') {
             const icoRes = path.join(resources, 'icon.ico');
             const icoBuild = path.join(buildDir, 'icon.ico');
@@ -1291,117 +1267,6 @@ function describeServerShutdown(code, signal) {
         technical: formatExitTechnicalDetails(code, signal),
         hint: explainServerExit(code, signal)
     };
-}
-
-function resolveAssetFile(relativePath) {
-    try {
-        const resources = process.resourcesPath;
-        const buildDir = path.join(__dirname, 'build');
-        const candidateFromResources = path.join(resources, relativePath);
-        if (fs.existsSync(candidateFromResources)) return candidateFromResources;
-        const candidateFromBuild = path.join(buildDir, relativePath);
-        if (fs.existsSync(candidateFromBuild)) return candidateFromBuild;
-    } catch (_) {}
-    return null;
-}
-
-function getSoundFilePath(type) {
-    const canonicalType = SOUND_CANDIDATES[type] ? type : DEFAULT_SOUND_TYPE;
-    const candidates = SOUND_CANDIDATES[canonicalType] || [];
-    for (const candidate of candidates) {
-        for (const dir of SOUND_SEARCH_DIRS) {
-            const relativePath = dir ? path.join(dir, candidate) : candidate;
-            const resolved = resolveAssetFile(relativePath);
-            if (resolved) return resolved;
-        }
-    }
-    if (canonicalType !== DEFAULT_SOUND_TYPE) {
-        return getSoundFilePath(DEFAULT_SOUND_TYPE);
-    }
-    return null;
-}
-
-function playSoundEffect(requestedType = DEFAULT_SOUND_TYPE) {
-    const type = SOUND_CANDIDATES[requestedType] ? requestedType : DEFAULT_SOUND_TYPE;
-    const now = Date.now();
-    // Throttle identical sounds to avoid rapid overlap
-    if (type === lastPlaySoundType && (now - lastPlaySoundAt) < 500) {
-        return;
-    }
-    lastPlaySoundType = type;
-    lastPlaySoundAt = now;
-    let win = null;
-    try {
-        const settings = readLauncherSettings();
-        if (settings && settings.notificationsEnabled === false) return;
-        const soundPath = getSoundFilePath(type);
-        win = getMainWindow();
-        if (!win || win.isDestroyed()) return;
-        const volume = Math.max(0, Math.min(1, SOUND_VOLUME_MAP[type] ?? SOUND_BASE_VOLUME));
-        const payload = soundPath ? { url: pathToFileURL(soundPath).href, type, volume } : { url: null, type, volume };
-        safeSend(win, 'play-sound', payload);
-    } catch (_) {
-        if (!win) win = getMainWindow();
-        safeSend(win, 'play-sound', { url: null, type: requestedType, volume: SOUND_BASE_VOLUME });
-    }
-}
-
-function stringContainsKeyword(text, keywords) {
-    if (!text) return false;
-    return keywords.some(keyword => text.includes(keyword));
-}
-
-function isProgressStatusMessage(message, key) {
-    if (!message && !key) return false;
-    if (message && /\d{1,3}%/.test(message)) return true;
-    if (message && /\b\d+(\.\d+)?\s?(kb|mb|gb)(\/s)?\b/.test(message)) return true;
-    if (message && message.includes('download speed')) return true;
-    return false;
-}
-
-function handleStatusSound(fallbackMessage, translationKey, pulse, soundType = null) {
-    try {
-        // If explicit soundType is provided, use it directly
-        if (soundType) {
-            playSoundEffect(soundType);
-            return;
-        }
-
-        const message = (fallbackMessage || '').toLowerCase();
-        const key = (translationKey || '').toLowerCase();
-        if (!message && !key) return;
-        if (isProgressStatusMessage(message, key)) return;
-
-        const signature = key || message;
-        const now = Date.now();
-        if (signature && signature === lastStatusSoundSignature && (now - lastStatusSoundAt) < 1500) {
-            return;
-        }
-
-        const stopSuccess =
-            key === 'serverstopped' ||
-            key === 'servershutdowncomplete' ||
-            message.includes('server stopped') ||
-            message.includes('server oprit');
-        const stopUnexpected = key === 'serverstoppedunexpectedly' || message.includes('unexpectedly');
-        
-        if (stopUnexpected) {
-            playSoundEffect('error');
-        } else if (stopSuccess) {
-            playSoundEffect('success');
-        } else if (stringContainsKeyword(key, ERROR_SOUND_KEYWORDS) || stringContainsKeyword(message, ERROR_SOUND_KEYWORDS)) {
-            playSoundEffect('error');
-        } else if (stringContainsKeyword(key, SUCCESS_SOUND_KEYWORDS) || stringContainsKeyword(message, SUCCESS_SOUND_KEYWORDS)) {
-            playSoundEffect('success');
-        } else {
-            playSoundEffect('status');
-        }
-
-        if (signature) {
-            lastStatusSoundSignature = signature;
-            lastStatusSoundAt = now;
-        }
-    } catch (_) {}
 }
 
 function fetchNgrokTunnels() {
@@ -1787,7 +1652,7 @@ async function ensureNgrokTunnelForCurrentServerPort(existingInfo = null) {
 
 function createWindow () {
     const renderIndexTemplate = () => {
-        const templatePath = path.join(__dirname, 'index.ejs');
+        const templatePath = path.join(__dirname, 'src', 'renderer', 'index.ejs');
         const baseHref = pathToFileURL(path.join(__dirname, '/')).href;
         try {
             const template = fs.readFileSync(templatePath, 'utf8');
@@ -1801,7 +1666,7 @@ function createWindow () {
   const resolveIconForWindow = () => {
     try {
       const resBase = process.resourcesPath;
-      const buildBase = path.join(__dirname, 'build');
+            const buildBase = path.join(__dirname, 'src', 'build');
       if (process.platform === 'win32') {
         const icoRes = path.join(resBase, 'icon.ico');
         const icoBuild = path.join(buildBase, 'icon.ico');
@@ -2097,7 +1962,7 @@ ipcMain.on('maximize-window', () => {
 ipcMain.on('close-window', () => getMainWindow()?.close());
 ipcMain.handle('get-icon-path', () => {
     let iconPath = path.join(process.resourcesPath, 'icon.ico');
-    if (!fs.existsSync(iconPath)) iconPath = path.join(__dirname, 'build', 'icon.ico');
+    if (!fs.existsSync(iconPath)) iconPath = path.join(__dirname, 'src', 'build', 'icon.ico');
     return fs.existsSync(iconPath) ? iconPath : null;
 });
 
@@ -2431,7 +2296,7 @@ ipcMain.on('open-plugins-folder', () => {
 });
 
 ipcMain.handle('get-available-languages', () => {
-    const langDir = path.join(__dirname, 'lang');
+    const langDir = path.join(__dirname, 'src', 'lang');
     const languages = [];
     try {
         const files = fs.readdirSync(langDir);
@@ -2511,7 +2376,7 @@ ipcMain.handle('select-server-location', async () => {
 });
 
 ipcMain.handle('get-translations', async (event, lang) => {
-  const langPath = path.join(__dirname, 'lang', `${lang}.json`);
+    const langPath = path.join(__dirname, 'src', 'lang', `${lang}.json`);
   try {
     if (fs.existsSync(langPath)) {
       const data = fs.readFileSync(langPath, 'utf8');
@@ -2522,40 +2387,6 @@ ipcMain.handle('get-translations', async (event, lang) => {
   }
   return null;
 });
-
-function readAvailableThemes() {
-    const themesDir = path.join(__dirname, 'themes');
-    try {
-        const entries = fs.readdirSync(themesDir, { withFileTypes: true });
-        const themes = [];
-        for (const entry of entries) {
-            if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
-            const fullPath = path.join(themesDir, entry.name);
-            try {
-                const raw = fs.readFileSync(fullPath, 'utf8');
-                const parsed = JSON.parse(raw);
-                if (!parsed || typeof parsed !== 'object') continue;
-                const { code, name, colors } = parsed;
-                if (!code || typeof code !== 'string') continue;
-                themes.push({
-                    code,
-                    name: typeof name === 'string' && name.trim() ? name : code,
-                    colors: {
-                        primary: colors?.primary || '#3b82f6',
-                        primaryHover: colors?.primaryHover || colors?.primary || '#2563eb',
-                        accent: colors?.accent || colors?.primary || '#60a5fa'
-                    }
-                });
-            } catch (err) {
-                log.warn(`Failed to parse theme file ${fullPath}:`, err);
-            }
-        }
-        return themes.length ? themes : DEFAULT_THEMES;
-    } catch (error) {
-        log.error('Could not read themes directory:', error);
-        return DEFAULT_THEMES;
-    }
-}
 
 ipcMain.handle('get-available-themes', async () => {
     return readAvailableThemes();

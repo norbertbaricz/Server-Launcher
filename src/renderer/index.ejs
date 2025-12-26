@@ -6,10 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <base href="<%= baseHref %>">
     <title>Server Launcher</title>
-    <link rel="stylesheet" href="build/tailwind.css">
+    <link rel="stylesheet" href="src/build/tailwind.css">
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="src/renderer/style.css">
 </head>
 <body class="bg-gray-900 text-gray-200 flex flex-col h-screen">
 
@@ -40,7 +40,7 @@
         <div id="view-stack" class="view-stack relative flex-1 min-h-0 overflow-hidden">
             <div id="dashboard-view" class="flex flex-col space-y-3 view-panel flex-1 min-h-0 active-view" aria-hidden="false">
             <div class="bg-gray-800 p-4 rounded-lg shadow-xl animate-fadeIn" style="animation-delay: 0.1s;">
-                <div id="status-and-open-folder-area" class="hidden flex items-center justify-between gap-x-3">
+                <div id="status-and-open-folder-area" class="flex items-center justify-between gap-x-3">
                     <div id="status-bar-content" class="bg-gray-700 p-3 rounded-md flex-grow min-w-0 flex items-center">
                         <i class="fas fa-server accent-text mr-3"></i>
                         <span class="text-sm font-medium text-gray-400" data-key="statusLabel">Status:</span>
@@ -472,6 +472,6 @@
 
 
 
-    <script src="script.js"></script>
+    <script type="module" src="src/renderer/script.js"></script>
 </body>
 </html>

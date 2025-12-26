@@ -196,7 +196,7 @@ class NotificationService {
       const isDev = !app.isPackaged;
       const appPath = app.getAppPath();
       const resources = process.resourcesPath;
-      const buildDir = path.join(appPath, 'build');
+      const buildDir = path.join(appPath, 'src', 'build');
 
       let iconPaths = [];
 
@@ -204,21 +204,21 @@ class NotificationService {
         iconPaths = [
           path.join(resources, 'icon.ico'),
           path.join(buildDir, 'icon.ico'),
-          path.join(appPath, 'build', 'icon.ico'),
+          path.join(appPath, 'src', 'build', 'icon.ico'),
           path.join(appPath, 'icon.ico')
         ];
       } else if (platform === 'darwin') {
         iconPaths = [
           path.join(resources, 'icon.icns'),
           path.join(buildDir, 'icon.icns'),
-          path.join(appPath, 'build', 'icon.icns'),
+          path.join(appPath, 'src', 'build', 'icon.icns'),
           path.join(appPath, 'icon.icns')
         ];
       } else { // Linux
         iconPaths = [
           path.join(resources, 'icon.png'),
           path.join(buildDir, 'icon.png'),
-          path.join(appPath, 'build', 'icon.png'),
+          path.join(appPath, 'src', 'build', 'icon.png'),
           path.join(appPath, 'icon.png'),
           '/usr/share/pixmaps/server-launcher.png',
           path.join(app.getPath('home'), '.local/share/icons/server-launcher.png')
