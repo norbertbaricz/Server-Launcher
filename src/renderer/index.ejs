@@ -22,8 +22,8 @@
 
 
     <div id="title-bar">
-        <div class="flex items-center">
-            <img id="app-icon" src="" alt="App Icon" class="w-4 h-4 mr-3">
+        <div class="flex items-center gap-2">
+            <img id="app-icon" src="" alt="App Icon" class="w-4 h-4 flex-shrink-0">
             <span id="app-title-version">Server Launcher</span>
         </div>
         
@@ -40,19 +40,19 @@
         <div id="view-stack" class="view-stack relative flex-1 min-h-0 overflow-hidden">
             <div id="dashboard-view" class="flex flex-col space-y-3 view-panel flex-1 min-h-0 active-view" aria-hidden="false">
             <div class="bg-gray-800 p-4 rounded-lg shadow-xl animate-fadeIn" style="animation-delay: 0.1s;">
-                <div id="status-and-open-folder-area" class="flex items-center justify-between gap-x-3">
-                    <div id="status-bar-content" class="bg-gray-700 p-3 rounded-md flex-grow min-w-0 flex items-center">
-                        <i class="fas fa-server accent-text mr-3"></i>
+                <div id="status-and-open-folder-area" class="flex items-center justify-between gap-3">
+                    <div id="status-bar-content" class="bg-gray-700 p-3 rounded-md flex-grow min-w-0 flex items-center gap-3">
+                        <i class="fas fa-server accent-text text-lg"></i>
                         <span class="text-sm font-medium text-gray-400" data-key="statusLabel">Status:</span>
-                        <span id="status-message" class="text-sm text-yellow-400 ml-2 truncate" data-key="initializing">Initializing...</span>
+                        <span id="status-message" class="text-sm text-yellow-400 truncate" data-key="initializing">Initializing...</span>
                     </div>
-                    <div class="flex items-stretch gap-x-2">
+                    <div class="flex items-center gap-3">
                         <button id="plugins-folder-button" class="btn-primary font-semibold px-4 py-3 flex items-center justify-center gap-2 rounded-md no-tooltip" aria-label="Plugins" data-key-aria-label="pluginsButton">
-                            <i id="plugins-folder-icon" class="fas fa-puzzle-piece"></i>
+                            <i id="plugins-folder-icon" class="fas fa-box-open text-base"></i>
                             <span data-key="pluginsButton">Plugins</span>
                         </button>
                         <button id="settings-button" class="btn-secondary font-semibold px-4 py-3 flex items-center justify-center gap-2 rounded-md no-tooltip" aria-label="Settings" data-key-aria-label="settingsButton">
-                            <i class="fas fa-cog"></i>
+                            <i class="fas fa-cog text-base"></i>
                             <span data-key="settingsButton">Settings</span>
                         </button>
                     </div>
@@ -67,62 +67,62 @@
             </div>
 
             <div id="ip-info-bar" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 animate-fadeIn flex-shrink-0" style="animation-delay: 0.25s;">
-                <div id="local-ip-widget" class="ip-widget bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
-                    <i class="fas fa-network-wired accent-text text-xl w-6 text-center"></i>
+                <div id="local-ip-widget" class="ip-widget bg-gray-800 p-3 rounded-lg shadow-lg flex items-center gap-3">
+                    <i class="fas fa-network-wired accent-text text-xl w-6 text-center flex-shrink-0"></i>
                     <div class="flex-1 min-w-0">
                         <p class="text-xs text-gray-400 font-medium" data-key="localIpLabel">Local IP</p>
                         <p id="local-ip-address" class="text-sm font-semibold text-gray-200 truncate" data-key="fetching">Fetching...</p>
                     </div>
-                    <button id="copy-local-ip-btn" class="ip-copy-btn" type="button" aria-label="Copy local IP" title="Copy local IP">
+                    <button id="copy-local-ip-btn" class="ip-copy-btn flex-shrink-0" type="button" aria-label="Copy local IP" title="Copy local IP">
                         <i class="fas fa-copy"></i>
                     </button>
                 </div>
-                <div id="public-ip-widget" class="ip-widget bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
-                    <i class="fas fa-globe accent-text text-xl w-6 text-center"></i>
+                <div id="public-ip-widget" class="ip-widget bg-gray-800 p-3 rounded-lg shadow-lg flex items-center gap-3">
+                    <i class="fas fa-globe accent-text text-xl w-6 text-center flex-shrink-0"></i>
                     <div class="flex-1 min-w-0">
                         <p class="text-xs text-gray-400 font-medium" data-key="publicIpLabel">Public IP</p>
                         <p id="public-ip-address" class="text-sm font-semibold text-gray-200 truncate" data-key="fetching">Fetching...</p>
                     </div>
-                    <button id="copy-public-ip-btn" class="ip-copy-btn" type="button" aria-label="Copy public IP" title="Copy public IP">
+                    <button id="copy-public-ip-btn" class="ip-copy-btn flex-shrink-0" type="button" aria-label="Copy public IP" title="Copy public IP">
                         <i class="fas fa-copy"></i>
                     </button>
                 </div>
-                <div id="server-version-widget" class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
-                    <i class="fas fa-tag accent-text text-xl w-6 text-center"></i>
-                    <div>
+                <div id="server-version-widget" class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center gap-3">
+                    <i class="fas fa-tag accent-text text-xl w-6 text-center flex-shrink-0"></i>
+                    <div class="flex-1 min-w-0">
                         <p class="text-xs text-gray-400 font-medium" data-key="versionLabel">Version</p>
                         <p id="server-version" class="text-sm font-semibold text-gray-200 truncate">N/A</p>
                     </div>
                 </div>
-                <div class="ip-widget bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
-                    <i class="fas fa-memory accent-text text-xl w-6 text-center"></i>
+                <div class="ip-widget bg-gray-800 p-3 rounded-lg shadow-lg flex items-center gap-3">
+                    <i class="fas fa-memory accent-text text-xl w-6 text-center flex-shrink-0"></i>
                     <div class="flex-1 min-w-0">
                         <p class="text-xs text-gray-400 font-medium" data-key="memoryLabel">Memory</p>
-                        <p id="memory-usage" class="text-sm font-semibold text-gray-200 truncate">N/A</p>
+                        <p id="memory-usage" class="text-sm font-semibold text-gray-200 truncate">0.00 GB</p>
                     </div>
                 </div>
-                <div class="ip-widget bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
-                    <i class="fas fa-tachometer-alt accent-text text-xl w-6 text-center"></i>
+                <div class="ip-widget bg-gray-800 p-3 rounded-lg shadow-lg flex items-center gap-3">
+                    <i class="fas fa-tachometer-alt accent-text text-xl w-6 text-center flex-shrink-0"></i>
                     <div class="flex-1 min-w-0">
                         <p class="text-xs text-gray-400 font-medium" data-key="tpsLabel">Latency (ms)</p>
-                        <p id="server-tps" class="text-sm font-semibold text-gray-200 truncate">0 ms</p>
+                        <p id="server-tps" class="text-sm font-semibold text-gray-200 truncate">0.0 ms</p>
                     </div>
                 </div>
             </div>
 
-            <div id="bottom-action-bar" class="bg-gray-800 p-3 rounded-lg shadow-xl animate-fadeIn flex-shrink-0" style="animation-delay: 0.3s;">
-                <div class="flex flex-col space-y-3 sm:space-y-0 sm:flex-row sm:space-x-2 items-stretch">
-                    <input type="text" id="command-input" data-key-placeholder="commandPlaceholder" placeholder="Enter server command..." class="flex-grow bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5">
-                    <button id="send-command-button" class="btn-primary font-semibold py-2.5 px-4 rounded-md shadow-md flex items-center justify-center gap-2 w-full sm:w-auto" aria-label="Send" data-key-aria-label="sendButton" title="Send">
-                        <i class="fas fa-paper-plane"></i>
+            <div id="bottom-action-bar" class="bg-gray-800 p-4 rounded-lg shadow-xl animate-fadeIn flex-shrink-0" style="animation-delay: 0.3s;">
+                <div class="flex flex-col gap-3 sm:flex-row items-stretch">
+                    <input type="text" id="command-input" data-key-placeholder="commandPlaceholder" placeholder="Enter server command..." class="flex-grow bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md px-4 py-3">
+                    <button id="send-command-button" class="btn-primary font-semibold px-5 py-3 rounded-md shadow-md flex items-center justify-center gap-2 w-full sm:w-auto" aria-label="Send" data-key-aria-label="sendButton" title="Send">
+                        <i class="fas fa-paper-plane text-base"></i>
                         <span data-key="sendButton">Send</span>
                     </button>
-                    <button id="start-button" class="btn-primary font-semibold py-2.5 px-5 rounded-md shadow-md flex items-center justify-center gap-2 w-full sm:w-auto" style="background-color: #16a34a; color:white;" aria-label="Start Server" data-key-aria-label="startButton" title="Start Server">
-                        <i class="fas fa-play" style="color:white;"></i>
+                    <button id="start-button" class="btn-primary font-semibold px-5 py-3 rounded-md shadow-md flex items-center justify-center gap-2 w-full sm:w-auto" style="background-color: #16a34a; color:white;" aria-label="Start Server" data-key-aria-label="startButton" title="Start Server">
+                        <i class="fas fa-play text-base" style="color:white;"></i>
                         <span data-key="startButton">Start Server</span>
                     </button>
-                    <button id="stop-button" class="btn-danger font-semibold py-2.5 px-5 rounded-md shadow-md flex items-center justify-center gap-2 btn-disabled w-full sm:w-auto" aria-label="Stop Server" data-key-aria-label="stopButton" title="Stop Server">
-                        <i class="fas fa-stop"></i>
+                    <button id="stop-button" class="btn-danger font-semibold px-5 py-3 rounded-md shadow-md flex items-center justify-center gap-2 btn-disabled w-full sm:w-auto" aria-label="Stop Server" data-key-aria-label="stopButton" title="Stop Server">
+                        <i class="fas fa-stop text-base"></i>
                         <span data-key="stopButton">Stop Server</span>
                     </button>
                 </div>
@@ -131,9 +131,9 @@
 
         <div id="setup-page" class="flex flex-col gap-6 view-panel min-h-0" aria-hidden="true">
             <div class="bg-gray-800 p-5 rounded-lg shadow-xl flex flex-col gap-6 flex-1 min-h-0">
-                <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                    <div class="flex items-start gap-3">
-                        <i class="fas fa-server accent-text text-xl"></i>
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div class="flex items-center gap-3">
+                        <i class="fas fa-server accent-text text-2xl"></i>
                         <div>
                             <h2 class="text-xl font-semibold text-gray-100" data-key="setupTitle">Server Setup Required</h2>
                             <p class="text-sm text-gray-400" data-key="setupDescription">Server files or configuration are missing. Please select options and click "Download / Configure".</p>
@@ -142,7 +142,7 @@
                 </div>
                 <section class="bg-gray-900/50 border border-gray-800 rounded-lg p-5 space-y-4 flex-1 min-h-0">
                     <h3 class="text-lg font-medium text-gray-200 flex items-center gap-2">
-                        <i class="fas fa-sliders-h accent-text"></i>
+                        <i class="fas fa-sliders-h accent-text text-lg"></i>
                         <span data-key="setupConfigurationHeader">Server Configuration</span>
                     </h3>
                     <div class="grid gap-4 md:grid-cols-2">
@@ -181,25 +181,25 @@
                         </div>
                     </div>
                 </section>
-                <div class="setup-tip-card p-6 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-                    <div class="flex flex-col md:flex-row md:items-center gap-4 md:gap-5 md:max-w-3xl text-center md:text-left">
-                        <div class="flex items-center justify-center md:justify-start">
-                            <i class="fas fa-satellite-dish accent-text text-lg"></i>
+                <div class="setup-tip-card p-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div class="flex flex-col md:flex-row md:items-center gap-4 md:gap-5 flex-1 text-center md:text-left">
+                        <div class="flex items-center justify-center md:justify-start flex-shrink-0">
+                            <i class="fas fa-satellite-dish accent-text text-2xl"></i>
                         </div>
                         <p class="text-sm text-gray-200 leading-relaxed" data-key="setupNgrokTip">
                             Dreaming of a worldwide Minecraft LAN? Download ngrok from the official site (https://ngrok.com/), sign in to grab your authtoken, then plug it into Server Launcher. Keep ngrok running and the launcher will share a secure TCP address automatically—no port forwarding or manual IP sharing ever again!
                         </p>
                     </div>
-                    <a href="https://ngrok.com/" class="btn-secondary inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-md shadow-md hover:bg-blue-800/60 transition-colors self-center md:self-auto" target="_blank" rel="noreferrer noopener">
-                        <i class="fas fa-external-link-alt"></i>
+                    <a href="https://ngrok.com/" class="btn-secondary inline-flex items-center gap-2 text-sm font-semibold px-5 py-3 rounded-md shadow-md hover:bg-blue-800/60 transition-colors flex-shrink-0 self-center md:self-auto" target="_blank" rel="noreferrer noopener">
+                        <i class="fas fa-external-link-alt text-base"></i>
                         <span data-key="setupNgrokCta">Get ngrok</span>
                     </a>
                 </div>
-                <div class="card-divider flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mt-auto">
-                    <p class="text-sm text-gray-400" data-key="setupFooterHint">Click the button to download and configure everything automatically.</p>
-                    <button id="download-button-modal" class="btn-primary font-semibold py-3 px-5 rounded-md shadow-md flex items-center justify-center text-base">
-                        <i class="fas fa-download mr-2"></i>
-                        <span id="download-button-text" data-key="downloadButton">Download / Configure Server</span>
+                <div class="card-divider flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mt-auto pt-4">
+                    <p class="text-sm text-gray-400 flex-1" data-key="setupFooterHint">Click the button to download and configure everything automatically.</p>
+                    <button id="download-button-modal" class="btn-primary font-semibold py-3 px-5 rounded-md shadow-md flex items-center justify-center gap-2 text-sm flex-shrink-0 min-w-[200px]">
+                        <i class="fas fa-download text-sm flex-shrink-0"></i>
+                        <span id="download-button-text" data-key="downloadButton">Download Server</span>
                     </button>
                 </div>
             </div>
@@ -207,9 +207,9 @@
 
         <div id="java-page" class="flex flex-col gap-6 view-panel min-h-0" aria-hidden="true">
             <div class="bg-gray-800 p-5 rounded-lg shadow-xl flex flex-col gap-6 flex-1 min-h-0">
-                <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                    <div class="flex items-start gap-3">
-                        <i class="fas fa-mug-hot accent-text text-xl"></i>
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div class="flex items-center gap-3">
+                        <i class="fas fa-mug-hot accent-text text-2xl"></i>
                         <div>
                             <h2 class="text-xl font-semibold text-gray-100" data-key="javaModalTitle">Java (JDK) Required</h2>
                             <p class="text-sm text-gray-400" data-key="javaModalDescription">Java is not detected on your system. It is required to run the server.</p>
@@ -218,7 +218,7 @@
                 </div>
                 <section class="bg-gray-900/50 border border-gray-800 rounded-lg p-5 space-y-4 flex-1 min-h-0">
                     <h3 class="text-lg font-medium text-gray-200 flex items-center gap-2">
-                        <i class="fas fa-info-circle accent-text"></i>
+                        <i class="fas fa-info-circle accent-text text-lg"></i>
                         <span data-key="javaInstallInfoHeader">Installation Information</span>
                     </h3>
                     <div class="space-y-4">
@@ -252,23 +252,23 @@
                 </section>
                 <div class="setup-tip-card p-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     <div class="flex flex-col md:flex-row md:items-center gap-4 md:gap-5 text-center md:text-left flex-1">
-                        <div class="flex items-center justify-center md:justify-start">
-                            <i class="fas fa-lightbulb accent-text text-lg"></i>
+                        <div class="flex items-center justify-center md:justify-start flex-shrink-0">
+                            <i class="fas fa-lightbulb accent-text text-2xl"></i>
                         </div>
                         <p class="text-sm text-gray-200 leading-relaxed" data-key="javaInstallTip">
                             This process is fully automatic and safe. The installation may take a few minutes depending on your internet connection. Java is essential for running Minecraft servers.
                         </p>
                     </div>
                 </div>
-                <div class="card-divider flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mt-auto">
-                    <p class="text-sm text-gray-400" data-key="javaFooterHint">Click the button below to begin the automatic installation process.</p>
-                    <div class="flex flex-col sm:flex-row gap-3">
-                        <button id="java-install-button" class="btn-primary font-semibold py-3 px-5 rounded-md shadow-md flex items-center justify-center text-base">
-                            <i class="fas fa-download mr-2"></i>
+                <div class="card-divider flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mt-auto pt-4">
+                    <p class="text-sm text-gray-400 flex-1" data-key="javaFooterHint">Click the button below to begin the automatic installation process.</p>
+                    <div class="flex flex-col sm:flex-row gap-3 flex-shrink-0">
+                        <button id="java-install-button" class="btn-primary font-semibold py-3 px-6 rounded-md shadow-md flex items-center justify-center gap-2 text-base">
+                            <i class="fas fa-download text-base"></i>
                             <span data-key="javaDownloadButton">Download & Install Java</span>
                         </button>
-                        <button id="java-restart-button" class="btn-success font-semibold py-3 px-5 rounded-md shadow-md flex items-center justify-center text-base hidden">
-                            <i class="fas fa-power-off mr-2"></i>
+                        <button id="java-restart-button" class="btn-success font-semibold py-3 px-6 rounded-md shadow-md flex items-center justify-center gap-2 text-base hidden">
+                            <i class="fas fa-power-off text-base"></i>
                             <span data-key="javaRestartButton">Restart Launcher</span>
                         </button>
                     </div>
@@ -280,18 +280,18 @@
             <div class="bg-gray-800 p-5 rounded-lg shadow-xl flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 class="text-xl font-semibold text-gray-100 flex items-center gap-2">
-                        <i class="fas fa-cog accent-text text-lg"></i>
+                        <i class="fas fa-cog accent-text text-xl"></i>
                         <span data-key="settingsTitle">Settings</span>
                     </h2>
                     <p class="text-sm text-gray-400" data-key="settingsPageDescription">Adjust your server and launcher configuration in one place.</p>
                 </div>
                 <div class="flex items-center gap-2 flex-wrap">
-                    <button id="close-settings-button" class="btn-secondary font-semibold px-4 py-2 rounded-md shadow-md flex items-center gap-2">
-                        <i class="fas fa-arrow-left"></i>
+                    <button id="close-settings-button" class="btn-secondary font-semibold px-5 py-3 rounded-md shadow-md flex items-center gap-2 flex-shrink-0">
+                        <i class="fas fa-arrow-left text-base"></i>
                         <span data-key="closeButton">Close</span>
                     </button>
-                    <button id="save-settings-button" class="btn-primary font-semibold px-4 py-2 rounded-md shadow-md flex items-center gap-2">
-                        <i class="fas fa-save"></i>
+                    <button id="save-settings-button" class="btn-primary font-semibold px-5 py-3 rounded-md shadow-md flex items-center gap-2 flex-shrink-0">
+                        <i class="fas fa-save text-base"></i>
                         <span data-key="saveApplyButton">Save &amp; Apply</span>
                     </button>
                 </div>
@@ -299,7 +299,7 @@
             <div class="card-divider grid gap-4 lg:grid-cols-2 flex-1 min-h-0 equal-card-grid">
                 <section class="bg-gray-800 p-5 rounded-lg shadow-xl space-y-4 flex flex-col">
                     <div class="flex items-center gap-2">
-                        <i class="fas fa-sliders-h accent-text"></i>
+                        <i class="fas fa-sliders-h accent-text text-lg"></i>
                         <h3 class="text-lg font-medium accent-text" data-key="serverConfigHeader">Server Configuration</h3>
                     </div>
                     <div class="grid gap-4">
@@ -341,13 +341,13 @@
                         <div>
                             <label class="block text-sm font-medium text-gray-300 mb-1" data-key="serverPathLabel">Server Data Location:</label>
                             <div class="flex items-center gap-2">
-                                <input id="server-path-display" type="text" readonly class="flex-grow bg-gray-700 border border-gray-600 text-gray-300 text-xs rounded-md p-2.5 cursor-default" value="" />
-                                <button id="choose-server-path-button" class="btn-secondary btn-disabled px-3 py-2 rounded-md text-sm flex items-center gap-2" title="Choose" disabled>
-                                    <i class="fas fa-folder-open"></i>
+                                <input id="server-path-display" type="text" readonly class="flex-1 bg-gray-700 border border-gray-600 text-gray-300 text-xs rounded-md p-2.5 cursor-default" value="" />
+                                <button id="choose-server-path-button" class="btn-secondary btn-disabled px-4 py-3 rounded-md text-sm flex items-center gap-2 flex-shrink-0" title="Choose" disabled>
+                                    <i class="fas fa-folder-open text-base"></i>
                                     <span data-key="choosePathButton">Choose</span>
                                 </button>
-                                <button id="lock-server-path-button" class="btn-secondary px-3 py-2 rounded-md text-sm flex items-center gap-2" data-locked="false">
-                                    <i class="fas fa-lock-open" id="lock-server-path-icon"></i>
+                                <button id="lock-server-path-button" class="btn-secondary px-4 py-3 rounded-md text-sm flex items-center gap-2 flex-shrink-0" data-locked="false">
+                                    <i class="fas fa-lock-open text-base" id="lock-server-path-icon"></i>
                                     <span id="lock-server-path-text" data-key="lockPathButton">Lock</span>
                                 </button>
                             </div>
@@ -357,7 +357,7 @@
                 </section>
                 <section class="bg-gray-800 p-5 rounded-lg shadow-xl space-y-4 flex flex-col">
                     <div class="flex items-center gap-2">
-                        <i class="fas fa-rocket accent-text"></i>
+                        <i class="fas fa-rocket accent-text text-lg"></i>
                         <h3 class="text-lg font-medium accent-text" data-key="launcherSettingsHeader">Launcher Settings</h3>
                     </div>
                     <div class="space-y-4">
@@ -422,45 +422,53 @@
             <div class="bg-gray-800 p-5 rounded-lg shadow-xl flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                     <h2 class="text-xl font-semibold text-gray-100 flex items-center gap-2">
-                        <i id="plugins-modal-icon" class="fas fa-puzzle-piece accent-text text-lg"></i>
+                        <i id="plugins-modal-icon" class="fas fa-box-open accent-text text-xl"></i>
                         <span id="plugins-modal-title-text">Plugins &amp; Server Properties</span>
                     </h2>
-                    <p class="text-sm text-gray-400" data-key="pluginsPageDescription">Manage plugins, mods, add-ons, and server.properties without leaving the launcher.</p>
+                    <p class="text-sm text-gray-400" data-key="pluginsPageDescription">Manage plugins, mods, and server.properties without leaving the launcher.</p>
                 </div>
                 <div class="flex items-center gap-2 flex-wrap">
-                    <button id="close-plugins-page-button" class="btn-secondary font-semibold px-4 py-2 rounded-md shadow-md flex items-center gap-2">
-                        <i class="fas fa-arrow-left"></i>
+                    <button id="close-plugins-page-button" class="btn-secondary font-semibold px-5 py-3 rounded-md shadow-md flex items-center gap-2 flex-shrink-0">
+                        <i class="fas fa-arrow-left text-base"></i>
                         <span data-key="closeButton">Close</span>
                     </button>
-                    <button id="plugins-refresh-button" class="btn-secondary font-semibold px-4 py-2 rounded-md shadow-md flex items-center gap-2">
-                        <i class="fas fa-sync"></i>
-                        <span data-key="pluginsRefreshButton">Refresh</span>
-                    </button>
-                    <button id="plugins-save-apply-button" class="btn-primary font-semibold px-4 py-2 rounded-md shadow-md flex items-center gap-2" data-key-aria-label="saveApplyButton" aria-label="Save &amp; Apply" title="Save &amp; Apply">
-                        <i class="fas fa-save mr-1"></i>
+                    <button id="plugins-save-apply-button" class="btn-primary font-semibold px-5 py-3 rounded-md shadow-md flex items-center gap-2 flex-shrink-0" data-key-aria-label="saveApplyButton" aria-label="Save &amp; Apply" title="Save &amp; Apply">
+                        <i class="fas fa-save text-base"></i>
                         <span data-key="saveApplyButton">Save &amp; Apply</span>
                     </button>
                 </div>
             </div>
-            <div class="card-divider grid gap-4 xl:grid-cols-2 flex-1 min-h-0 equal-card-grid">
+            <div class="card-divider grid gap-4 lg:grid-cols-2 flex-1 min-h-0 equal-card-grid">
                 <section class="bg-gray-800 p-5 rounded-lg shadow-xl flex flex-col gap-4 min-h-0">
                     <div class="flex flex-wrap items-center justify-between gap-2">
-                        <h3 class="accent-text font-medium flex items-center gap-2">
-                            <i id="plugins-section-icon" class="fas fa-puzzle-piece accent-text"></i>
+                        <h3 class="accent-text font-medium flex items-center gap-2 text-lg">
+                            <i id="plugins-section-icon" class="fas fa-box-open accent-text text-lg"></i>
                             <span id="plugins-section-title">Plugins</span>
                         </h3>
                         <div class="flex flex-wrap items-center gap-2">
-                            <button id="upload-plugin-button" class="btn-primary px-3 py-1.5 rounded-md"><i class="fas fa-upload mr-1"></i><span>Upload</span></button>
-                            <button id="open-plugins-folder-button" class="btn-secondary px-3 py-1.5 rounded-md"><i class="fas fa-folder-open mr-1"></i><span>Open Folder</span></button>
+                            <button id="upload-plugin-button" class="btn-primary px-4 py-2 rounded-md flex items-center gap-2 flex-shrink-0">
+                                <i class="fas fa-upload text-base"></i>
+                                <span>Upload</span>
+                            </button>
+                            <button id="open-plugins-folder-button" class="btn-secondary px-4 py-2 rounded-md flex items-center gap-2 flex-shrink-0">
+                                <i class="fas fa-folder-open text-base"></i>
+                                <span>Open Folder</span>
+                            </button>
                         </div>
                     </div>
                     <div id="plugins-list" class="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 pr-1"></div>
                 </section>
                 <section class="bg-gray-800 p-5 rounded-lg shadow-xl flex flex-col gap-4 min-h-0">
-                    <h3 class="accent-text font-medium flex items-center gap-2">
-                        <i class="fas fa-list-alt accent-text"></i>
-                        <span data-key="serverPropsHeader">Server Properties</span>
-                    </h3>
+                    <div class="flex items-center justify-between gap-2 flex-wrap">
+                        <h3 class="accent-text font-medium flex items-center gap-2 text-lg">
+                            <i class="fas fa-list-alt accent-text text-lg"></i>
+                            <span data-key="serverPropsHeader">Server Properties</span>
+                        </h3>
+                        <button id="plugins-refresh-button" class="btn-secondary font-semibold px-4 py-2 rounded-md shadow-md flex items-center gap-2 flex-shrink-0">
+                            <i class="fas fa-sync text-base"></i>
+                            <span data-key="pluginsRefreshButton">Refresh</span>
+                        </button>
+                    </div>
                     <div id="server-properties-container" class="space-y-3 overflow-y-auto flex-1 min-h-0 pr-1">
                         <p class="text-gray-400 text-sm text-center py-4 font-medium" data-key="serverPropsUnavailable">Run the server once to generate and edit server.properties.</p>
                     </div>

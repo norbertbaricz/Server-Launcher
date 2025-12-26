@@ -48,45 +48,33 @@ function normalizeUiServerType(type) {
 
 function getAddonLabel(type) {
     if (type === 'fabric') return currentTranslations['modsLabel'] || 'Mods';
-    if (type === 'bedrock') return currentTranslations['addonsLabel'] || 'Add-ons';
     return currentTranslations['pluginsButton'] || 'Plugins';
 }
 
 function getAddonIcon(type) {
     if (type === 'fabric') return 'fa-flask';
-    if (type === 'bedrock') return 'fa-cubes';
-    return 'fa-puzzle-piece';
+    return 'fa-box-open';
 }
 
 function getServerTypeSuffix(type) {
     if (type === 'fabric') return ' (Modded)';
-    if (type === 'bedrock') return ' (Bedrock)';
     return '';
 }
 
 function applyServerTypeUiState(type) {
-    const isBedrock = type === 'bedrock';
     const toggleHidden = (element, hidden) => {
         if (!element) return;
         element.classList.toggle('hidden', hidden);
     };
-    toggleHidden(ramAllocationModalContainer, isBedrock);
-    toggleHidden(ramAllocationSettingsContainer, isBedrock);
-    toggleHidden(javaArgumentsSettingsContainer, isBedrock);
-
-    if (isBedrock) {
-        if (ramAllocationModalSelect) ramAllocationModalSelect.value = 'auto';
-        if (ramAllocationSettingsSelect) ramAllocationSettingsSelect.value = 'auto';
-        if (javaArgumentsSettingsSelect) javaArgumentsSettingsSelect.value = 'Default';
-    }
+    toggleHidden(ramAllocationModalContainer, false);
+    toggleHidden(ramAllocationSettingsContainer, false);
+    toggleHidden(javaArgumentsSettingsContainer, false);
 }
 
 function updatePluginsButtonAppearance(serverType) {
     const type = normalizeUiServerType(serverType);
     const label = getAddonLabel(type);
     const iconClass = getAddonIcon(type);
-    const isFabric = type === 'fabric';
-    const isBedrock = type === 'bedrock';
     if (pluginsFolderIcon) {
         pluginsFolderIcon.className = `fas ${iconClass}`;
     }
@@ -116,22 +104,14 @@ function updatePluginsButtonAppearance(serverType) {
         pluginsSectionTitle.textContent = label;
     }
     if (uploadPluginButton) {
-        if (isBedrock) {
-            uploadPluginButton.disabled = true;
-            uploadPluginButton.classList.add('btn-disabled');
-            uploadPluginButton.innerHTML = `<i class="fas fa-ban mr-1"></i>${currentTranslations['uploadUnavailable'] || 'Uploads Unavailable'}`;
-        } else {
-            uploadPluginButton.disabled = false;
-            uploadPluginButton.classList.remove('btn-disabled');
-            const uploadLabel = isFabric ? (currentTranslations['uploadModsButton'] || 'Upload Mods') : (currentTranslations['uploadButton'] || 'Upload');
-            uploadPluginButton.innerHTML = `<i class="fas fa-upload mr-1"></i>${uploadLabel}`;
-            uploadPluginButton.title = uploadLabel;
-        }
+        uploadPluginButton.disabled = false;
+        uploadPluginButton.classList.remove('btn-disabled');
+        const uploadLabel = currentTranslations['uploadButton'] || 'Upload';
+        uploadPluginButton.innerHTML = `<i class="fas fa-upload mr-1"></i>${uploadLabel}`;
+        uploadPluginButton.title = uploadLabel;
     }
     if (openPluginsFolderButton) {
-        const openFolderLabel = isFabric
-            ? (currentTranslations['openModsFolderButton'] || 'Open Mods Folder')
-            : (isBedrock ? (currentTranslations['openBedrockFolderButton'] || 'Open Server Folder') : (currentTranslations['openFolderButton'] || 'Open Folder'));
+        const openFolderLabel = currentTranslations['openFolderButton'] || 'Open Folder';
         openPluginsFolderButton.innerHTML = `<i class="fas fa-folder-open mr-1"></i>${openFolderLabel}`;
         openPluginsFolderButton.title = openFolderLabel;
     }
@@ -141,9 +121,8 @@ function populateServerTypeSelect(selectEl, currentType) {
     if (!selectEl) return;
     const normalizedType = normalizeUiServerType(currentType);
     const options = [
-        { value: 'purpur', label: currentTranslations['serverTypeJavaDefault'] || 'Java - Purpur (Vanilla)' },
-        { value: 'fabric', label: currentTranslations['serverTypeJavaModded'] || 'Java - Fabric (Modded)' },
-        { value: 'bedrock', label: currentTranslations['serverTypeBedrock'] || 'Bedrock - Dedicated Server' }
+        { value: 'purpur', label: currentTranslations['serverTypeJavaDefault'] || 'Purpur (Standard)' },
+        { value: 'fabric', label: currentTranslations['serverTypeJavaModded'] || 'Fabric (Modded)' }
     ];
     selectEl.innerHTML = '';
     for (const opt of options) {
@@ -152,7 +131,7 @@ function populateServerTypeSelect(selectEl, currentType) {
         o.textContent = opt.label;
         selectEl.appendChild(o);
     }
-    selectEl.value = normalizedType && ['purpur','fabric','bedrock'].includes(normalizedType) ? normalizedType : 'purpur';
+    selectEl.value = normalizedType && ['purpur','fabric'].includes(normalizedType) ? normalizedType : 'purpur';
 }
 
 async function setLanguage(lang) {

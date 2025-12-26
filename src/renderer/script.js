@@ -102,10 +102,21 @@ const maximizeBtn = document.getElementById('maximize-btn');
 const closeBtn = document.getElementById('close-btn');
 const maximizeBtnIcon = maximizeBtn.querySelector('i');
 
-const MAX_CONSOLE_LINES = 1000;
-const LINES_PER_FLUSH = 400;
+const DEFAULT_MAX_CONSOLE_LINES = 1000;
+const DEFAULT_LINES_PER_FLUSH = 400;
+let MAX_CONSOLE_LINES = DEFAULT_MAX_CONSOLE_LINES;
+let LINES_PER_FLUSH = DEFAULT_LINES_PER_FLUSH;
 const pendingConsoleLines = [];
 let consoleFlushScheduled = false;
+
+function applyLowSpecMode(enabled) {
+    MAX_CONSOLE_LINES = enabled ? 400 : DEFAULT_MAX_CONSOLE_LINES;
+    LINES_PER_FLUSH = enabled ? 150 : DEFAULT_LINES_PER_FLUSH;
+    const bodyEl = document.body;
+    if (bodyEl) {
+        bodyEl.classList.toggle('low-spec-mode', !!enabled);
+    }
+}
 
 function scheduleConsoleFlush() {
     if (consoleFlushScheduled) return;
@@ -173,7 +184,7 @@ function renderMemoryUsage() {
             memoryUsageSpan.style.color = '';
         }
     } else {
-        memoryUsageSpan.textContent = hasAllocated ? `— / ${allocatedRamCache} GB` : '— GB';
+        memoryUsageSpan.textContent = hasAllocated ? `0.00 / ${allocatedRamCache} GB` : '0.00 GB';
         memoryUsageSpan.style.color = '';
     }
 }
@@ -235,45 +246,33 @@ const javaArgumentsSettingsContainer = javaArgumentsSettingsSelect?.closest('div
 
 function getAddonLabel(type) {
     if (type === 'fabric') return currentTranslations['modsLabel'] || 'Mods';
-    if (type === 'bedrock') return currentTranslations['addonsLabel'] || 'Add-ons';
     return currentTranslations['pluginsButton'] || 'Plugins';
 }
 
 function getAddonIcon(type) {
     if (type === 'fabric') return 'fa-flask';
-    if (type === 'bedrock') return 'fa-cubes';
-    return 'fa-puzzle-piece';
+    return 'fa-box-open';
 }
 
 function getServerTypeSuffix(type) {
     if (type === 'fabric') return ' (Modded)';
-    if (type === 'bedrock') return ' (Bedrock)';
     return '';
 }
 
-function applyServerTypeUiState(type) {
-    const isBedrock = type === 'bedrock';
+function applyServerTypeUiState() {
     const toggleHidden = (element, hidden) => {
         if (!element) return;
         element.classList.toggle('hidden', hidden);
     };
-    toggleHidden(ramAllocationModalContainer, isBedrock);
-    toggleHidden(ramAllocationSettingsContainer, isBedrock);
-    toggleHidden(javaArgumentsSettingsContainer, isBedrock);
-
-    if (isBedrock) {
-        if (ramAllocationModalSelect) ramAllocationModalSelect.value = 'auto';
-        if (ramAllocationSettingsSelect) ramAllocationSettingsSelect.value = 'auto';
-        if (javaArgumentsSettingsSelect) javaArgumentsSettingsSelect.value = 'Default';
-    }
+    toggleHidden(ramAllocationModalContainer, false);
+    toggleHidden(ramAllocationSettingsContainer, false);
+    toggleHidden(javaArgumentsSettingsContainer, false);
 }
 
 function updatePluginsButtonAppearance(serverType) {
     const type = normalizeUiServerType(serverType);
     const label = getAddonLabel(type);
     const iconClass = getAddonIcon(type);
-    const isFabric = type === 'fabric';
-    const isBedrock = type === 'bedrock';
     if (pluginsFolderIcon) {
         pluginsFolderIcon.className = `fas ${iconClass}`;
     }
@@ -303,22 +302,14 @@ function updatePluginsButtonAppearance(serverType) {
         pluginsSectionTitle.textContent = label;
     }
     if (uploadPluginButton) {
-        if (isBedrock) {
-            uploadPluginButton.disabled = true;
-            uploadPluginButton.classList.add('btn-disabled');
-            uploadPluginButton.innerHTML = `<i class="fas fa-ban mr-1"></i>${currentTranslations['uploadUnavailable'] || 'Uploads Unavailable'}`;
-        } else {
-            uploadPluginButton.disabled = false;
-            uploadPluginButton.classList.remove('btn-disabled');
-            const uploadLabel = isFabric ? (currentTranslations['uploadModsButton'] || 'Upload Mods') : (currentTranslations['uploadButton'] || 'Upload');
-            uploadPluginButton.innerHTML = `<i class="fas fa-upload mr-1"></i>${uploadLabel}`;
-            uploadPluginButton.title = uploadLabel;
-        }
+        uploadPluginButton.disabled = false;
+        uploadPluginButton.classList.remove('btn-disabled');
+        const uploadLabel = currentTranslations['uploadButton'] || 'Upload';
+        uploadPluginButton.innerHTML = `<i class="fas fa-upload mr-1"></i>${uploadLabel}`;
+        uploadPluginButton.title = uploadLabel;
     }
     if (openPluginsFolderButton) {
-        const openFolderLabel = isFabric
-            ? (currentTranslations['openModsFolderButton'] || 'Open Mods Folder')
-            : (isBedrock ? (currentTranslations['openBedrockFolderButton'] || 'Open Server Folder') : (currentTranslations['openFolderButton'] || 'Open Folder'));
+        const openFolderLabel = currentTranslations['openFolderButton'] || 'Open Folder';
         openPluginsFolderButton.innerHTML = `<i class="fas fa-folder-open mr-1"></i>${openFolderLabel}`;
         openPluginsFolderButton.title = openFolderLabel;
     }
@@ -327,11 +318,10 @@ function updatePluginsButtonAppearance(serverType) {
 function populateServerTypeSelect(selectEl, currentType) {
     if (!selectEl) return;
     const normalizedType = normalizeUiServerType(currentType);
-        const options = [
-            { value: 'purpur', label: currentTranslations['serverTypeJavaDefault'] || 'Java - Purpur (Vanilla)' },
-            { value: 'fabric', label: currentTranslations['serverTypeJavaModded'] || 'Java - Fabric (Modded)' },
-            { value: 'bedrock', label: currentTranslations['serverTypeBedrock'] || 'Bedrock - Dedicated Server' }
-        ];
+    const options = [
+        { value: 'purpur', label: currentTranslations['serverTypeJavaDefault'] || 'Purpur (Standard)' },
+        { value: 'fabric', label: currentTranslations['serverTypeJavaModded'] || 'Fabric (Modded)' }
+    ];
     selectEl.innerHTML = '';
     for (const opt of options) {
         const o = document.createElement('option');
@@ -339,7 +329,7 @@ function populateServerTypeSelect(selectEl, currentType) {
         o.textContent = opt.label;
         selectEl.appendChild(o);
     }
-    selectEl.value = normalizedType && ['purpur','fabric','bedrock'].includes(normalizedType) ? normalizedType : 'purpur';
+    selectEl.value = normalizedType && ['purpur','fabric'].includes(normalizedType) ? normalizedType : 'purpur';
 }
 
 async function setLanguage(lang) {
@@ -538,6 +528,17 @@ function setStatus(fallbackText, pulse = false, translationKey = null) {
     const key = translationKey || statusMessageSpan.dataset.key;
     let message = (key && currentTranslations[key]) ? currentTranslations[key] : fallbackText;
 
+    // Preserve version info on download success statuses without parentheses, e.g. "Purpur 1.21.11 downloaded successfully"
+    if (key === 'downloadSuccess' && fallbackText) {
+        const base = (key && currentTranslations[key]) ? currentTranslations[key] : '';
+        const versionText = String(fallbackText).trim();
+        if (base && versionText) {
+            message = `${versionText} ${base}`;
+        } else if (versionText) {
+            message = versionText;
+        } // if only base exists, message already set above
+    }
+
     if (key === 'downloading' && typeof fallbackText === 'string') {
         const m = fallbackText.match(/\(([^)]+)\)/);
         if (m && m[1]) {
@@ -560,7 +561,7 @@ function showDownloadLoading() {
     downloadModalButton.disabled = true;
     mcVersionModalSelect.disabled = true;
     ramAllocationModalSelect.disabled = true;
-    downloadModalButtonIcon.className = 'fas fa-spinner spinner mr-2';
+    downloadModalButtonIcon.className = 'fas fa-spinner spinner text-sm flex-shrink-0';
     downloadModalButtonText.textContent = currentTranslations['downloadingButton'] || 'Downloading...';
 }
 
@@ -568,8 +569,8 @@ function hideDownloadLoading() {
     downloadModalButton.disabled = false;
     mcVersionModalSelect.disabled = false;
     ramAllocationModalSelect.disabled = false;
-    downloadModalButtonIcon.className = 'fas fa-download mr-2';
-    downloadModalButtonText.textContent = currentTranslations['downloadButton'] || 'Download / Configure Server';
+    downloadModalButtonIcon.className = 'fas fa-download text-sm flex-shrink-0';
+    downloadModalButtonText.textContent = currentTranslations['downloadButton'] || 'Download Server';
 }
 
 function updateButtonStates(isRunning) {
@@ -899,6 +900,7 @@ saveSettingsButton.addEventListener('click', async () => {
     launcherSettingsCache.notificationsEnabled = desktopNotificationsCheckbox.checked;
     
     window.electronAPI.setSettings(launcherSettingsCache);
+    // Low-spec mode now applies automatically based on hardware; renderer uses the value from getSettings
 
     if (autoStartEnabled) {
         const delayChanged = selectedAutoStartDelay !== prevAutoStartDelay;
@@ -1172,11 +1174,13 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         // Status și sunet sunt gestionate de main process prin sendStatus()
         await fetchAndDisplayIPs();
         lastMemoryGB = null;
-        memoryUsageSpan.textContent = '0 GB';
+        const allocated = parseFloat(allocatedRamCache);
+        const hasAllocated = !Number.isNaN(allocated) && allocated > 0;
+        memoryUsageSpan.textContent = hasAllocated ? `0.00 / ${allocatedRamCache} GB` : '0.00 GB';
         memoryUsageSpan.style.color = '';
-        serverTpsSpan.textContent = '0 ms';
+        serverTpsSpan.textContent = '0.0 ms';
         serverTpsSpan.style.color = '';
-        allocatedRamCache = '0'; 
+        // NU resetăm allocatedRamCache aici - păstrăm valoarea pentru afișare
     }
 
     if (
@@ -1316,6 +1320,7 @@ async function initializeApp() {
         populateThemeSelectors();
 
         launcherSettingsCache = settings || {};
+        applyLowSpecMode(!!settings?.autoLowSpecMode);
         const savedTheme = ensureThemeCode(launcherSettingsCache.theme || 'skypixel');
         applyThemeClass(savedTheme);
         if (themeSelect) themeSelect.value = savedTheme;
@@ -1623,16 +1628,11 @@ async function refreshPluginsList() {
     try {
         const plugins = await window.electronAPI.getPlugins();
         const type = currentServerConfig?.serverType;
-        const isFabric = type === 'fabric';
-        const isBedrock = type === 'bedrock';
+        const isModded = type === 'fabric';
         if (!plugins || plugins.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'text-gray-400 text-sm text-center py-4 font-medium';
-            if (isBedrock) {
-                empty.textContent = currentTranslations['addonsManagedManually'] || 'Manage Bedrock add-ons directly from the server folder.';
-            } else {
-                empty.textContent = isFabric ? (currentTranslations['noModsFound'] || 'No mods found.') : (currentTranslations['noPluginsFound'] || 'No plugins found.');
-            }
+            empty.textContent = isModded ? (currentTranslations['noModsFound'] || 'No mods found.') : (currentTranslations['noPluginsFound'] || 'No plugins found.');
             pluginsList.appendChild(empty);
             return;
         }
@@ -1661,17 +1661,9 @@ async function refreshPluginsList() {
             const delBtn = document.createElement('button');
             delBtn.className = 'btn-danger px-5 py-2 text-sm font-semibold flex items-center gap-2 rounded-md flex-shrink-0';
             delBtn.innerHTML = `<i class="fas fa-trash"></i><span>${deleteLabel}</span>`;
-            if (isBedrock) {
-                delBtn.disabled = true;
-                delBtn.classList.add('btn-disabled');
-            }
             delBtn.addEventListener('click', async () => {
-                if (isBedrock) {
-                    addToConsole(currentTranslations['addonsDeleteUnavailable'] || 'Launcher cannot delete Bedrock add-ons automatically.', 'WARN');
-                    return;
-                }
                 if (localIsServerRunning) {
-                    addToConsole(isFabric ? (currentTranslations['stopBeforeDeletingMods'] || 'Stop the server before deleting mods.') : (currentTranslations['stopBeforeDeletingPlugins'] || 'Stop the server before deleting plugins.'), 'WARN');
+                    addToConsole(isModded ? (currentTranslations['stopBeforeDeletingMods'] || 'Stop the server before deleting mods.') : (currentTranslations['stopBeforeDeletingPlugins'] || 'Stop the server before deleting plugins.'), 'WARN');
                     return;
                 }
                 const res = await window.electronAPI.deletePlugin(p.name);
@@ -1695,10 +1687,9 @@ async function refreshPluginsList() {
 
 uploadPluginButton?.addEventListener('click', async () => {
     if (setupRequired) return;
-    const isFabric = currentServerConfig?.serverType === 'fabric';
-    const isBedrock = currentServerConfig?.serverType === 'bedrock';
+    const isModded = currentServerConfig?.serverType === 'fabric';
     if (localIsServerRunning) {
-        const warnMsg = isFabric
+        const warnMsg = isModded
             ? (currentTranslations['stopBeforeUploadingMods'] || 'Stop the server before uploading mods.')
             : (currentTranslations['stopBeforeUploadingPlugins'] || 'Stop the server before uploading plugins.');
         addToConsole(warnMsg, 'WARN');

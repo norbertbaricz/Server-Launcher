@@ -17,6 +17,29 @@ body {
     text-rendering: optimizeLegibility;
 }
 
+body.low-spec-mode *,
+body.low-spec-mode *::before,
+body.low-spec-mode *::after {
+    animation: none !important;
+    transition: none !important;
+}
+
+body.low-spec-mode .animate-fadeIn {
+    animation: none !important;
+    opacity: 1 !important;
+}
+
+body.low-spec-mode .shadow-xl,
+body.low-spec-mode .shadow-lg,
+body.low-spec-mode .shadow-md,
+body.low-spec-mode .shadow,
+body.low-spec-mode .btn-primary,
+body.low-spec-mode .btn-secondary,
+body.low-spec-mode .btn-danger,
+body.low-spec-mode .btn-success {
+    box-shadow: none !important;
+}
+
 
 /* Block text selection globally, but keep it enabled for the console and form fields */
 body * {

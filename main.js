@@ -1,5 +1,3 @@
-// Avoid noisy portal warnings on some Linux desktops
-process.env.GTK_USE_PORTAL = process.env.GTK_USE_PORTAL || '0';
 const { app, BrowserWindow, ipcMain, shell, dialog, Notification, session } = require('electron');
 // Funcție pentru curățarea fișierelor lock/pid
 function cleanServerLocks(serverDir) {
@@ -36,9 +34,37 @@ if (typeof find !== 'function' && find?.default) {
 }
 const AdmZip = require('adm-zip');
 const NotificationService = require('./src/services/NotificationService');
-const { readAvailableThemes } = require('./src/main/themeService');
-const { createSoundService } = require('./src/main/soundService');
 
+// Helper function to get translation from en.json
+function getTranslation(key, replacements = {}) {
+    try {
+        const langPath = path.join(__dirname, 'src', 'lang', 'en.json');
+        if (!fs.existsSync(langPath)) return key;
+        const translations = JSON.parse(fs.readFileSync(langPath, 'utf8'));
+        let text = translations[key] || key;
+        Object.keys(replacements).forEach(placeholder => {
+            text = text.replace(new RegExp(`\\{${placeholder}\\}`, 'g'), replacements[placeholder]);
+        });
+        return text;
+    } catch {
+        return key;
+    }
+}
+
+const SOUND_CANDIDATES = {
+    error: ['error.mp3', 'error.wav'],
+    startup: ['startup.mp3', 'startup.wav'],
+    status: ['status.mp3', 'status.wav'],
+    success: ['success.mp3', 'success.wav']
+};
+const SOUND_BASE_VOLUME = 0.32;
+const SOUND_VOLUME_MAP = {
+    startup: 0.35,
+    success: 0.32,
+    status: 0.32,
+    error: 0.34
+};
+const DEFAULT_SOUND_TYPE = 'status';
 // Renderer readiness + buffered status messages for backward compatibility with older renderer bundles
 let rendererReady = false; // Set when renderer signals app-ready-to-show
 const statusBuffer = []; // { msg, pulse, key }
@@ -106,6 +132,9 @@ function flushConsoleBuffer() {
         safeSend(win, 'update-console', message, type);
     }
 }
+const SOUND_SEARCH_DIRS = ['', 'sounds'];
+const ERROR_SOUND_KEYWORDS = ['error', 'failed', 'fail', 'not found', 'crash', 'stopped unexpectedly', 'timed out', 'unavailable', 'unable'];
+const SUCCESS_SOUND_KEYWORDS = ['success', 'successfully', 'ready', 'completed', 'installed', 'configured', 'downloaded', 'server started', 'server ready', 'done'];
 const NGROK_API_ENDPOINT = 'http://127.0.0.1:4040/api/tunnels';
 const NGROK_REGION_DEFAULT = 'us';
 const NGROK_REGION_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -128,6 +157,19 @@ const NGROK_APAC_COUNTRIES = new Set([
 ]);
 const PUBLIC_IP_USER_AGENT = 'MyMinecraftLauncher/1.0';
 const DISCORD_CONSOLE_SUPPRESS_REGEX = /discord/i;
+const DEFAULT_THEMES = [
+    { code: 'skypixel', name: 'Skypixel Blue', colors: { primary: '#3b82f6', primaryHover: '#2563eb', accent: '#60a5fa' } },
+    { code: 'nord', name: 'Nord', colors: { primary: '#88c0d0', primaryHover: '#81a1c1', accent: '#a3be8c' } },
+    { code: 'aurora', name: 'Aurora', colors: { primary: '#06b6d4', primaryHover: '#0891b2', accent: '#a78bfa' } },
+    { code: 'midnight', name: 'Midnight', colors: { primary: '#6366f1', primaryHover: '#4f46e5', accent: '#14b8a6' } },
+    { code: 'emerald', name: 'Emerald', colors: { primary: '#22c55e', primaryHover: '#16a34a', accent: '#34d399' } },
+    { code: 'sunset', name: 'Sunset', colors: { primary: '#f97316', primaryHover: '#ea580c', accent: '#fb7185' } },
+    { code: 'crimson', name: 'Crimson', colors: { primary: '#ef4444', primaryHover: '#dc2626', accent: '#fca5a5' } },
+    { code: 'ocean', name: 'Ocean', colors: { primary: '#0ea5e9', primaryHover: '#0284c7', accent: '#22d3ee' } },
+    { code: 'grape', name: 'Grape', colors: { primary: '#8b5cf6', primaryHover: '#7c3aed', accent: '#d8b4fe' } },
+    { code: 'neon', name: 'Neon', colors: { primary: '#22d3ee', primaryHover: '#06b6d4', accent: '#a3e635' } }
+];
+
 const CONTENT_SECURITY_POLICY = [
     "default-src 'self' file: data:",
     "script-src 'self'",
@@ -246,9 +288,9 @@ function sortVersionsDesc(list) {
 }
 
 function getServerFlavorLabel(type) {
-  if (type === SERVER_TYPES.FABRIC) return 'Modded';
+  if (type === SERVER_TYPES.FABRIC) return 'Fabric';
   if (type === SERVER_TYPES.BEDROCK) return 'Bedrock';
-  return 'Vanilla';
+  return 'Purpur';
 }
 
 function delay(ms) {
@@ -269,7 +311,6 @@ let lastAnnouncedNgrokRegion = null;
 
 // Notification service
 let notificationService = null;
-const notificationCooldowns = new Map();
 const execAsync = promisify(exec);
 
 try { app.setName('Server Launcher'); } catch (_) {}
@@ -484,6 +525,10 @@ const clientId = '1397585400553541682';
 let rpc;
 let rpcStartTime;
 let startupSoundPlayed = false;
+let lastStatusSoundSignature = null;
+let lastStatusSoundAt = 0;
+let lastPlaySoundAt = 0;
+let lastPlaySoundType = null;
 
 let serverFilesDir;
 const purpurJarName = 'purpur.jar';
@@ -853,12 +898,6 @@ function safeSend(win, channel, ...args) {
     return false;
 }
 
-const { handleStatusSound, playSoundEffect } = createSoundService({
-    getMainWindow,
-    readLauncherSettings,
-    safeSend,
-});
-
 function sendStatus(fallbackMessage, pulse = false, translationKey = null, soundType = null) {
     if (!rendererReady) {
         // Store message until renderer defines its status handler; log for visibility
@@ -1165,44 +1204,18 @@ function getNotificationIconPath() {
     } catch (_) { return undefined; }
 }
 
-function inferNotificationSeverity(title, body, provided) {
-    if (provided) return provided;
-    const text = `${title} ${body}`.toLowerCase();
-    if (/crash|fail|error|missing|not found|could not|unable/.test(text)) return 'error';
-    if (/warning|need|required|configuration needed|missing/i.test(text)) return 'warning';
-    if (/complete|ready|started|installed|success/.test(text)) return 'success';
-    return 'info';
-}
-
 function showDesktopNotification(title, body, options = {}) {
     try {
-        if (!notificationService) return;
-
+        if (!notificationService) {
+            return;
+        }
+        
         const settings = readLauncherSettings();
         const enabled = settings ? settings.notificationsEnabled !== false : true;
         notificationService.setEnabled(enabled);
-
-        const normalizedSeverity = inferNotificationSeverity(
-            title,
-            body,
-            options.severity || (options.urgency === 'critical' ? 'error' : null)
-        );
-
-        const sticky = options.sticky ?? normalizedSeverity === 'error';
-        const cooldownMs = Number.isFinite(options.cooldownMs) ? options.cooldownMs : (normalizedSeverity === 'error' ? 0 : 5000);
-        const key = options.key || `${title}|${body}|${normalizedSeverity}`;
-
-        if (cooldownMs > 0) {
-            const lastAt = notificationCooldowns.get(key) || 0;
-            const now = Date.now();
-            if (now - lastAt < cooldownMs) return;
-            notificationCooldowns.set(key, now);
-        }
-
-        const payload = { ...options, severity: normalizedSeverity, sticky, cooldownMs };
-
-        notificationService.show(title, body, payload);
-    } catch (_) {
+        
+        notificationService.show(title, body, options);
+    } catch (error) {
         // Silent error
     }
 }
@@ -1267,6 +1280,117 @@ function describeServerShutdown(code, signal) {
         technical: formatExitTechnicalDetails(code, signal),
         hint: explainServerExit(code, signal)
     };
+}
+
+function resolveAssetFile(relativePath) {
+    try {
+        const resources = process.resourcesPath;
+        const buildDir = path.join(__dirname, 'src', 'build');
+        const candidateFromResources = path.join(resources, relativePath);
+        if (fs.existsSync(candidateFromResources)) return candidateFromResources;
+        const candidateFromBuild = path.join(buildDir, relativePath);
+        if (fs.existsSync(candidateFromBuild)) return candidateFromBuild;
+    } catch (_) {}
+    return null;
+}
+
+function getSoundFilePath(type) {
+    const canonicalType = SOUND_CANDIDATES[type] ? type : DEFAULT_SOUND_TYPE;
+    const candidates = SOUND_CANDIDATES[canonicalType] || [];
+    for (const candidate of candidates) {
+        for (const dir of SOUND_SEARCH_DIRS) {
+            const relativePath = dir ? path.join(dir, candidate) : candidate;
+            const resolved = resolveAssetFile(relativePath);
+            if (resolved) return resolved;
+        }
+    }
+    if (canonicalType !== DEFAULT_SOUND_TYPE) {
+        return getSoundFilePath(DEFAULT_SOUND_TYPE);
+    }
+    return null;
+}
+
+function playSoundEffect(requestedType = DEFAULT_SOUND_TYPE) {
+    const type = SOUND_CANDIDATES[requestedType] ? requestedType : DEFAULT_SOUND_TYPE;
+    const now = Date.now();
+    // Throttle identical sounds to avoid rapid overlap
+    if (type === lastPlaySoundType && (now - lastPlaySoundAt) < 500) {
+        return;
+    }
+    lastPlaySoundType = type;
+    lastPlaySoundAt = now;
+    let win = null;
+    try {
+        const settings = readLauncherSettings();
+        if (settings && settings.notificationsEnabled === false) return;
+        const soundPath = getSoundFilePath(type);
+        win = getMainWindow();
+        if (!win || win.isDestroyed()) return;
+        const volume = Math.max(0, Math.min(1, SOUND_VOLUME_MAP[type] ?? SOUND_BASE_VOLUME));
+        const payload = soundPath ? { url: pathToFileURL(soundPath).href, type, volume } : { url: null, type, volume };
+        safeSend(win, 'play-sound', payload);
+    } catch (_) {
+        if (!win) win = getMainWindow();
+        safeSend(win, 'play-sound', { url: null, type: requestedType, volume: SOUND_BASE_VOLUME });
+    }
+}
+
+function stringContainsKeyword(text, keywords) {
+    if (!text) return false;
+    return keywords.some(keyword => text.includes(keyword));
+}
+
+function isProgressStatusMessage(message, key) {
+    if (!message && !key) return false;
+    if (message && /\d{1,3}%/.test(message)) return true;
+    if (message && /\b\d+(\.\d+)?\s?(kb|mb|gb)(\/s)?\b/.test(message)) return true;
+    if (message && message.includes('download speed')) return true;
+    return false;
+}
+
+function handleStatusSound(fallbackMessage, translationKey, pulse, soundType = null) {
+    try {
+        // If explicit soundType is provided, use it directly
+        if (soundType) {
+            playSoundEffect(soundType);
+            return;
+        }
+
+        const message = (fallbackMessage || '').toLowerCase();
+        const key = (translationKey || '').toLowerCase();
+        if (!message && !key) return;
+        if (isProgressStatusMessage(message, key)) return;
+
+        const signature = key || message;
+        const now = Date.now();
+        if (signature && signature === lastStatusSoundSignature && (now - lastStatusSoundAt) < 1500) {
+            return;
+        }
+
+        const stopSuccess =
+            key === 'serverstopped' ||
+            key === 'servershutdowncomplete' ||
+            message.includes('server stopped') ||
+            message.includes('server oprit');
+        const stopUnexpected = key === 'serverstoppedunexpectedly' || message.includes('unexpectedly');
+        
+        if (stopUnexpected) {
+            playSoundEffect('error');
+        } else if (stopSuccess) {
+            playSoundEffect('success');
+        } else if (stringContainsKeyword(key, ERROR_SOUND_KEYWORDS) || stringContainsKeyword(message, ERROR_SOUND_KEYWORDS)) {
+            playSoundEffect('error');
+        } else if (stringContainsKeyword(key, SUCCESS_SOUND_KEYWORDS) || stringContainsKeyword(message, SUCCESS_SOUND_KEYWORDS)) {
+            playSoundEffect('success');
+        } else {
+            playSoundEffect('status');
+        }
+
+        if (signature) {
+            lastStatusSoundSignature = signature;
+            lastStatusSoundAt = now;
+        }
+    } catch (_) {}
 }
 
 function fetchNgrokTunnels() {
@@ -1666,7 +1790,7 @@ function createWindow () {
   const resolveIconForWindow = () => {
     try {
       const resBase = process.resourcesPath;
-            const buildBase = path.join(__dirname, 'src', 'build');
+      const buildBase = path.join(__dirname, 'src', 'build');
       if (process.platform === 'win32') {
         const icoRes = path.join(resBase, 'icon.ico');
         const icoBuild = path.join(buildBase, 'icon.ico');
@@ -1686,6 +1810,8 @@ function createWindow () {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 720,
+    minWidth: 800,
+    minHeight: 600,
     resizable: true,
     fullscreenable: true,
     frame: false,
@@ -1834,8 +1960,13 @@ function createWindow () {
   // Initialize notification service
   notificationService = new NotificationService();
   
-    // Set fallback callback (no-op: prefer desktop notifications; skip in-app toasts)
-    notificationService.setFallbackCallback(() => {});
+  // Set fallback callback to send in-app notifications
+  notificationService.setFallbackCallback((title, body) => {
+    const win = getMainWindow();
+    if (win && !win.isDestroyed()) {
+      safeSend(win, 'show-in-app-notification', { title, body });
+    }
+  });
   
   // Set sound callback
   notificationService.setSoundCallback((soundType) => {
@@ -1876,7 +2007,10 @@ autoUpdater.on('checking-for-update', () => {
 autoUpdater.on('update-available', (info) => {
     updaterSilentMode = false; // surface progress now that we have an update
     sendConsole(`Updater: Update available! Version: ${info.version}`, 'SUCCESS');
-    showDesktopNotification('Update Available', `Version ${info.version} is downloading in the background.`);
+    showDesktopNotification(
+        getTranslation('notificationUpdateAvailable'),
+        getTranslation('updateAvailableBody', { version: info.version })
+    );
 });
 autoUpdater.on('update-not-available', (info) => {
     if (!updaterSilentMode) {
@@ -1889,7 +2023,10 @@ autoUpdater.on('update-not-available', (info) => {
 autoUpdater.on('error', (err) => {
     if (!updaterSilentMode) {
         sendConsole('Updater: Error during update. ' + err.message, 'ERROR');
-        showDesktopNotification('Update Error', err.message);
+        showDesktopNotification(
+            getTranslation('notificationUpdateError'),
+            err.message
+        );
     } else {
         log.warn(`Updater: Error during update (silent run): ${err.message}`);
     }
@@ -1898,7 +2035,10 @@ autoUpdater.on('error', (err) => {
 autoUpdater.on('download-progress', (p) => sendStatus(`Download speed: ${Math.round(p.bytesPerSecond / 1024)} KB/s - Downloaded ${Math.round(p.percent)}%`, true));
 autoUpdater.on('update-downloaded', (info) => {
   sendConsole(`Updater: Update downloaded (${info.version}). It will be installed on restart.`, 'SUCCESS');
-    showDesktopNotification('Update Ready', `Version ${info.version} downloaded. Restart Server Launcher to install.`);
+    showDesktopNotification(
+        getTranslation('notificationUpdateReady'),
+        getTranslation('updateReadyBody', { version: info.version })
+    );
   dialog.showMessageBox({
     type: 'info',
     title: 'Update Ready',
@@ -2376,7 +2516,7 @@ ipcMain.handle('select-server-location', async () => {
 });
 
 ipcMain.handle('get-translations', async (event, lang) => {
-    const langPath = path.join(__dirname, 'src', 'lang', `${lang}.json`);
+  const langPath = path.join(__dirname, 'src', 'lang', `${lang}.json`);
   try {
     if (fs.existsSync(langPath)) {
       const data = fs.readFileSync(langPath, 'utf8');
@@ -2388,6 +2528,40 @@ ipcMain.handle('get-translations', async (event, lang) => {
   return null;
 });
 
+function readAvailableThemes() {
+    const themesDir = path.join(__dirname, 'src', 'themes');
+    try {
+        const entries = fs.readdirSync(themesDir, { withFileTypes: true });
+        const themes = [];
+        for (const entry of entries) {
+            if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
+            const fullPath = path.join(themesDir, entry.name);
+            try {
+                const raw = fs.readFileSync(fullPath, 'utf8');
+                const parsed = JSON.parse(raw);
+                if (!parsed || typeof parsed !== 'object') continue;
+                const { code, name, colors } = parsed;
+                if (!code || typeof code !== 'string') continue;
+                themes.push({
+                    code,
+                    name: typeof name === 'string' && name.trim() ? name : code,
+                    colors: {
+                        primary: colors?.primary || '#3b82f6',
+                        primaryHover: colors?.primaryHover || colors?.primary || '#2563eb',
+                        accent: colors?.accent || colors?.primary || '#60a5fa'
+                    }
+                });
+            } catch (err) {
+                log.warn(`Failed to parse theme file ${fullPath}:`, err);
+            }
+        }
+        return themes.length ? themes : DEFAULT_THEMES;
+    } catch (error) {
+        log.error('Could not read themes directory:', error);
+        return DEFAULT_THEMES;
+    }
+}
+
 ipcMain.handle('get-available-themes', async () => {
     return readAvailableThemes();
 });
@@ -2398,13 +2572,19 @@ async function startBedrockServer(serverConfig) {
     if (!fs.existsSync(execPath)) {
         sendConsole(`${execName} not found.`, 'ERROR');
         sendStatus('Server executable not found.', false, 'serverJarNotFound');
-        showDesktopNotification('Server Files Missing', 'Bedrock executable not found. Run Configure first.');
+        showDesktopNotification(
+            getTranslation('notificationServerFilesMissing'),
+            getTranslation('bedrockNotFoundBody')
+        );
         return;
     }
     if (!serverConfig.version) {
         sendConsole('Server version missing in config.', 'ERROR');
         sendStatus('Config error.', false, 'configError');
-        showDesktopNotification('Configuration Needed', 'Select a Bedrock version before starting the server.');
+        showDesktopNotification(
+            getTranslation('notificationConfigNeeded'),
+            getTranslation('versionNotSelectedBody')
+        );
         return;
     }
 
@@ -2442,7 +2622,10 @@ async function startBedrockServer(serverConfig) {
         serverProcess = null;
         sendServerStateChange(false);
         sendStatus('Error starting server.', false, 'error');
-        showDesktopNotification('Server Start Failed', error.message);
+        showDesktopNotification(
+            getTranslation('notificationServerStartFailed'),
+            error.message
+        );
         return;
     }
 
@@ -2508,7 +2691,10 @@ async function startBedrockServer(serverConfig) {
                 const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                 const ver = cfg.version || '';
                 const serverLabel = formatServerLabel(type, ver);
-                showDesktopNotification('Server Started', `${serverLabel} is now running.`);
+                showDesktopNotification(
+                    getTranslation('notificationServerStarted'),
+                    getTranslation('serverStartedBody', { label: serverLabel })
+                );
                 playSoundEffect('success');
             } catch (_) {}
             // Start periodic /list latency probe (Bedrock)
@@ -2571,7 +2757,11 @@ async function startBedrockServer(serverConfig) {
                 const type = getServerFlavorLabel(normalizeServerType(cfg.serverType));
                 const ver = cfg.version || '';
                 const serverLabel = formatServerLabel(type, ver);
-                showDesktopNotification('Server Stopped', `${serverLabel} was stopped manually.`, { soundType: 'success' });
+                showDesktopNotification(
+                    getTranslation('notificationServerStopped'),
+                    getTranslation('serverStoppedBody', { label: serverLabel }),
+                    { soundType: 'success' }
+                );
             } catch (_) {}
         } else {
             const exitDetails = describeServerShutdown(code, signal);
@@ -2703,9 +2893,10 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
                 doDownload(downloadUrl);
             });
 
-            sendStatus('Vanilla downloaded successfully!', false, 'downloadSuccessPaper');
+            const suffix = getTranslation('downloadSuccessSuffix');
+            sendStatus(`${typeLabel} ${mcVersion} ${suffix}`, false, 'downloadSuccess');
             sendConsole(`${purpurJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
-            showDesktopNotification('Download Complete', `Purpur ${mcVersion} is ready. Press Start to launch.`);
+            showDesktopNotification('Download Complete', `${typeLabel} ${mcVersion} is ready. Press Start to launch.`);
             const updated = readServerConfig();
             updated.serverType = chosenType;
             updated.version = mcVersion;
@@ -2765,9 +2956,10 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
                 doDownload(downloadUrl);
             });
 
-            sendStatus('Modded download successfully', false, 'downloadSuccessFabric');
+            const suffix = getTranslation('downloadSuccessSuffix');
+            sendStatus(`${typeLabel} ${mcVersion} ${suffix}`, false, 'downloadSuccess');
             sendConsole(`${fabricJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
-            showDesktopNotification('Download Complete', `Fabric ${mcVersion} is ready. Press Start to launch.`);
+            showDesktopNotification('Download Complete', `${typeLabel} ${mcVersion} is ready. Press Start to launch.`);
             const updated = readServerConfig();
             updated.serverType = chosenType;
             updated.version = mcVersion;
@@ -2911,7 +3103,10 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
     } catch (error) {
         sendStatus('Download failed.', false, 'downloadFailed');
         sendConsole(`ERROR: ${error.message}`, 'ERROR');
-        showDesktopNotification('Download Failed', error.message || 'The download was interrupted.');
+        showDesktopNotification(
+            getTranslation('notificationDownloadFailed'),
+            error.message || getTranslation('downloadFailedBody')
+        );
         safeSend(getMainWindow(), 'setup-finished');
     }
 });
@@ -2923,7 +3118,10 @@ ipcMain.on('start-server', async () => {
     cleanServerLocks(serverFilesDir);
     if (serverProcess) {
         sendConsole('Server is already running.', 'WARN');
-        showDesktopNotification('Server Already Running', 'Stop the current server before starting it again.');
+        showDesktopNotification(
+            getTranslation('notificationServerAlreadyRunning'),
+            getTranslation('serverAlreadyRunningBody')
+        );
         return;
     }
     const serverConfig = readServerConfig();
@@ -2937,13 +3135,19 @@ ipcMain.on('start-server', async () => {
     if (!fs.existsSync(serverJarPath)) {
         sendConsole(`${jarName} not found.`, 'ERROR');
         sendStatus('Server JAR not found.', false, 'serverJarNotFound');
-        showDesktopNotification('Server Files Missing', `${jarName} not found. Run Configure first.`);
+        showDesktopNotification(
+            getTranslation('notificationServerFilesMissing'),
+            getTranslation('jarNotFoundBody', { jar: jarName })
+        );
         return;
     }
     if (!serverConfig.version) {
         sendConsole('Server version missing in config.', 'ERROR');
         sendStatus('Config error.', false, 'configError');
-        showDesktopNotification('Configuration Needed', 'Select a Minecraft version before starting the server.');
+        showDesktopNotification(
+            getTranslation('notificationConfigNeeded'),
+            getTranslation('noVersionSelectedBody')
+        );
         return;
     }
     const eulaPath = path.join(serverFilesDir, 'eula.txt');
@@ -2955,7 +3159,10 @@ ipcMain.on('start-server', async () => {
     } catch (error) {
         sendConsole(`EULA file error: ${error.message}`, 'ERROR');
         sendStatus('EULA error.', false, 'eulaError');
-        showDesktopNotification('EULA Error', 'Could not write eula.txt. Check permissions and try again.');
+        showDesktopNotification(
+            getTranslation('notificationEulaError'),
+            getTranslation('eulaErrorBody')
+        );
         return;
     }
     let ramToUseForJava = "";
@@ -3182,7 +3389,10 @@ ipcMain.on('start-server', async () => {
             if (performanceStatsInterval) clearInterval(performanceStatsInterval); 
             sendConsole(`Failed to start process: ${err.message}`, 'ERROR');
             sendStatus(err.message.includes('ENOENT') ? 'Java not found!' : 'Server start failed.', false, err.message.includes('ENOENT') ? 'javaNotFound' : 'serverStartFailed');
-            showDesktopNotification('Server Start Failed', err.message.includes('ENOENT') ? 'Java executable not found. Install Java 17/21 and try again.' : err.message);
+            showDesktopNotification(
+            getTranslation('notificationServerStartFailed'),
+            err.message.includes('ENOENT') ? getTranslation('javaNotFoundBody') : err.message
+        );
             serverProcess = null;
             sendServerStateChange(false);
         });
@@ -3192,7 +3402,10 @@ ipcMain.on('start-server', async () => {
         serverProcess = null;
         sendServerStateChange(false);
         sendStatus('Error starting server.', false, 'error');
-        showDesktopNotification('Server Start Failed', error.message);
+        showDesktopNotification(
+            getTranslation('notificationServerStartFailed'),
+            error.message
+        );
     }
 });
 

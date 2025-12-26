@@ -41,238 +41,14 @@ function cleanServerLocks(serverDir) {
         if (file.endsWith('.lock') || file.endsWith('.pid') || file.endsWith('.tmp')) {
             try {
                 fs.unlinkSync(path.join(serverDir, file));
-            } catch (_) {}
+            sendStatus('Modded download successfully', false, 'downloadSuccessFabric');
+            sendConsole(`${fabricJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
+            showDesktopNotification('Download Complete', `Fabric ${mcVersion} is ready. Press Start to launch.`);
+            const updated = readServerConfig();
+            updated.serverType = chosenType;
+            updated.version = mcVersion;
+            writeServerConfig(updated);
         }
-    });
-}
-
-const SERVER_TYPES = {
-    PAPER: 'purpur',
-    FABRIC: 'fabric',
-    BEDROCK: 'bedrock'
-};
-
-function normalizeServerType(type) {
-    if (type === 'papermc' || type === 'paper') return SERVER_TYPES.PAPER;
-    if (type === 'purpur') return SERVER_TYPES.PAPER;
-    if (type === SERVER_TYPES.FABRIC) return SERVER_TYPES.FABRIC;
-    if (type === SERVER_TYPES.BEDROCK) return SERVER_TYPES.BEDROCK;
-    return SERVER_TYPES.PAPER;
-}
-
-function isJavaServer(type) {
-  return type === SERVER_TYPES.PAPER || type === SERVER_TYPES.FABRIC;
-}
-
-function getBedrockExecutableName() {
-  return process.platform === 'win32' ? 'bedrock_server.exe' : 'bedrock_server';
-}
-
-function getBedrockPlatformFolder() {
-  if (process.platform === 'win32') return 'windows';
-  if (process.platform === 'linux') return 'linux';
-  return null;
-}
-
-async function killStrayServerProcess() {
-    try {
-        const processes = await find('name', 'java', true);
-        const serverJarPurpur = path.join(serverFilesDir, purpurJarName);
-        const serverJarFabric = path.join(serverFilesDir, fabricJarName);
-        const bedrockExecutableName = getBedrockExecutableName();
-        const bedrockExecutablePath = path.join(serverFilesDir, bedrockExecutableName);
-
-        for (const p of processes) {
-            if (p.cmd.includes(serverJarPurpur) || p.cmd.includes(serverJarFabric)) {
-                log.warn(`Found a stray server process with PID ${p.pid}. Attempting to kill it.`);
-                sendConsole(`Found a stray server process (PID: ${p.pid}). Terminating...`, 'WARN');
-                process.kill(p.pid);
-            }
-        }
-        if (bedrockExecutableName) {
-            const allProcesses = await find('name', bedrockExecutableName.replace('.exe', ''), true);
-            for (const proc of allProcesses) {
-                const cmd = (proc.cmd || '').toLowerCase();
-                if (cmd.includes('bedrock_server') || (bedrockExecutablePath && cmd.includes(path.basename(bedrockExecutablePath).toLowerCase()))) {
-                    log.warn(`Found a stray Bedrock server process with PID ${proc.pid}. Attempting to kill it.`);
-                    sendConsole(`Found a stray Bedrock server process (PID: ${proc.pid}). Terminating...`, 'WARN');
-                    process.kill(proc.pid);
-                }
-            }
-        }
-    } catch (err) {
-        log.error('Error while trying to find and kill stray server processes:', err);
-        sendConsole('Error checking for stray server processes.', 'ERROR');
-    }
-}
-
-async function checkJava() {
-    const verifyJavaVersion = async (javaPath) => {
-        try {
-            const { stdout, stderr } = await execAsync(`"${javaPath}" -version`, { env: getCleanEnvForJava() });
-            const output = (stderr || stdout || '').toString();
-            const versionMatch = output.match(/version \"(\d+)/);
-            if (versionMatch && parseInt(versionMatch[1], 10) >= MINIMUM_JAVA_VERSION) {
-                javaExecutablePath = javaPath;
-                return true;
-            }
-        } catch (_) {
-            return false;
-        }
-        return false;
-    };
-
-    const checkWindowsRegistry = async () => {
-        if (process.platform !== 'win32') return null;
-        const keysToQuery = [
-            'HKEY_LOCAL_MACHINE\SOFTWARE\Eclipse Adoptium\JDK',
-            'HKEY_LOCAL_MACHINE\SOFTWARE\JavaSoft\JDK',
-            'HKEY_LOCAL_MACHINE\SOFTWARE\Amazon Corretto\JDK'
-        ];
-        for (const key of keysToQuery) {
-            let stdout;
-            try {
-                ({ stdout } = await execAsync(`reg query "${key}" /s`));
-            } catch (_) {
-                continue;
-            }
-            const lines = stdout.trim().split(/[
-]+/)).filter(line => line.trim().startsWith('HKEY_'));
-            for (const line of lines) {
-                try {
-                    const { stdout: homeStdout } = await execAsync(`reg query "${line.trim()}" /v JavaHome`);
-                    const match = homeStdout.match(/JavaHome\s+REG_SZ\s+(.*)/);
-                    if (match && match[1]) {
-                        const javaExe = path.join(match[1].trim(), 'bin', 'java.exe');
-                        if (fs.existsSync(javaExe) && await verifyJavaVersion(javaExe)) {
-                            return javaExe;
-                        }
-                    }
-                } catch (_) {
-                    continue;
-                }
-            }
-        }
-        return null;
-    };
-
-    const checkMacJavaHome = async () => {
-        if (process.platform !== 'darwin') return null;
-        try {
-            const { stdout } = await execAsync(`/usr/libexec/java_home -v ${MINIMUM_JAVA_VERSION}`);
-            const home = stdout.toString().trim();
-            if (!home) return null;
-            const javaExe = path.join(home, 'bin', 'java');
-            if (fs.existsSync(javaExe) && await verifyJavaVersion(javaExe)) {
-                return javaExe;
-            }
-        } catch (_) {}
-        return null;
-    };
-
-    log.info(`Checking for Java >= ${MINIMUM_JAVA_VERSION}...`);
-
-    const registryPath = await checkWindowsRegistry();
-    if (registryPath) {
-        log.info(`Java >= ${MINIMUM_JAVA_VERSION} verified at: ${registryPath}`);
-        return true;
-    }
-
-    const macPath = await checkMacJavaHome();
-    if (macPath) {
-        log.info(`Java >= ${MINIMUM_JAVA_VERSION} verified at: ${macPath}`);
-        return true;
-    }
-
-    if (await verifyJavaVersion('java')) {
-        log.info(`Java >= ${MINIMUM_JAVA_VERSION} found in system PATH.`);
-        javaExecutablePath = 'java';
-        return true;
-    }
-
-    if (process.platform === 'linux') {
-        const installed = await ensureBundledJavaLinux();
-        if (installed) {
-            log.info(`Java >= ${MINIMUM_JAVA_VERSION} verified at: ${javaExecutablePath}`);
-            return true;
-        }
-    }
-
-    if (process.platform === 'darwin') {
-        const installed = await ensureBundledJavaMac();
-        if (installed) {
-            log.info(`Java >= ${MINIMUM_JAVA_VERSION} verified at: ${javaExecutablePath}`);
-            return true;
-        }
-    }
-
-    log.warn(`No compatible Java version found (requires ${MINIMUM_JAVA_VERSION}).`);
-    return false;
-}
-
-async function downloadAndInstallJava() {
-    const win = getMainWindow();
-    if (!win) return;
-
-    try {
-        safeSend(win, 'java-install-status', 'Finding the latest Java version for your system...');
-
-        // Handle Linux and macOS
-        if (process.platform === 'linux') {
-            const installed = await ensureBundledJavaLinux();
-            if (installed) {
-                safeSend(win, 'java-install-status', 'Java installation complete! Please restart the launcher.');
-                log.info('Java successfully installed on Linux.');
-                setTimeout(() => {
-                    app.quit();
-                }, 4000);
-                return;
-            } else {
-                throw new Error('Failed to install Java on Linux. Please install Java 21+ manually from your package manager (e.g., sudo apt install openjdk-21-jdk).');
-            }
-        }
-
-        if (process.platform === 'darwin') {
-            const installed = await ensureBundledJavaMac();
-            if (installed) {
-                safeSend(win, 'java-install-status', 'Java installation complete! Please restart the launcher.');
-                log.info('Java successfully installed on macOS.');
-                setTimeout(() => {
-                    app.quit();
-                }, 4000);
-                return;
-            } else {
-                throw new Error('Failed to install Java on macOS. Please install Java 21+ manually using Homebrew: brew install openjdk@21');
-            }
-        }
-
-        // Windows installation (existing code)
-        if (process.platform !== 'win32') {
-            throw new Error('Automated Java installation is currently supported only on Windows and Linux.');
-        }
-
-        const arch = process.arch === 'ia32' ? 'x86' : 'x64';
-        
-        const apiUrl = `https://api.adoptium.net/v3/assets/latest/21/hotspot?vendor=eclipse&os=windows&architecture=${arch}&image_type=jdk`;
-        
-        const apiResponse = await new Promise((resolve, reject) => {
-            https.get(apiUrl, { headers: { 'User-Agent': 'Server-Launcher-Electron' } }, (res) => {
-                if (res.statusCode !== 200) {
-                    res.resume();
-                    return reject(new Error(`Failed to query Adoptium API (Status: ${res.statusCode})`));
-                }
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => resolve(JSON.parse(data)));
-            }).on('error', reject);
-        });
-
-        const installerPackage = apiResponse.find(p => p.binary.installer?.name?.endsWith('.msi'));
-        if (!installerPackage) {
-            throw new Error(`Could not find a valid MSI installer for your system (${arch}). Please install Java manually.`);
-        }
-        
-        const downloadUrl = installerPackage.binary.installer.link;
         const totalBytes = installerPackage.binary.installer.size;
         const fileName = installerPackage.binary.installer.name;
         
@@ -352,7 +128,9 @@ function getConfiguredServerType() {
 }
 
 function getServerJarNameForType(serverType) {
-    return serverType === SERVER_TYPES.FABRIC ? fabricJarName : purpurJarName;
+    if (serverType === SERVER_TYPES.FABRIC) return fabricJarName;
+    if (serverType === SERVER_TYPES.FORGE) return forgeInstallerJarName;
+    return purpurJarName;
 }
 
 function readServerConfig() { return readJsonFile(serverConfigFilePath, serverConfigFileName); }
@@ -745,6 +523,14 @@ function setupIpcHandlers() {
                 const stable = Array.isArray(response) ? response.filter(v => v && v.version && v.stable) : [];
                 const versions = stable.map(v => v.version);
                 return sortVersionsDesc(versions);
+            } else if (type === SERVER_TYPES.FORGE) {
+                const promosUrl = 'https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json';
+                const promos = await fetchJson(promosUrl, 'Forge promotions');
+                const entries = promos?.promos || {};
+                const versions = Object.keys(entries)
+                    .filter(k => k.endsWith('-latest'))
+                    .map(k => k.replace('-latest', ''));
+                return sortVersionsDesc(versions);
             } else if (type === SERVER_TYPES.BEDROCK) {
                 const platformFolder = getBedrockPlatformFolder();
                 if (!platformFolder) throw new Error('Bedrock server downloads are available only on Windows and Linux.');
@@ -758,7 +544,7 @@ function setupIpcHandlers() {
             }
             return [];
         } catch (error) {
-            const label = type === SERVER_TYPES.FABRIC ? 'Fabric' : (type === SERVER_TYPES.BEDROCK ? 'Bedrock' : 'Purpur');
+            const label = type === SERVER_TYPES.FABRIC ? 'Fabric' : (type === SERVER_TYPES.BEDROCK ? 'Bedrock' : (type === SERVER_TYPES.FORGE ? 'Forge' : 'Purpur'));
             sendConsole(`Could not fetch ${label} versions: ${error.message}`, 'ERROR');
             return [];
         }
@@ -770,8 +556,8 @@ function setupIpcHandlers() {
             if (type === SERVER_TYPES.BEDROCK) {
                 return [];
             }
-            const isFabric = (type === SERVER_TYPES.FABRIC);
-            const baseDir = path.join(serverFilesDir, isFabric ? 'mods' : 'plugins');
+            const isModded = (type === SERVER_TYPES.FABRIC || type === SERVER_TYPES.FORGE);
+            const baseDir = path.join(serverFilesDir, isModded ? 'mods' : 'plugins');
             if (!fs.existsSync(baseDir)) return [];
             const files = fs.readdirSync(baseDir).filter(f => f.toLowerCase().endsWith('.jar'));
             return files.map(name => {
@@ -797,8 +583,8 @@ function setupIpcHandlers() {
             if (typeof name !== 'string' || !name || name.includes('..') || name.includes('/') || name.includes('\') || !name.toLowerCase().endsWith('.jar')) {
                 return { ok: false, error: 'Invalid plugin name.' };
             }
-            const isFabric = (type === SERVER_TYPES.FABRIC);
-            const baseDir = path.join(serverFilesDir, isFabric ? 'mods' : 'plugins');
+            const isModded = (type === SERVER_TYPES.FABRIC || type === SERVER_TYPES.FORGE);
+            const baseDir = path.join(serverFilesDir, isModded ? 'mods' : 'plugins');
             const resolvedBase = path.resolve(baseDir) + path.sep;
             const target = path.resolve(baseDir, name);
             if (!target.startsWith(resolvedBase)) return { ok: false, error: 'Invalid path.' };
@@ -818,14 +604,14 @@ function setupIpcHandlers() {
             if (type === SERVER_TYPES.BEDROCK) {
                 return { ok: false, error: 'Bedrock servers do not support add-on uploads yet.' };
             }
-            const isFabric = (type === SERVER_TYPES.FABRIC);
+            const isModded = (type === SERVER_TYPES.FABRIC || type === SERVER_TYPES.FORGE);
             const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-                title: isFabric ? 'Select mod JAR files' : 'Select plugin JAR files',
+                title: isModded ? 'Select mod JAR files' : 'Select plugin JAR files',
                 properties: ['openFile', 'multiSelections'],
-                filters: [{ name: isFabric ? 'Mods' : 'Plugins', extensions: ['jar'] }]
+                filters: [{ name: isModded ? 'Mods' : 'Plugins', extensions: ['jar'] }]
             });
             if (canceled || !filePaths?.length) return { ok: true, added: [] };
-            const baseDir = path.join(serverFilesDir, isFabric ? 'mods' : 'plugins');
+            const baseDir = path.join(serverFilesDir, isModded ? 'mods' : 'plugins');
             if (!fs.existsSync(baseDir)) fs.mkdirSync(baseDir, { recursive: true });
             const added = [];
             for (const src of filePaths) {
@@ -894,12 +680,12 @@ function setupIpcHandlers() {
             shell.openPath(serverFilesDir).catch(err => sendConsole(`Failed to open folder: ${err.message}`, 'ERROR'));
             return;
         }
-        const isFabric = (type === SERVER_TYPES.FABRIC);
-        const baseDir = path.join(serverFilesDir, isFabric ? 'mods' : 'plugins');
+        const isModded = (type === SERVER_TYPES.FABRIC || type === SERVER_TYPES.FORGE);
+        const baseDir = path.join(serverFilesDir, isModded ? 'mods' : 'plugins');
         if (!fs.existsSync(baseDir)) {
             try {
                 fs.mkdirSync(baseDir, { recursive: true });
-                sendConsole(`${isFabric ? 'Mods' : 'Plugins'} directory created.`, 'INFO');
+                sendConsole(`${isModded ? 'Mods' : 'Plugins'} directory created.`, 'INFO');
             } catch (error) {
                 sendConsole(`Failed to create plugins directory: ${error.message}`, 'ERROR');
                 return;
@@ -1006,7 +792,10 @@ function setupIpcHandlers() {
     ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocation, javaArgs }) => {
         resetIdleTimer();
         const chosenType = normalizeServerType(serverType);
-        const typeLabel = chosenType === SERVER_TYPES.FABRIC ? 'Fabric' : (chosenType === SERVER_TYPES.BEDROCK ? 'Bedrock' : 'Purpur');
+        const typeLabel =
+            chosenType === SERVER_TYPES.FABRIC ? 'Fabric' :
+            (chosenType === SERVER_TYPES.FORGE ? 'Forge' :
+            (chosenType === SERVER_TYPES.BEDROCK ? 'Bedrock' : 'Purpur'));
         sendConsole(`Configuring: Type ${typeLabel}, Version ${mcVersion || 'N/A'}, RAM ${ramAllocation || 'Auto'}`, 'INFO');
 
         // Ensure the MinecraftServer folder exists only when configuring
@@ -1158,6 +947,84 @@ function setupIpcHandlers() {
                 updated.serverType = chosenType;
                 updated.version = mcVersion;
                 writeServerConfig(updated);
+            } else if (chosenType === SERVER_TYPES.FORGE) {
+                if (!mcVersion) throw new Error('Please select a Forge-supported version.');
+                sendStatus(`Preparing Forge ${mcVersion}...`, true, 'downloading');
+
+                const promosUrl = 'https://files.minecraftforge.net/net/minecraftforge/forge/promotions_slim.json';
+                const promos = await fetchJson(promosUrl, 'Forge promotions');
+                const entries = promos?.promos || {};
+                const recommendedKey = `${mcVersion}-recommended`;
+                const latestKey = `${mcVersion}-latest`;
+                const forgeBuild = entries[recommendedKey] || entries[latestKey];
+                if (!forgeBuild) throw new Error(`No Forge build found for ${mcVersion}.`);
+
+                const installerUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${mcVersion}-${forgeBuild}/forge-${mcVersion}-${forgeBuild}-installer.jar`;
+                const installerDest = path.join(serverFilesDir, forgeInstallerJarName);
+                sendStatus('Downloading (0%)', true, 'downloading');
+
+                await new Promise((resolve, reject) => {
+                    const doDownload = (url) => {
+                        https.get(url, { headers: { 'User-Agent': 'Server-Launcher/1.0' } }, (response) => {
+                            if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
+                                response.resume();
+                                return doDownload(response.headers.location);
+                            }
+                            if (response.statusCode !== 200) return reject(new Error(`Download failed (Status ${response.statusCode})`));
+                            const total = parseInt(response.headers['content-length'] || '0', 10);
+                            let downloaded = 0;
+                            let lastPercent = -1, lastMB = -1;
+                            const fileStream = fs.createWriteStream(installerDest);
+                            response.on('data', chunk => {
+                                downloaded += chunk.length;
+                                if (total > 0) {
+                                    const percent = Math.round((downloaded / total) * 100);
+                                    if (percent !== lastPercent) {
+                                        lastPercent = percent;
+                                        sendStatus(`Downloading (${percent}%)`, true, 'downloading');
+                                    }
+                                } else {
+                                    const mb = Math.floor(downloaded / (1024 * 1024));
+                                    if (mb !== lastMB) {
+                                        lastMB = mb;
+                                        sendStatus(`Downloading (${mb} MB)`, true, 'downloading');
+                                    }
+                                }
+                            });
+                            response.pipe(fileStream);
+                            fileStream.on('finish', () => fileStream.close(resolve));
+                        }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
+                    };
+                    doDownload(installerUrl);
+                });
+
+                sendStatus('Installing Forge server...', true, 'installing');
+                sendConsole('Running Forge installer...', 'INFO');
+                try {
+                    const { stdout, stderr } = await execAsync(`"${javaExecutablePath}" -jar "${installerDest}" --installServer`, {
+                        cwd: serverFilesDir,
+                        env: getCleanEnvForJava()
+                    });
+                    if (stdout) sendConsole(stdout, 'INFO');
+                    if (stderr) sendConsole(stderr, 'WARN');
+                } catch (err) {
+                    throw new Error(`Forge installer failed: ${err.message}`);
+                }
+
+                const runSh = path.join(serverFilesDir, 'run.sh');
+                if (process.platform !== 'win32' && fs.existsSync(runSh)) {
+                    try { fs.chmodSync(runSh, 0o755); } catch (err) { log.warn(`Failed to chmod run.sh: ${err.message}`); }
+                }
+
+                const updated = readServerConfig();
+                updated.serverType = chosenType;
+                updated.version = mcVersion;
+                updated.forgeBuild = forgeBuild;
+                writeServerConfig(updated);
+
+                sendStatus('Forge installed successfully', false, 'downloadSuccess');
+                sendConsole(`Forge ${mcVersion}-${forgeBuild} installed.`, 'SUCCESS');
+                showDesktopNotification('Download Complete', `Forge ${mcVersion} is ready. Press Start to launch.`);
             } else if (chosenType === SERVER_TYPES.BEDROCK) {
                 if (!mcVersion) throw new Error('Please select a Bedrock version.');
                 const platformFolder = getBedrockPlatformFolder();
@@ -1308,8 +1175,6 @@ module.exports = {
   cleanServerLocks,
   normalizeServerType,
   isJavaServer,
-  getBedrockExecutableName,
-  getBedrockPlatformFolder,
   killStrayServerProcess,
   checkJava,
   downloadAndInstallJava,
@@ -1322,7 +1187,6 @@ module.exports = {
   writeLauncherSettings,
   refreshMinimumJavaRequirementFromConfig,
   requiredJavaForVersion,
-  startBedrockServer,
   setupIpcHandlers,
   SERVER_TYPES
 };
