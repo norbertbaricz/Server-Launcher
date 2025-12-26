@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' file: data:; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:; img-src 'self' data: file:; media-src 'self' file:; connect-src 'self' file: https://api.ipify.org https://api.purpurmc.org https://meta.fabricmc.net; object-src 'none'; base-uri 'self' file:;">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <base href="<%= baseHref %>">
+    <title>Server Launcher</title>
+    <link rel="stylesheet" href="build/tailwind.css">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="bg-gray-900 text-gray-200 flex flex-col h-screen">
+
+    <div id="loading-screen" class="fixed inset-0 bg-gray-900 flex items-center justify-center z-[100]">
+        <div class="text-center max-w-xl mx-auto px-4">
+            <i class="fas fa-spinner fa-spin text-4xl accent-text"></i>
+            <p class="mt-4 text-lg text-gray-300" data-key="loadingLauncher">Loading Launcher...</p>
+        </div>
+    </div>
+
+
+    <div id="title-bar">
+        <div class="flex items-center">
+            <img id="app-icon" src="" alt="App Icon" class="w-4 h-4 mr-3">
+            <span id="app-title-version">Server Launcher</span>
+        </div>
+        
+        <div id="title-bar-buttons">
+            <button id="minimize-btn" class="title-bar-btn" aria-label="Minimize">
+                <span class="minimize-icon" aria-hidden="true"></span>
+            </button>
+            <button id="maximize-btn" class="title-bar-btn" aria-label="Maximize"><i class="far fa-square"></i></button>
+            <button id="close-btn" class="title-bar-btn" aria-label="Close"><i class="fas fa-times"></i></button>
+        </div>
+    </div>
+
+    <div id="main-content-area" class="flex-grow flex flex-col p-4 overflow-hidden">
+        <div id="view-stack" class="view-stack relative flex-1 min-h-0 overflow-hidden">
+            <div id="dashboard-view" class="flex flex-col space-y-3 view-panel flex-1 min-h-0 active-view" aria-hidden="false">
+            <div class="bg-gray-800 p-4 rounded-lg shadow-xl animate-fadeIn" style="animation-delay: 0.1s;">
+                <div id="status-and-open-folder-area" class="flex items-center justify-between gap-x-3">
+                    <div id="status-bar-content" class="bg-gray-700 p-3 rounded-md flex-grow min-w-0 flex items-center">
+                        <i class="fas fa-server accent-text mr-3"></i>
+                        <span class="text-sm font-medium text-gray-400" data-key="statusLabel">Status:</span>
+                        <span id="status-message" class="text-sm text-yellow-400 ml-2 truncate" data-key="initializing">Initializing...</span>
+                    </div>
+                    <div class="flex items-stretch gap-x-2">
+                        <button id="plugins-folder-button" class="btn-primary font-semibold px-4 py-3 flex items-center justify-center gap-2 rounded-md no-tooltip" aria-label="Plugins" data-key-aria-label="pluginsButton">
+                            <i id="plugins-folder-icon" class="fas fa-puzzle-piece"></i>
+                            <span data-key="pluginsButton">Plugins</span>
+                        </button>
+                        <button id="settings-button" class="btn-secondary font-semibold px-4 py-3 flex items-center justify-center gap-2 rounded-md no-tooltip" aria-label="Settings" data-key-aria-label="settingsButton">
+                            <i class="fas fa-cog"></i>
+                            <span data-key="settingsButton">Settings</span>
+                        </button>
+                    </div>
+                </div>
+                    <div id="setup-active-placeholder-top" class="hidden text-center text-gray-400 py-8" data-key="setupPlaceholder">
+                    Complete server configuration in the setup panel to unlock controls.
+                </div>
+            </div>
+
+            <div class="bg-gray-800 p-4 rounded-lg shadow-xl flex flex-col flex-1 min-h-0 animate-fadeIn" style="animation-delay: 0.2s;">
+                <div id="console-output" class="console-output flex flex-col flex-1 bg-gray-900 text-sm p-3 rounded-md overflow-y-auto font-mono leading-normal whitespace-pre-wrap min-h-0"></div>
+            </div>
+
+            <div id="ip-info-bar" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 animate-fadeIn flex-shrink-0" style="animation-delay: 0.25s;">
+                <div id="local-ip-widget" class="ip-widget bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
+                    <i class="fas fa-network-wired accent-text text-xl w-6 text-center"></i>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs text-gray-400 font-medium" data-key="localIpLabel">Local IP</p>
+                        <p id="local-ip-address" class="text-sm font-semibold text-gray-200 truncate" data-key="fetching">Fetching...</p>
+                    </div>
+                    <button id="copy-local-ip-btn" class="ip-copy-btn" type="button" aria-label="Copy local IP" title="Copy local IP">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+                <div id="public-ip-widget" class="ip-widget bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
+                    <i class="fas fa-globe accent-text text-xl w-6 text-center"></i>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs text-gray-400 font-medium" data-key="publicIpLabel">Public IP</p>
+                        <p id="public-ip-address" class="text-sm font-semibold text-gray-200 truncate" data-key="fetching">Fetching...</p>
+                    </div>
+                    <button id="copy-public-ip-btn" class="ip-copy-btn" type="button" aria-label="Copy public IP" title="Copy public IP">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+                <div id="server-version-widget" class="bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
+                    <i class="fas fa-tag accent-text text-xl w-6 text-center"></i>
+                    <div>
+                        <p class="text-xs text-gray-400 font-medium" data-key="versionLabel">Version</p>
+                        <p id="server-version" class="text-sm font-semibold text-gray-200 truncate">N/A</p>
+                    </div>
+                </div>
+                <div class="ip-widget bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
+                    <i class="fas fa-memory accent-text text-xl w-6 text-center"></i>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs text-gray-400 font-medium" data-key="memoryLabel">Memory</p>
+                        <p id="memory-usage" class="text-sm font-semibold text-gray-200 truncate">N/A</p>
+                    </div>
+                </div>
+                <div class="ip-widget bg-gray-800 p-3 rounded-lg shadow-lg flex items-center space-x-3">
+                    <i class="fas fa-tachometer-alt accent-text text-xl w-6 text-center"></i>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-xs text-gray-400 font-medium" data-key="tpsLabel">Latency (ms)</p>
+                        <p id="server-tps" class="text-sm font-semibold text-gray-200 truncate">0 ms</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="bottom-action-bar" class="bg-gray-800 p-3 rounded-lg shadow-xl animate-fadeIn flex-shrink-0" style="animation-delay: 0.3s;">
+                <div class="flex flex-col space-y-3 sm:space-y-0 sm:flex-row sm:space-x-2 items-stretch">
+                    <input type="text" id="command-input" data-key-placeholder="commandPlaceholder" placeholder="Enter server command..." class="flex-grow bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5">
+                    <button id="send-command-button" class="btn-primary font-semibold py-2.5 px-4 rounded-md shadow-md flex items-center justify-center gap-2 w-full sm:w-auto" aria-label="Send" data-key-aria-label="sendButton" title="Send">
+                        <i class="fas fa-paper-plane"></i>
+                        <span data-key="sendButton">Send</span>
+                    </button>
+                    <button id="start-button" class="btn-primary font-semibold py-2.5 px-5 rounded-md shadow-md flex items-center justify-center gap-2 w-full sm:w-auto" style="background-color: #16a34a; color:white;" aria-label="Start Server" data-key-aria-label="startButton" title="Start Server">
+                        <i class="fas fa-play" style="color:white;"></i>
+                        <span data-key="startButton">Start Server</span>
+                    </button>
+                    <button id="stop-button" class="btn-danger font-semibold py-2.5 px-5 rounded-md shadow-md flex items-center justify-center gap-2 btn-disabled w-full sm:w-auto" aria-label="Stop Server" data-key-aria-label="stopButton" title="Stop Server">
+                        <i class="fas fa-stop"></i>
+                        <span data-key="stopButton">Stop Server</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="setup-page" class="flex flex-col gap-6 view-panel min-h-0" aria-hidden="true">
+            <div class="bg-gray-800 p-5 rounded-lg shadow-xl flex flex-col gap-6 flex-1 min-h-0">
+                <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-server accent-text text-xl"></i>
+                        <div>
+                            <h2 class="text-xl font-semibold text-gray-100" data-key="setupTitle">Server Setup Required</h2>
+                            <p class="text-sm text-gray-400" data-key="setupDescription">Server files or configuration are missing. Please select options and click "Download / Configure".</p>
+                        </div>
+                    </div>
+                </div>
+                <section class="bg-gray-900/50 border border-gray-800 rounded-lg p-5 space-y-4 flex-1 min-h-0">
+                    <h3 class="text-lg font-medium text-gray-200 flex items-center gap-2">
+                        <i class="fas fa-sliders-h accent-text"></i>
+                        <span data-key="setupConfigurationHeader">Server Configuration</span>
+                    </h3>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <div>
+                            <label for="server-type-modal" class="block text-sm font-medium text-gray-300 mb-1" data-key="serverTypeLabel">Server Type:</label>
+                            <select id="server-type-modal" name="server-type-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
+                                <!-- populated by script.js -->
+                            </select>
+                        </div>
+                        <div>
+                            <label for="mc-version-modal" class="block text-sm font-medium text-gray-300 mb-1" data-key="mcVersionLabel">Minecraft Version:</label>
+                            <select id="mc-version-modal" name="mc-version-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
+                                <option value="" disabled selected data-key="loadingVersions">Loading versions...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="ram-allocation-modal" class="block text-sm font-medium text-gray-300 mb-1" data-key="ramAlloLabel">RAM Allocation:</label>
+                            <select id="ram-allocation-modal" name="ram-allocation-modal" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
+                                <option value="auto" selected data-key="ramAuto">Auto (Detect System)</option>
+                                <option value="512M" data-key="ramVerySmall">512MB (Very Small)</option>
+                                <option value="1024M" data-key="ramMinimum">1GB (Minimum)</option>
+                                <option value="1536M">1.5GB</option>
+                                <option value="2048M" data-key="ramRecommendedSmall">2GB (Recommended Small)</option>
+                                <option value="3072M">3GB</option>
+                                <option value="4096M" data-key="ramRecommendedMedium">4GB (Recommended Medium)</option>
+                                <option value="6144M">6GB</option>
+                                <option value="8192M" data-key="ramRecommendedLarge">8GB (Recommended Large)</option>
+                                <option value="12288M">12GB</option>
+                                <option value="16384M" data-key="ramVeryLarge">16GB (Very Large)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="language-modal-select" class="block text-sm font-medium text-gray-300 mb-1" data-key="langLabel">Language:</label>
+                            <select id="language-modal-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
+                            </select>
+                        </div>
+                    </div>
+                </section>
+                <div class="setup-tip-card p-6 flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+                    <div class="flex flex-col md:flex-row md:items-center gap-4 md:gap-5 md:max-w-3xl text-center md:text-left">
+                        <div class="flex items-center justify-center md:justify-start">
+                            <i class="fas fa-satellite-dish accent-text text-lg"></i>
+                        </div>
+                        <p class="text-sm text-gray-200 leading-relaxed" data-key="setupNgrokTip">
+                            Dreaming of a worldwide Minecraft LAN? Download ngrok from the official site (https://ngrok.com/), sign in to grab your authtoken, then plug it into Server Launcher. Keep ngrok running and the launcher will share a secure TCP address automatically—no port forwarding or manual IP sharing ever again!
+                        </p>
+                    </div>
+                    <a href="https://ngrok.com/" class="btn-secondary inline-flex items-center gap-2 text-sm font-semibold px-5 py-2.5 rounded-md shadow-md hover:bg-blue-800/60 transition-colors self-center md:self-auto" target="_blank" rel="noreferrer noopener">
+                        <i class="fas fa-external-link-alt"></i>
+                        <span data-key="setupNgrokCta">Get ngrok</span>
+                    </a>
+                </div>
+                <div class="card-divider flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mt-auto">
+                    <p class="text-sm text-gray-400" data-key="setupFooterHint">Click the button to download and configure everything automatically.</p>
+                    <button id="download-button-modal" class="btn-primary font-semibold py-3 px-5 rounded-md shadow-md flex items-center justify-center text-base">
+                        <i class="fas fa-download mr-2"></i>
+                        <span id="download-button-text" data-key="downloadButton">Download / Configure Server</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="java-page" class="flex flex-col gap-6 view-panel min-h-0" aria-hidden="true">
+            <div class="bg-gray-800 p-5 rounded-lg shadow-xl flex flex-col gap-6 flex-1 min-h-0">
+                <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-mug-hot accent-text text-xl"></i>
+                        <div>
+                            <h2 class="text-xl font-semibold text-gray-100" data-key="javaModalTitle">Java (JDK) Required</h2>
+                            <p class="text-sm text-gray-400" data-key="javaModalDescription">Java is not detected on your system. It is required to run the server.</p>
+                        </div>
+                    </div>
+                </div>
+                <section class="bg-gray-900/50 border border-gray-800 rounded-lg p-5 space-y-4 flex-1 min-h-0">
+                    <h3 class="text-lg font-medium text-gray-200 flex items-center gap-2">
+                        <i class="fas fa-info-circle accent-text"></i>
+                        <span data-key="javaInstallInfoHeader">Installation Information</span>
+                    </h3>
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="language-java-select" class="block text-sm font-medium text-gray-300 mb-1" data-key="langLabel">Language:</label>
+                                <select id="language-java-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
+                                </select>
+                            </div>
+                            <div>
+                                <label for="theme-java-select" class="block text-sm font-medium text-gray-300 mb-1" data-key="themeLabel">Theme</label>
+                                <select id="theme-java-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
+                                    <option value="skypixel">Skypixel Blue</option>
+                                    <option value="nord">Nord</option>
+                                    <option value="aurora">Aurora</option>
+                                    <option value="midnight">Midnight</option>
+                                    <option value="emerald">Emerald</option>
+                                    <option value="sunset">Sunset</option>
+                                    <option value="crimson">Crimson</option>
+                                    <option value="ocean">Ocean</option>
+                                    <option value="grape">Grape</option>
+                                    <option value="neon">Neon</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="java-install-progress-bar-container" class="w-full bg-gray-700 rounded-full h-3 hidden">
+                            <div id="java-install-progress-bar" class="bg-blue-600 h-3 rounded-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                        <p id="java-install-message" class="text-sm text-gray-400 text-center py-2"></p>
+                    </div>
+                </section>
+                <div class="setup-tip-card p-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                    <div class="flex flex-col md:flex-row md:items-center gap-4 md:gap-5 text-center md:text-left flex-1">
+                        <div class="flex items-center justify-center md:justify-start">
+                            <i class="fas fa-lightbulb accent-text text-lg"></i>
+                        </div>
+                        <p class="text-sm text-gray-200 leading-relaxed" data-key="javaInstallTip">
+                            This process is fully automatic and safe. The installation may take a few minutes depending on your internet connection. Java is essential for running Minecraft servers.
+                        </p>
+                    </div>
+                </div>
+                <div class="card-divider flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mt-auto">
+                    <p class="text-sm text-gray-400" data-key="javaFooterHint">Click the button below to begin the automatic installation process.</p>
+                    <div class="flex flex-col sm:flex-row gap-3">
+                        <button id="java-install-button" class="btn-primary font-semibold py-3 px-5 rounded-md shadow-md flex items-center justify-center text-base">
+                            <i class="fas fa-download mr-2"></i>
+                            <span data-key="javaDownloadButton">Download & Install Java</span>
+                        </button>
+                        <button id="java-restart-button" class="btn-success font-semibold py-3 px-5 rounded-md shadow-md flex items-center justify-center text-base hidden">
+                            <i class="fas fa-power-off mr-2"></i>
+                            <span data-key="javaRestartButton">Restart Launcher</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="settings-page" class="flex flex-col gap-6 view-panel min-h-0" aria-hidden="true">
+            <div class="bg-gray-800 p-5 rounded-lg shadow-xl flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-100 flex items-center gap-2">
+                        <i class="fas fa-cog accent-text text-lg"></i>
+                        <span data-key="settingsTitle">Settings</span>
+                    </h2>
+                    <p class="text-sm text-gray-400" data-key="settingsPageDescription">Adjust your server and launcher configuration in one place.</p>
+                </div>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <button id="close-settings-button" class="btn-secondary font-semibold px-4 py-2 rounded-md shadow-md flex items-center gap-2">
+                        <i class="fas fa-arrow-left"></i>
+                        <span data-key="closeButton">Close</span>
+                    </button>
+                    <button id="save-settings-button" class="btn-primary font-semibold px-4 py-2 rounded-md shadow-md flex items-center gap-2">
+                        <i class="fas fa-save"></i>
+                        <span data-key="saveApplyButton">Save &amp; Apply</span>
+                    </button>
+                </div>
+            </div>
+            <div class="card-divider grid gap-4 lg:grid-cols-2 flex-1 min-h-0 equal-card-grid">
+                <section class="bg-gray-800 p-5 rounded-lg shadow-xl space-y-4 flex flex-col">
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-sliders-h accent-text"></i>
+                        <h3 class="text-lg font-medium accent-text" data-key="serverConfigHeader">Server Configuration</h3>
+                    </div>
+                    <div class="grid gap-4">
+                        <div>
+                            <label for="server-type-settings" class="block text-sm font-medium text-gray-300 mb-1" data-key="serverTypeLabel">Server Type:</label>
+                            <select id="server-type-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500 cursor-pointer">
+                                <!-- populated by script.js -->
+                            </select>
+                        </div>
+                        <div>
+                            <label for="mc-version-settings" class="block text-sm font-medium text-gray-300 mb-1" data-key="mcVersionLabel">Minecraft Version:</label>
+                            <select id="mc-version-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus-border-blue-500 cursor-pointer">
+                                <option value="" disabled data-key="loadingVersions">Loading...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="ram-allocation-settings" class="block text-sm font-medium text-gray-300 mb-1" data-key="ramAlloLabel">RAM Allocation:</label>
+                            <select id="ram-allocation-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus-border-blue-500 cursor-pointer">
+                                <option value="auto" selected data-key="ramAuto">Auto (Detect System)</option>
+                                <option value="512M" data-key="ramVerySmall">512MB (Very Small)</option>
+                                <option value="1024M" data-key="ramMinimum">1GB (Minimum)</option>
+                                <option value="1536M">1.5GB</option>
+                                <option value="2048M" data-key="ramRecommendedSmall">2GB (Recommended Small)</option>
+                                <option value="3072M">3GB</option>
+                                <option value="4096M" data-key="ramRecommendedMedium">4GB (Recommended Medium)</option>
+                                <option value="6144M">6GB</option>
+                                <option value="8192M" data-key="ramRecommendedLarge">8GB (Recommended Large)</option>
+                                <option value="12288M">12GB</option>
+                                <option value="16384M" data-key="ramVeryLarge">16GB (Very Large)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="java-arguments-settings" class="block text-sm font-medium text-gray-300 mb-1" data-key="javaArgsLabel">Java Arguments:</label>
+                            <select id="java-arguments-settings" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus-border-blue-500 cursor-pointer">
+                                <option value="Default" data-key="javaArgsDefault">Default (Standard JVM arguments)</option>
+                                <option value="Performance" data-key="javaArgsPerformance">Performance (Includes Aikar's flags for optimization)</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-300 mb-1" data-key="serverPathLabel">Server Data Location:</label>
+                            <div class="flex items-center gap-2">
+                                <input id="server-path-display" type="text" readonly class="flex-grow bg-gray-700 border border-gray-600 text-gray-300 text-xs rounded-md p-2.5 cursor-default" value="" />
+                                <button id="choose-server-path-button" class="btn-secondary btn-disabled px-3 py-2 rounded-md text-sm flex items-center gap-2" title="Choose" disabled>
+                                    <i class="fas fa-folder-open"></i>
+                                    <span data-key="choosePathButton">Choose</span>
+                                </button>
+                                <button id="lock-server-path-button" class="btn-secondary px-3 py-2 rounded-md text-sm flex items-center gap-2" data-locked="false">
+                                    <i class="fas fa-lock-open" id="lock-server-path-icon"></i>
+                                    <span id="lock-server-path-text" data-key="lockPathButton">Lock</span>
+                                </button>
+                            </div>
+                            <p class="text-xs text-gray-500 mt-1" data-key="serverPathHint">Choose where the launcher stores the MinecraftServer folder (jar, worlds, configs). Lock it to prevent accidental moves.</p>
+                        </div>
+                    </div>
+                </section>
+                <section class="bg-gray-800 p-5 rounded-lg shadow-xl space-y-4 flex flex-col">
+                    <div class="flex items-center gap-2">
+                        <i class="fas fa-rocket accent-text"></i>
+                        <h3 class="text-lg font-medium accent-text" data-key="launcherSettingsHeader">Launcher Settings</h3>
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="theme-select" class="block text-sm font-medium text-gray-300 mb-1" data-key="themeLabel">Theme</label>
+                            <select id="theme-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus-border-blue-500 cursor-pointer">
+                                <option value="skypixel">Skypixel Blue</option>
+                                <option value="nord">Nord</option>
+                                <option value="aurora">Aurora</option>
+                                <option value="midnight">Midnight</option>
+                                <option value="emerald">Emerald</option>
+                                <option value="sunset">Sunset</option>
+                                <option value="crimson">Crimson</option>
+                                <option value="ocean">Ocean</option>
+                                <option value="grape">Grape</option>
+                                <option value="neon">Neon</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="language-settings-select" class="block text-sm font-medium text-gray-300 mb-1" data-key="langLabel">Language:</label>
+                            <select id="language-settings-select" class="w-full bg-gray-700 border border-gray-600 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus-border-blue-500 cursor-pointer">
+                            </select>
+                        </div>
+                        <label for="notifications-checkbox" class="flex items-center justify-between p-3 bg-gray-700 rounded-md cursor-pointer hover:bg-gray-600 transition-colors">
+                            <span class="text-gray-300" data-key="showNotificationsLabel">Show desktop notifications</span>
+                            <div class="switch">
+                                <input type="checkbox" id="notifications-checkbox" class="sr-only" checked>
+                                <div class="switch-track"><div class="switch-thumb"></div></div>
+                            </div>
+                        </label>
+                        <label for="start-with-system-checkbox" class="flex items-center justify-between p-3 bg-gray-700 rounded-md cursor-pointer hover:bg-gray-600 transition-colors">
+                            <span class="text-gray-300" data-key="startWithSystemLabel">Start with Operating System</span>
+                            <div class="switch">
+                                <input type="checkbox" id="start-with-system-checkbox" class="sr-only">
+                                <div class="switch-track"><div class="switch-thumb"></div></div>
+                            </div>
+                        </label>
+                        <label for="auto-start-server-checkbox" class="flex items-center justify-between p-3 bg-gray-700 rounded-md cursor-pointer hover:bg-gray-600 transition-colors">
+                            <span class="text-gray-300" data-key="autoStartServerLabel">Automatically start server</span>
+                            <div class="switch">
+                                <input type="checkbox" id="auto-start-server-checkbox" class="sr-only">
+                                <div class="switch-track"><div class="switch-thumb"></div></div>
+                            </div>
+                        </label>
+                        <div id="auto-start-delay-container" class="bg-gray-700 rounded-md">
+                            <div class="p-3">
+                                <label for="auto-start-delay-slider" class="flex justify-between text-sm font-medium text-gray-300 mb-2">
+                                    <span data-key="autoStartDelayLabel">Auto-start Delay</span>
+                                    <span id="auto-start-delay-value">5s</span>
+                                </label>
+                                <input id="auto-start-delay-slider" type="range" min="5" max="60" value="5" class="w-full h-2 bg-gray-600 rounded-lg appearance-none cursor-pointer">
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            
+        </div>
+
+        <div id="plugins-page" class="flex flex-col gap-6 view-panel min-h-0" aria-hidden="true">
+            <div class="bg-gray-800 p-5 rounded-lg shadow-xl flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                    <h2 class="text-xl font-semibold text-gray-100 flex items-center gap-2">
+                        <i id="plugins-modal-icon" class="fas fa-puzzle-piece accent-text text-lg"></i>
+                        <span id="plugins-modal-title-text">Plugins &amp; Server Properties</span>
+                    </h2>
+                    <p class="text-sm text-gray-400" data-key="pluginsPageDescription">Manage plugins, mods, add-ons, and server.properties without leaving the launcher.</p>
+                </div>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <button id="close-plugins-page-button" class="btn-secondary font-semibold px-4 py-2 rounded-md shadow-md flex items-center gap-2">
+                        <i class="fas fa-arrow-left"></i>
+                        <span data-key="closeButton">Close</span>
+                    </button>
+                    <button id="plugins-refresh-button" class="btn-secondary font-semibold px-4 py-2 rounded-md shadow-md flex items-center gap-2">
+                        <i class="fas fa-sync"></i>
+                        <span data-key="pluginsRefreshButton">Refresh</span>
+                    </button>
+                    <button id="plugins-save-apply-button" class="btn-primary font-semibold px-4 py-2 rounded-md shadow-md flex items-center gap-2" data-key-aria-label="saveApplyButton" aria-label="Save &amp; Apply" title="Save &amp; Apply">
+                        <i class="fas fa-save mr-1"></i>
+                        <span data-key="saveApplyButton">Save &amp; Apply</span>
+                    </button>
+                </div>
+            </div>
+            <div class="card-divider grid gap-4 xl:grid-cols-2 flex-1 min-h-0 equal-card-grid">
+                <section class="bg-gray-800 p-5 rounded-lg shadow-xl flex flex-col gap-4 min-h-0">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <h3 class="accent-text font-medium flex items-center gap-2">
+                            <i id="plugins-section-icon" class="fas fa-puzzle-piece accent-text"></i>
+                            <span id="plugins-section-title">Plugins</span>
+                        </h3>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button id="upload-plugin-button" class="btn-primary px-3 py-1.5 rounded-md"><i class="fas fa-upload mr-1"></i><span>Upload</span></button>
+                            <button id="open-plugins-folder-button" class="btn-secondary px-3 py-1.5 rounded-md"><i class="fas fa-folder-open mr-1"></i><span>Open Folder</span></button>
+                        </div>
+                    </div>
+                    <div id="plugins-list" class="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 pr-1"></div>
+                </section>
+                <section class="bg-gray-800 p-5 rounded-lg shadow-xl flex flex-col gap-4 min-h-0">
+                    <h3 class="accent-text font-medium flex items-center gap-2">
+                        <i class="fas fa-list-alt accent-text"></i>
+                        <span data-key="serverPropsHeader">Server Properties</span>
+                    </h3>
+                    <div id="server-properties-container" class="space-y-3 overflow-y-auto flex-1 min-h-0 pr-1">
+                        <p class="text-gray-400 text-sm text-center py-4 font-medium" data-key="serverPropsUnavailable">Run the server once to generate and edit server.properties.</p>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+
+
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>
