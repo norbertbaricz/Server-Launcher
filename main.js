@@ -1,4 +1,11 @@
 const { app, BrowserWindow, ipcMain, shell, dialog, Notification, session } = require('electron');
+
+// Performance optimizations
+app.commandLine.appendSwitch('disable-http-cache');
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-background-timer-throttling');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
+
 // Funcție pentru curățarea fișierelor lock/pid
 function cleanServerLocks(serverDir) {
     const fs = require('fs');
@@ -177,7 +184,7 @@ const CONTENT_SECURITY_POLICY = [
     "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:",
     "img-src 'self' data: file:",
     "media-src 'self' file:",
-    "connect-src 'self' file: https://api.ipify.org https://api.purpurmc.org https://meta.fabricmc.net",
+    "connect-src 'self' file: https://api.ipify.org https://api.papermc.io https://meta.fabricmc.net https://api.adoptium.net",
     "object-src 'none'",
     "base-uri 'self' file:",
     "frame-ancestors 'none'"
@@ -193,6 +200,11 @@ if (process.platform === 'linux') {
     app.name = 'Server Launcher';
 }
 const DEFAULT_JAVA_SERVER_PORT = 25565;
+
+// Server JAR file names
+const paperJarName = 'paper.jar';
+const fabricJarName = 'fabric-server-launch.jar';
+let serverFilesDir;
 
 function applyContentSecurityPolicy(targetSession = session?.defaultSession) {
     if (!targetSession || typeof targetSession.webRequest?.onHeadersReceived !== 'function') {
@@ -223,7 +235,7 @@ const DISCORD_RPC_INTERVAL_IDLE = 60000; // 60 seconds when idle/stopped
 // ============================================
 
 const SERVER_TYPES = {
-    PAPER: 'purpur',
+    PAPER: 'paper',
     FABRIC: 'fabric',
     BEDROCK: 'bedrock'
 };
@@ -267,7 +279,7 @@ function fetchJson(url, description = 'request') {
         try { resolve(JSON.parse(data)); }
         catch (e) { reject(new Error(`Failed to parse JSON from ${description}: ${e.message}`)); }
       });
-    }).on('error', err => reject(new Error(`${description} error: ${err.message}`)));
+    }).on('error', err => reject(new Error(`${description} network error: ${err.message || err.code || 'Unknown error'}`)));
   });
 }
 
@@ -290,7 +302,7 @@ function sortVersionsDesc(list) {
 function getServerFlavorLabel(type) {
   if (type === SERVER_TYPES.FABRIC) return 'Fabric';
   if (type === SERVER_TYPES.BEDROCK) return 'Bedrock';
-  return 'Purpur';
+  return 'Paper';
 }
 
 function delay(ms) {
@@ -299,6 +311,11 @@ function delay(ms) {
 
 let javaExecutablePath = 'java';
 let MINIMUM_JAVA_VERSION = 17;
+let java8Path = null;
+let java11Path = null;
+let java17Path = null;
+let java21Path = null;
+let javaInstallations = {}; // Store all discovered Java installations
 let lastPublicAddressSource = null;
 let ngrokProcess = null;
 let ngrokTargetPort = null;
@@ -530,10 +547,7 @@ let lastStatusSoundAt = 0;
 let lastPlaySoundAt = 0;
 let lastPlaySoundType = null;
 
-let serverFilesDir;
-const purpurJarName = 'purpur.jar';
 let serverProcess = null;
-const fabricJarName = 'fabric-server-launch.jar';
 const fabricInstallerJarName = 'fabric-installer.jar';
 const nowHr = () => process.hrtime.bigint();
 
@@ -545,7 +559,7 @@ function getConfiguredServerType() {
 }
 
 function getServerJarNameForType(serverType) {
-    return serverType === SERVER_TYPES.FABRIC ? fabricJarName : purpurJarName;
+    return serverType === SERVER_TYPES.FABRIC ? fabricJarName : paperJarName;
 }
 
 let serverConfigFilePath;
@@ -609,7 +623,7 @@ if (!gotTheLock) {
 async function killStrayServerProcess() {
     try {
         const processes = await find('name', 'java', true);
-        const serverJarPaper = path.join(serverFilesDir, purpurJarName);
+        const serverJarPaper = path.join(serverFilesDir, paperJarName);
         const serverJarFabric = path.join(serverFilesDir, fabricJarName);
         const bedrockExecutableName = getBedrockExecutableName();
         const bedrockExecutablePath = path.join(serverFilesDir, bedrockExecutableName);
@@ -652,6 +666,18 @@ async function checkJava() {
             return false;
         }
         return false;
+    };
+    
+    const detectJavaVersion = async (javaPath) => {
+        try {
+            const { stdout, stderr } = await execAsync(`"${javaPath}" -version`, { env: getCleanEnvForJava() });
+            const output = (stderr || stdout || '').toString();
+            const versionMatch = output.match(/version "(\d+)/);
+            if (versionMatch) {
+                return parseInt(versionMatch[1], 10);
+            }
+        } catch (_) {}
+        return null;
     };
 
     const checkWindowsRegistry = async () => {
@@ -739,6 +765,442 @@ async function checkJava() {
 
     log.warn(`No compatible Java version found (requires ${MINIMUM_JAVA_VERSION}).`);
     return false;
+}
+
+async function discoverAllJavaVersions() {
+    const startTime = Date.now();
+    
+    const detectJavaVersion = async (javaPath) => {
+        try {
+            const { stdout, stderr } = await execAsync(`"${javaPath}" -version`, { 
+                env: getCleanEnvForJava(),
+                timeout: 3000 // 3 second timeout for faster boot
+            });
+            const output = (stderr || stdout || '').toString();
+            // Java 8 reports as "1.8.0_xxx", others report as "17.0.x", "21.0.x", etc.
+            const versionMatch = output.match(/version "(\d+)\.(\d+)/) || output.match(/version "(\d+)/);
+            if (versionMatch) {
+                const major = parseInt(versionMatch[1], 10);
+                // Handle Java 8 which reports as version "1.8"
+                if (major === 1 && versionMatch[2]) {
+                    return parseInt(versionMatch[2], 10);
+                }
+                return major;
+            }
+        } catch (_) {}
+        return null;
+    };
+    
+    const isJDK = async (javaPath) => {
+        try {
+            const javacPath = javaPath.replace(/java(\.exe)?$/, 'javac$1');
+            if (fs.existsSync(javacPath)) {
+                return true;
+            }
+        } catch (_) {}
+        return false;
+    };
+    
+    const checkAndStore = async (path, majorVersion) => {
+        const version = await detectJavaVersion(path);
+        if (version === majorVersion) {
+            const hasJDK = await isJDK(path);
+            const label = hasJDK ? 'JDK' : 'JRE';
+            log.info(`Discovered Java ${majorVersion} (${label}) at: ${path}`);
+            
+            // Store in global installations object
+            if (!javaInstallations[majorVersion]) {
+                javaInstallations[majorVersion] = { path, isJDK: hasJDK };
+            }
+            
+            // Prioritize JDK over JRE
+            if (majorVersion === 8) {
+                if (!java8Path || hasJDK) java8Path = path;
+            } else if (majorVersion === 11) {
+                if (!java11Path || hasJDK) java11Path = path;
+            } else if (majorVersion === 17) {
+                if (!java17Path || hasJDK) java17Path = path;
+            } else if (majorVersion === 21) {
+                if (!java21Path || hasJDK) java21Path = path;
+            }
+            return true;
+        }
+        return false;
+    };
+    
+    // Check system java/javac first (prioritize system JDK)
+    const systemVersion = await detectJavaVersion('java');
+    const systemHasJavac = await isJDK('java');
+    
+    if (systemVersion) {
+        const label = systemHasJavac ? 'JDK' : 'JRE';
+        log.info(`System Java ${systemVersion} (${label}) available`);
+        
+        if (systemVersion === 8) java8Path = 'java';
+        else if (systemVersion === 11) java11Path = 'java';
+        else if (systemVersion === 17) java17Path = 'java';
+        else if (systemVersion === 21) java21Path = 'java';
+        else if (systemVersion >= 8 && systemVersion <= 21) {
+            // For other versions in range, still store them
+            log.info(`System Java ${systemVersion} detected but not a standard LTS version`);
+        }
+    }
+    
+    // Check common installation paths (prioritize JDK directories)
+    if (process.platform === 'linux') {
+        const jvmDirs = ['/usr/lib/jvm', '/usr/java'];
+        for (const baseDir of jvmDirs) {
+            // Early exit if we found all Java versions
+            if (java8Path && java11Path && java17Path && java21Path) break;
+            
+            if (!fs.existsSync(baseDir)) continue;
+            try {
+                const dirs = fs.readdirSync(baseDir);
+                // Sort to prioritize JDK over JRE (jdk usually comes before jre alphabetically)
+                const sortedDirs = dirs.sort((a, b) => {
+                    const aIsJDK = a.toLowerCase().includes('jdk');
+                    const bIsJDK = b.toLowerCase().includes('jdk');
+                    if (aIsJDK && !bIsJDK) return -1;
+                    if (!aIsJDK && bIsJDK) return 1;
+                    return a.localeCompare(b);
+                });
+                
+                for (const dir of sortedDirs) {
+                    // Early exit optimization
+                    if (java8Path && java11Path && java17Path && java21Path) break;
+                    
+                    const javaPath = path.join(baseDir, dir, 'bin', 'java');
+                    if (fs.existsSync(javaPath)) {
+                        await checkAndStore(javaPath, 8);
+                        await checkAndStore(javaPath, 11);
+                        await checkAndStore(javaPath, 17);
+                        await checkAndStore(javaPath, 21);
+                    }
+                }
+            } catch (_) {}
+        }
+    } else if (process.platform === 'win32') {
+        // Windows registry check for all versions (JDK paths are checked first)
+        const keysToQuery = [
+            'HKEY_LOCAL_MACHINE\\SOFTWARE\\Eclipse Adoptium\\JDK',
+            'HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\JDK',
+            'HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Development Kit',
+            'HKEY_LOCAL_MACHINE\\SOFTWARE\\Amazon Corretto\\JDK',
+            'HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\JRE',
+            'HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft\\Java Runtime Environment'
+        ];
+        for (const key of keysToQuery) {
+            try {
+                const { stdout } = await execAsync(`reg query "${key}" /s`);
+                const lines = stdout.trim().split(/[\r\n]+/).filter(line => line.trim().startsWith('HKEY_'));
+                for (const line of lines) {
+                    try {
+                        const { stdout: homeStdout } = await execAsync(`reg query "${line.trim()}" /v JavaHome`);
+                        const match = homeStdout.match(/JavaHome\s+REG_SZ\s+(.*)/);
+                        if (match && match[1]) {
+                            const javaExe = path.join(match[1].trim(), 'bin', 'java.exe');
+                            if (fs.existsSync(javaExe)) {
+                                await checkAndStore(javaExe, 8);
+                                await checkAndStore(javaExe, 11);
+                                await checkAndStore(javaExe, 17);
+                                await checkAndStore(javaExe, 21);
+                            }
+                        }
+                    } catch (_) {}
+                }
+            } catch (_) {}
+        }
+    } else if (process.platform === 'darwin') {
+        // macOS - scan JVM directory and prioritize JDK
+        const jvmDir = '/Library/Java/JavaVirtualMachines';
+        if (fs.existsSync(jvmDir)) {
+            try {
+                const dirs = fs.readdirSync(jvmDir);
+                // Sort to prioritize JDK over JRE
+                const sortedDirs = dirs.sort((a, b) => {
+                    const aIsJDK = a.toLowerCase().includes('jdk');
+                    const bIsJDK = b.toLowerCase().includes('jdk');
+                    if (aIsJDK && !bIsJDK) return -1;
+                    if (!aIsJDK && bIsJDK) return 1;
+                    return a.localeCompare(b);
+                });
+                
+                for (const dir of sortedDirs) {
+                    const javaPath = path.join(jvmDir, dir, 'Contents', 'Home', 'bin', 'java');
+                    if (fs.existsSync(javaPath)) {
+                        await checkAndStore(javaPath, 8);
+                        await checkAndStore(javaPath, 11);
+                        await checkAndStore(javaPath, 17);
+                        await checkAndStore(javaPath, 21);
+                    }
+                }
+            } catch (_) {}
+        }
+    }
+    
+    // Log final discovery results with JDK/JRE info
+    const discoveryTime = Date.now() - startTime;
+    const java8Type = java8Path && await isJDK(java8Path) ? 'JDK' : 'JRE';
+    const java11Type = java11Path && await isJDK(java11Path) ? 'JDK' : 'JRE';
+    const java17Type = java17Path && await isJDK(java17Path) ? 'JDK' : 'JRE';
+    const java21Type = java21Path && await isJDK(java21Path) ? 'JDK' : 'JRE';
+    
+    log.info(`Java discovery complete in ${discoveryTime}ms`);
+    if (java8Path) log.info(`  Java 8 (${java8Type}): ${java8Path}`);
+    if (java11Path) log.info(`  Java 11 (${java11Type}): ${java11Path}`);
+    if (java17Path) log.info(`  Java 17 (${java17Type}): ${java17Path}`);
+    if (java21Path) log.info(`  Java 21 (${java21Type}): ${java21Path}`);
+    
+    if (!java8Path && !java11Path && !java17Path && !java21Path) {
+        log.warn('No Java installations found. Will attempt to download Java when needed.');
+    }
+}
+
+// Download Java from Adoptium (Eclipse Temurin)
+async function downloadJavaFromAdoptium(majorVersion, onProgress) {
+    const javaDir = path.join(app.getPath('userData'), 'java');
+    if (!fs.existsSync(javaDir)) {
+        fs.mkdirSync(javaDir, { recursive: true });
+    }
+    
+    const versionDir = path.join(javaDir, `jdk-${majorVersion}`);
+    
+    // Check if already downloaded
+    const expectedJavaPath = process.platform === 'win32' 
+        ? path.join(versionDir, 'bin', 'java.exe')
+        : path.join(versionDir, 'bin', 'java');
+    
+    if (fs.existsSync(expectedJavaPath)) {
+        log.info(`Java ${majorVersion} already exists at: ${expectedJavaPath}`);
+        return expectedJavaPath;
+    }
+    
+    log.info(`Downloading Java ${majorVersion} from Adoptium...`);
+    
+    // Determine platform and architecture
+    let os = process.platform;
+    let arch = process.arch;
+    let imageType = 'jdk';
+    let releaseType = 'ga'; // General Availability
+    
+    // Map Node.js platform to Adoptium platform
+    const platformMap = {
+        'win32': 'windows',
+        'darwin': 'mac',
+        'linux': 'linux'
+    };
+    
+    const archMap = {
+        'x64': 'x64',
+        'arm64': 'aarch64',
+        'ia32': 'x86'
+    };
+    
+    const adoptiumOS = platformMap[os] || 'linux';
+    const adoptiumArch = archMap[arch] || 'x64';
+    
+    try {
+        // Get latest release for this version
+        const apiUrl = `https://api.adoptium.net/v3/assets/latest/${majorVersion}/hotspot?os=${adoptiumOS}&architecture=${adoptiumArch}&image_type=${imageType}`;
+        log.info(`Fetching Adoptium release info from: ${apiUrl}`);
+        
+        const response = await fetch(apiUrl);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch Adoptium release info: ${response.statusText}`);
+        }
+        
+        const releases = await response.json();
+        if (!releases || releases.length === 0) {
+            throw new Error(`No Adoptium release found for Java ${majorVersion} on ${adoptiumOS}-${adoptiumArch}`);
+        }
+        
+        const binary = releases[0].binary;
+        const downloadUrl = binary.package.link;
+        const fileName = binary.package.name;
+        const fileSize = binary.package.size;
+        
+        log.info(`Downloading ${fileName} (${(fileSize / 1024 / 1024).toFixed(2)} MB)...`);
+        
+        // Download the archive using https module for proper streaming
+        const archivePath = path.join(javaDir, fileName);
+        
+        await new Promise((resolve, reject) => {
+            const fileStream = fs.createWriteStream(archivePath);
+            let downloadedBytes = 0;
+            
+            const doDownload = (url) => {
+                const protocol = url.startsWith('https') ? https : http;
+                protocol.get(url, { headers: { 'User-Agent': 'Server-Launcher/1.0' } }, (response) => {
+                    // Handle redirects
+                    if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
+                        response.resume();
+                        return doDownload(response.headers.location);
+                    }
+                    
+                    if (response.statusCode !== 200) {
+                        return reject(new Error(`Download failed (Status ${response.statusCode})`));
+                    }
+                    
+                    response.on('data', (chunk) => {
+                        downloadedBytes += chunk.length;
+                        const progress = (downloadedBytes / fileSize) * 100;
+                        if (onProgress) {
+                            onProgress(progress, downloadedBytes, fileSize);
+                        }
+                    });
+                    
+                    response.pipe(fileStream);
+                    response.on('error', reject);
+                    fileStream.on('finish', resolve);
+                    fileStream.on('error', reject);
+                }).on('error', reject);
+            };
+            
+            doDownload(downloadUrl);
+        });
+        
+        log.info(`Download complete. Extracting Java ${majorVersion}...`);
+        
+        // Extract the archive
+        if (fileName.endsWith('.tar.gz') || fileName.endsWith('.tgz')) {
+            // Linux/macOS - use tar
+            await execAsync(`tar -xzf "${archivePath}" -C "${javaDir}"`);
+            
+            // Find the extracted directory
+            const extractedDirs = fs.readdirSync(javaDir).filter(f => 
+                f.startsWith('jdk') && fs.statSync(path.join(javaDir, f)).isDirectory()
+            );
+            
+            if (extractedDirs.length > 0) {
+                const extractedDir = path.join(javaDir, extractedDirs[0]);
+                // Rename to consistent name
+                if (extractedDir !== versionDir) {
+                    if (fs.existsSync(versionDir)) {
+                        fs.rmSync(versionDir, { recursive: true });
+                    }
+                    fs.renameSync(extractedDir, versionDir);
+                }
+            }
+        } else if (fileName.endsWith('.zip')) {
+            // Windows - use built-in unzip
+            const AdmZip = require('adm-zip');
+            const zip = new AdmZip(archivePath);
+            zip.extractAllTo(javaDir, true);
+            
+            // Find and rename the extracted directory
+            const extractedDirs = fs.readdirSync(javaDir).filter(f => 
+                f.startsWith('jdk') && fs.statSync(path.join(javaDir, f)).isDirectory()
+            );
+            
+            if (extractedDirs.length > 0) {
+                const extractedDir = path.join(javaDir, extractedDirs[0]);
+                if (extractedDir !== versionDir) {
+                    if (fs.existsSync(versionDir)) {
+                        fs.rmSync(versionDir, { recursive: true });
+                    }
+                    fs.renameSync(extractedDir, versionDir);
+                }
+            }
+        }
+        
+        // Clean up archive
+        fs.unlinkSync(archivePath);
+        
+        // Make java executable on Unix systems
+        if (process.platform !== 'win32') {
+            await execAsync(`chmod +x "${expectedJavaPath}"`);
+            const javacPath = path.join(versionDir, 'bin', 'javac');
+            if (fs.existsSync(javacPath)) {
+                await execAsync(`chmod +x "${javacPath}"`);
+            }
+        }
+        
+        log.info(`Java ${majorVersion} successfully installed at: ${expectedJavaPath}`);
+        
+        // Update global path variable
+        if (majorVersion === 8) java8Path = expectedJavaPath;
+        else if (majorVersion === 11) java11Path = expectedJavaPath;
+        else if (majorVersion === 17) java17Path = expectedJavaPath;
+        else if (majorVersion === 21) java21Path = expectedJavaPath;
+        
+        return expectedJavaPath;
+        
+    } catch (error) {
+        log.error(`Failed to download Java ${majorVersion} from Adoptium:`, error);
+        throw error;
+    }
+}
+
+async function selectJavaForMinecraftVersion(mcVersion, autoDownload = true) {
+    try {
+        if (!mcVersion) return javaExecutablePath;
+        
+        const parts = mcVersion.split('.').map(x => parseInt(x, 10));
+        const major = parts[0] || 1;
+        const minor = parts[1] || 0;
+        const patch = parts[2] || 0;
+        
+        // Minecraft version to Java version mapping:
+        // 1.20.5+ → Java 21
+        // 1.17-1.20.4 → Java 17
+        // 1.13-1.16.5 → Java 11 or 17
+        // 1.12.2 and below → Java 8
+        
+        let requiredJavaVersion = 8;
+        let javaPath = null;
+        
+        if (major === 1 && minor >= 20 && patch >= 5) {
+            // Minecraft 1.20.5+ needs Java 21
+            requiredJavaVersion = 21;
+            javaPath = java21Path || java17Path; // Fallback to 17
+        } else if (major === 1 && minor >= 17) {
+            // Minecraft 1.17-1.20.4 needs Java 17
+            requiredJavaVersion = 17;
+            javaPath = java17Path || java21Path; // 21 also works
+        } else if (major === 1 && minor >= 13) {
+            // Minecraft 1.13-1.16.5 works with Java 11 or 17
+            requiredJavaVersion = 11;
+            javaPath = java11Path || java17Path || java21Path || java8Path;
+        } else {
+            // Minecraft 1.12.2 and below prefer Java 8 but Paper works with newer versions
+            requiredJavaVersion = 8;
+            javaPath = java8Path || java11Path || java17Path || java21Path;
+        }
+        
+        // If no suitable Java found, attempt auto-download
+        if (!javaPath && autoDownload) {
+            log.warn(`Java ${requiredJavaVersion} not found. Attempting to download from Adoptium...`);
+            sendConsole(`Java ${requiredJavaVersion} not found. Downloading from Adoptium...`, 'INFO');
+            try {
+                javaPath = await downloadJavaFromAdoptium(requiredJavaVersion, (progress, downloaded, total) => {
+                    const progressMsg = `Downloading Java ${requiredJavaVersion}: ${progress.toFixed(1)}%`;
+                    log.info(progressMsg);
+                    sendConsole(progressMsg, 'INFO');
+                });
+                sendConsole(`Java ${requiredJavaVersion} installed successfully!`, 'SUCCESS');
+            } catch (downloadError) {
+                log.error(`Failed to auto-download Java ${requiredJavaVersion}:`, downloadError);
+                sendConsole(`Failed to download Java ${requiredJavaVersion}: ${downloadError.message}`, 'ERROR');
+            }
+        }
+        
+        if (javaPath) {
+            log.info(`Using Java for Minecraft ${mcVersion}: ${javaPath}`);
+            return javaPath;
+        }
+        
+        // No suitable Java found
+        log.error(`Minecraft ${mcVersion} requires Java ${requiredJavaVersion}, but it is not installed and auto-download failed.`);
+        log.error(`Available Java versions: Java 8: ${!!java8Path}, Java 11: ${!!java11Path}, Java 17: ${!!java17Path}, Java 21: ${!!java21Path}`);
+        throw new Error(`No compatible Java found. Minecraft ${mcVersion} requires Java ${requiredJavaVersion}. Auto-download failed. Please install manually.`);
+        
+    } catch (err) {
+        if (err.message && err.message.includes('No compatible Java')) {
+            throw err; // Re-throw our custom error
+        }
+        log.error(`Error selecting Java version: ${err.message}`);
+        throw new Error(`Failed to select Java: ${err.message}`);
+    }
 }
 
 
@@ -1921,6 +2383,9 @@ function createWindow () {
 }
 
     app.whenReady().then(async () => {
+        // Suppress GTK warnings in console
+        app.commandLine.appendSwitch('disable-gpu-sandbox');
+        
         applyContentSecurityPolicy(session.defaultSession);
 
         const userDataPath = app.getPath('userData');
@@ -1942,6 +2407,12 @@ function createWindow () {
         // Store server config outside MinecraftServer to decouple from install folder
         serverConfigFilePath = path.join(userDataPath, serverConfigFileName);
         serverPropertiesFilePath = path.join(serverFilesDir, serverPropertiesFileName);
+        
+        // Start Java discovery in parallel with window creation for faster boot
+        const javaDiscoveryPromise = discoverAllJavaVersions().catch(err => {
+            log.error('Java discovery failed:', err);
+        });
+        
         // Migrate legacy config stored inside MinecraftServer/config.json to userData/config.json
         try {
             if (!fs.existsSync(serverConfigFilePath)) {
@@ -1956,6 +2427,13 @@ function createWindow () {
             }
         } catch (_) {}
   refreshMinimumJavaRequirementFromConfig();
+  
+  // Wait for Java discovery to complete (started earlier in parallel)
+  try {
+    await javaDiscoveryPromise;
+  } catch (err) {
+    log.warn('Java version discovery failed:', err);
+  }
 
   // Initialize notification service
   notificationService = new NotificationService();
@@ -2140,6 +2618,7 @@ ipcMain.on('set-settings', (event, settings) => {
     const currentSettings = readLauncherSettings();
     const newSettings = { ...currentSettings, ...settings };
     app.setLoginItemSettings({ openAtLogin: newSettings.openAtLogin });
+    
     writeJsonFile(launcherSettingsFilePath, newSettings, launcherSettingsFileName);
 
     if (process.platform === 'linux') {
@@ -2176,6 +2655,7 @@ ipcMain.on('set-settings', (event, settings) => {
 ipcMain.on('start-java-install', () => {
     downloadAndInstallJava();
 });
+
 ipcMain.on('restart-app', () => {
     app.relaunch();
     app.quit();
@@ -2245,9 +2725,9 @@ ipcMain.handle('get-available-versions', async (_event, serverType) => {
     const type = normalizeServerType(serverType);
     try {
         if (type === SERVER_TYPES.PAPER) {
-            const projectApiUrl = 'https://api.purpurmc.org/v2/purpur';
-            const projectResponseData = await fetchJson(projectApiUrl, 'Purpur versions');
-            const versions = projectResponseData?.versions || projectResponseData?.all || [];
+            const projectApiUrl = 'https://api.papermc.io/v2/projects/paper';
+            const projectResponseData = await fetchJson(projectApiUrl, 'Paper versions');
+            const versions = projectResponseData?.versions || [];
             if (Array.isArray(versions) && versions.length > 0) {
                 return sortVersionsDesc(versions);
             }
@@ -2271,7 +2751,7 @@ ipcMain.handle('get-available-versions', async (_event, serverType) => {
         }
         return [];
     } catch (error) {
-        const label = type === SERVER_TYPES.FABRIC ? 'Fabric' : (type === SERVER_TYPES.BEDROCK ? 'Bedrock' : 'Purpur');
+        const label = type === SERVER_TYPES.FABRIC ? 'Fabric' : (type === SERVER_TYPES.BEDROCK ? 'Bedrock' : 'Paper');
         sendConsole(`Could not fetch ${label} versions: ${error.message}`, 'ERROR');
         return [];
     }
@@ -2810,7 +3290,7 @@ async function startBedrockServer(serverConfig) {
 ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocation, javaArgs }) => {
     resetIdleTimer();
     const chosenType = normalizeServerType(serverType);
-    const typeLabel = chosenType === SERVER_TYPES.FABRIC ? 'Fabric' : (chosenType === SERVER_TYPES.BEDROCK ? 'Bedrock' : 'Purpur');
+    const typeLabel = chosenType === SERVER_TYPES.FABRIC ? 'Fabric' : (chosenType === SERVER_TYPES.BEDROCK ? 'Bedrock' : 'Paper');
     sendConsole(`Configuring: Type ${typeLabel}, Version ${mcVersion || 'N/A'}, RAM ${ramAllocation || 'Auto'}`, 'INFO');
 
     // Ensure the MinecraftServer folder exists only when configuring
@@ -2841,23 +3321,18 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
 
     try {
         if (chosenType === SERVER_TYPES.PAPER) {
-            sendStatus(`Downloading Purpur ${mcVersion}...`, true, 'downloading');
-            const buildsApiUrl = `https://api.purpurmc.org/v2/purpur/${mcVersion}`;
-            const buildsResponseData = await fetchJson(buildsApiUrl, 'Purpur builds list');
-            const buildsList = Array.isArray(buildsResponseData?.builds?.all)
-                ? buildsResponseData.builds.all
-                : (Array.isArray(buildsResponseData?.builds) ? buildsResponseData.builds : []);
-            let latestBuild = buildsResponseData?.builds?.latest ?? (buildsList.length ? buildsList[buildsList.length - 1] : null);
-            if (latestBuild && typeof latestBuild === 'object' && latestBuild.build) {
-                latestBuild = latestBuild.build;
+            sendStatus(`Downloading Paper ${mcVersion}...`, true, 'downloading');
+            const buildsApiUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}`;
+            const buildsResponseData = await fetchJson(buildsApiUrl, 'Paper builds list');
+            const builds = buildsResponseData?.builds || [];
+            if (!builds.length) {
+                throw new Error('No builds found for this Paper version.');
             }
-            if (latestBuild === null || latestBuild === undefined) {
-                throw new Error('No builds found for this Purpur version.');
-            }
-            const downloadUrl = `https://api.purpurmc.org/v2/purpur/${mcVersion}/${latestBuild}/download`;
+            const latestBuild = builds[builds.length - 1];
+            const downloadUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds/${latestBuild}/downloads/paper-${mcVersion}-${latestBuild}.jar`;
             sendStatus(`Downloading (0%)`, true, 'downloading');
 
-            const purpurDest = path.join(serverFilesDir, purpurJarName);
+            const paperDest = path.join(serverFilesDir, paperJarName);
             await new Promise((resolve, reject) => {
                 const doDownload = (url) => {
                     https.get(url, { headers: { 'User-Agent': 'Server-Launcher/1.0' } }, (response) => {
@@ -2869,7 +3344,7 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
                         const total = parseInt(response.headers['content-length'] || '0', 10);
                         let downloaded = 0;
                         let lastPercent = -1, lastMB = -1;
-                        const fileStream = fs.createWriteStream(purpurDest);
+                        const fileStream = fs.createWriteStream(paperDest);
                         response.on('data', chunk => {
                             downloaded += chunk.length;
                             if (total > 0) {
@@ -2895,7 +3370,7 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
 
             const suffix = getTranslation('downloadSuccessSuffix');
             sendStatus(`${typeLabel} ${mcVersion} ${suffix}`, false, 'downloadSuccess');
-            sendConsole(`${purpurJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
+            sendConsole(`${paperJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
             showDesktopNotification('Download Complete', `${typeLabel} ${mcVersion} is ready. Press Start to launch.`);
             const updated = readServerConfig();
             updated.serverType = chosenType;
@@ -3178,7 +3653,23 @@ ipcMain.on('start-server', async () => {
     const performanceArgs = ['-Xms' + ramToUseForJava, '-Xmx' + ramToUseForJava, '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-XX:MaxGCPauseMillis=200', '-XX:+UnlockExperimentalVMOptions', '-XX:+DisableExplicitGC', '-XX:+AlwaysPreTouch', '-XX:G1NewSizePercent=40', '-XX:G1MaxNewSizePercent=50', '-XX:G1HeapRegionSize=16M', '-XX:G1ReservePercent=15', '-XX:G1HeapWastePercent=5', '-XX:InitiatingHeapOccupancyPercent=20', '-XX:G1MixedGCLiveThresholdPercent=90', '-XX:G1RSetUpdatingPauseTimePercent=5', '-XX:SurvivorRatio=32', '-XX:MaxTenuringThreshold=1', '-Dusing.aikars.flags=https://mcflags.emc.gs', '-Daikars.new.flags=true', '-jar', jarName, 'nogui'];
     const defaultArgs = ['-Xms' + ramToUseForJava, '-Xmx' + ramToUseForJava, '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-XX:+UnlockExperimentalVMOptions', '-XX:MaxGCPauseMillis=200', '-XX:G1NewSizePercent=30', '-XX:G1MaxNewSizePercent=40', '-XX:G1HeapRegionSize=8M', '-XX:G1ReservePercent=20', '-XX:InitiatingHeapOccupancyPercent=45', '-jar', jarName, 'nogui'];
     const javaArgs = (javaArgsProfile === 'Performance') ? performanceArgs : defaultArgs;
+    
+    // Select appropriate Java version for Minecraft version
+    let selectedJava;
+    try {
+        selectedJava = await selectJavaForMinecraftVersion(serverConfig.version);
+    } catch (error) {
+        sendConsole(`Failed to select Java version: ${error.message}`, 'ERROR');
+        sendStatus('Incompatible Java version.', false, 'error');
+        showDesktopNotification(
+            'Java Version Error',
+            `Failed to find or download compatible Java: ${error.message}`
+        );
+        return;
+    }
+    
     sendConsole(`Using ${javaArgsProfile} Java arguments.`, 'INFO');
+    sendConsole(`Using Java executable: ${selectedJava}`, 'INFO');
     sendConsole(`Starting server with ${ramToUseForJava} RAM...`, 'INFO');
     sendStatus('Starting server...', true, 'serverStarting');
 
@@ -3197,7 +3688,7 @@ ipcMain.on('start-server', async () => {
         const allocatedRamGB = parseRamToGB(ramToUseForJava);
         safeSend(getMainWindow(), 'update-performance-stats', { allocatedRamGB });
 
-        serverProcess = spawn(javaExecutablePath, javaArgs, { cwd: serverFilesDir, stdio: ['pipe', 'pipe', 'pipe'], env: getCleanEnvForJava() });
+        serverProcess = spawn(selectedJava, javaArgs, { cwd: serverFilesDir, stdio: ['pipe', 'pipe', 'pipe'], env: getCleanEnvForJava() });
         serverProcess.killedInternally = false;
         let serverIsFullyStarted = false;
 

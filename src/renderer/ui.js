@@ -41,8 +41,9 @@ function enqueueConsoleLine(html) {
 }
 
 function normalizeUiServerType(type) {
-    if (!type) return 'purpur';
-    if (type === 'papermc' || type === 'paper') return 'purpur';
+    if (!type) return 'paper';
+    if (type === 'papermc' || type === 'paper') return 'paper';
+    if (type === 'purpur') return 'paper';
     return type;
 }
 
@@ -121,7 +122,7 @@ function populateServerTypeSelect(selectEl, currentType) {
     if (!selectEl) return;
     const normalizedType = normalizeUiServerType(currentType);
     const options = [
-        { value: 'purpur', label: currentTranslations['serverTypeJavaDefault'] || 'Purpur (Standard)' },
+        { value: 'paper', label: currentTranslations['serverTypeJavaDefault'] || 'Paper (Standard)' },
         { value: 'fabric', label: currentTranslations['serverTypeJavaModded'] || 'Fabric (Modded)' }
     ];
     selectEl.innerHTML = '';
@@ -131,7 +132,7 @@ function populateServerTypeSelect(selectEl, currentType) {
         o.textContent = opt.label;
         selectEl.appendChild(o);
     }
-    selectEl.value = normalizedType && ['purpur','fabric'].includes(normalizedType) ? normalizedType : 'purpur';
+    selectEl.value = normalizedType && ['paper','fabric'].includes(normalizedType) ? normalizedType : 'paper';
 }
 
 async function setLanguage(lang) {
