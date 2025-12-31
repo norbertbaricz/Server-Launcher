@@ -10,6 +10,7 @@ release/
 dist/
 dist_electron/
 index.html
+.rendered-index.html
 
 # Server files (user-generated)
 MinecraftServer/

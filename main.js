@@ -28,7 +28,6 @@ const http = require('node:http');
 const { spawn, exec } = require('node:child_process');
 const { promisify } = require('node:util');
 const { pathToFileURL } = require('node:url');
-const ejs = require('ejs');
 const os = require('node:os');
 const { autoUpdater } = require('electron-updater');
 const log = require('electron-log');
@@ -2237,18 +2236,6 @@ async function ensureNgrokTunnelForCurrentServerPort(existingInfo = null) {
 }
 
 function createWindow () {
-    const renderIndexTemplate = () => {
-        const templatePath = path.join(__dirname, 'src', 'renderer', 'index.ejs');
-        const baseHref = pathToFileURL(path.join(__dirname, '/')).href;
-        try {
-            const template = fs.readFileSync(templatePath, 'utf8');
-            return ejs.render(template, { baseHref });
-        } catch (error) {
-            log.error('Failed to render index.ejs', error);
-            return null;
-        }
-    };
-
   const resolveIconForWindow = () => {
     try {
       const resBase = process.resourcesPath;
@@ -2296,22 +2283,10 @@ function createWindow () {
         }
     });
 
-    const renderedHtml = renderIndexTemplate();
-    if (renderedHtml) {
-        try {
-            // Write rendered EJS to a temp file so file:// assets (script/style) can load normally
-            const renderedPath = path.join(app.getPath('userData'), 'rendered-index.html');
-            fs.writeFileSync(renderedPath, renderedHtml, 'utf8');
-            mainWindow.loadURL(pathToFileURL(renderedPath).href);
-        } catch (err) {
-            log.error('Failed to write rendered index.html', err);
-            const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(renderedHtml)}`;
-            mainWindow.loadURL(dataUrl);
-        }
-    } else {
-        const fallback = '<h1>Failed to load UI</h1>';
-        mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(fallback)}`);
-    }
+    // Load the HTML file with proper URL so relative paths work in both dev and production
+    const indexPath = path.join(__dirname, 'src', 'renderer', 'index.html');
+    mainWindow.loadURL(pathToFileURL(indexPath).href);
+    
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     try { shell.openExternal(url); } catch (_) {}
     return { action: 'deny' };
