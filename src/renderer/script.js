@@ -84,6 +84,7 @@ const updateProgressPercent = document.getElementById('update-progress-percent')
 
 let availableThemes = [];
 let themeMap = {};
+let defaultTranslations = {};
 let currentTranslations = {};
 const UPDATE_PILL_BASE_CLASS = 'text-xs font-semibold px-3 py-1 rounded-full whitespace-nowrap';
 const UPDATE_BUTTON_BASE_CLASS = 'btn-secondary px-4 py-2 rounded-md font-semibold flex items-center gap-2';
@@ -98,6 +99,41 @@ const autoUpdateState = {
     errorMessage: null,
     conflict: false
 };
+
+function translate(key, fallback = '') {
+    if (!key) return fallback;
+    const value = currentTranslations[key];
+    if (typeof value === 'string' && value.length) return value;
+    const defaultValue = defaultTranslations[key];
+    if (typeof defaultValue === 'string' && defaultValue.length) return defaultValue;
+    return fallback;
+}
+
+function formatTranslation(key, params = {}, fallback = '') {
+    const template = translate(key, fallback);
+    if (!template) return template;
+    return template.replace(/\{([^}]+)\}/g, (_, token) => {
+        const replacement = params[token];
+        return (replacement !== undefined && replacement !== null) ? replacement : '';
+    });
+}
+
+function hasDefaultTranslations() {
+    return defaultTranslations && Object.keys(defaultTranslations).length > 0;
+}
+
+async function ensureDefaultTranslations() {
+    if (hasDefaultTranslations()) return defaultTranslations;
+    try {
+        const base = await window.electronAPI.getTranslations('en');
+        if (base && typeof base === 'object') {
+            defaultTranslations = base;
+        }
+    } catch (error) {
+        addToConsole(`Could not load default translations: ${error.message}`, 'DEBUG');
+    }
+    return defaultTranslations;
+}
 
 // Default to locked state until IPC confirms otherwise
 if (chooseServerPathButton) {
@@ -127,6 +163,8 @@ const openPluginsFolderButton = document.getElementById('open-plugins-folder-but
 const serverPropertiesSearch = document.getElementById('server-properties-search');
 
 const loadingLauncherText = document.querySelector('#loading-screen [data-key="loadingLauncher"]');
+        renderAutoUpdateState();
+
 
 const minimizeBtn = document.getElementById('minimize-btn');
 const maximizeBtn = document.getElementById('maximize-btn');
@@ -189,21 +227,22 @@ function enqueueConsoleLine(html) {
 
 function formatDownloadSpeed(bytesPerSecond) {
     const speed = Number(bytesPerSecond) || 0;
-    if (speed <= 0) return '0 KB/s';
+    if (speed <= 0) return translate('downloadSpeedZero');
     const kb = speed / 1024;
-    if (kb < 1024) return `${Math.max(0, kb).toFixed(0)} KB/s`;
-    return `${(kb / 1024).toFixed(1)} MB/s`;
+    if (kb < 1024) {
+        return formatTranslation('downloadSpeedKilobytes', { value: Math.max(0, kb).toFixed(0) });
+    }
+    return formatTranslation('downloadSpeedMegabytes', { value: (kb / 1024).toFixed(1) });
 }
 
 function renderUpdateLastChecked(timestamp) {
     if (!updateStatusSubtext) return;
     if (!timestamp) {
-        updateStatusSubtext.textContent = currentTranslations['updaterNeverChecked'] || 'Last checked: never';
+        updateStatusSubtext.textContent = translate('updaterNeverChecked');
         return;
     }
     const localeTime = new Date(timestamp).toLocaleString();
-    const template = currentTranslations['updaterLastChecked'] || 'Last checked: {time}';
-    updateStatusSubtext.textContent = template.replace('{time}', localeTime);
+    updateStatusSubtext.textContent = formatTranslation('updaterLastChecked', { time: localeTime }) || localeTime;
 }
 
 function setUpdatePill(text, extraClasses) {
@@ -246,16 +285,16 @@ function setUpdateButtonState({ disabled = false, busy = false, mode = 'check' }
         let label;
         switch (mode) {
             case 'download':
-                label = currentTranslations['downloadUpdateButton'] || 'Download Update';
+                label = translate('downloadUpdateButton');
                 break;
             case 'restart':
-                label = currentTranslations['javaRestartButton'] || 'Restart Launcher';
+                label = translate('javaRestartButton');
                 break;
             case 'installing':
-                label = currentTranslations['updateInstallingLabel'] || 'Installing update...';
+                label = translate('updateInstallingLabel');
                 break;
             default:
-                label = currentTranslations['checkUpdatesButton'] || 'Check for Updates';
+                label = translate('checkUpdatesButton');
         }
         checkUpdatesButtonText.textContent = label;
     }
@@ -267,76 +306,74 @@ function toggleUpdateProgress(show, percent = 0, bytesPerSecond = 0) {
     if (!show) return;
     const clamped = Math.max(0, Math.min(100, Number(percent) || 0));
     updateProgressBar.style.width = `${clamped}%`;
-    updateProgressPercent.textContent = `${clamped.toFixed(0)}%`;
+    updateProgressPercent.textContent = formatTranslation('downloadPercentLabel', { value: clamped.toFixed(0) });
     updateProgressSpeed.textContent = formatDownloadSpeed(bytesPerSecond);
 }
 function renderAutoUpdateState() {
     if (!updateStatusLabel) return;
     switch (autoUpdateState.status) {
         case 'unsupported':
-            updateStatusLabel.textContent = autoUpdateState.hint || currentTranslations['updaterUnsupported'] || 'Auto-update not available for this build.';
+            updateStatusLabel.textContent = autoUpdateState.hint || translate('updaterUnsupported');
             renderUpdateLastChecked(autoUpdateState.lastCheckedAt);
-            setUpdatePill('Disabled', 'bg-gray-700 text-gray-200');
+            setUpdatePill(translate('updateStateDisabled'), 'bg-gray-700 text-gray-200');
             setUpdateButtonState({ disabled: true, busy: false });
             toggleUpdateProgress(false);
             setUpdateIcon('fa-ban');
             break;
         case 'checking':
             updateStatusLabel.textContent = autoUpdateState.conflict
-                ? (currentTranslations['updaterInProgress'] || 'An update check is already running.')
-                : (currentTranslations['updaterChecking'] || 'Checking for updates...');
+                ? translate('updaterInProgress')
+                : translate('updaterChecking');
             renderUpdateLastChecked(autoUpdateState.lastCheckedAt);
-            setUpdatePill('Checking', 'bg-blue-600 text-white');
+            setUpdatePill(translate('updateStateChecking'), 'bg-blue-600 text-white');
             setUpdateButtonState({ disabled: true, busy: true });
             toggleUpdateProgress(false);
             setUpdateIcon('fa-spinner', true);
             break;
         case 'available':
-            updateStatusLabel.textContent = (currentTranslations['updaterAvailable'] || 'Update available! Version: {version}')
-                .replace('{version}', autoUpdateState.version || '?');
-            updateStatusSubtext.textContent = (currentTranslations['updateManualDownloadHint'] || 'Click Download to install the new version when you are ready.');
-            setUpdatePill('Ready', 'bg-amber-500 text-gray-900');
+            updateStatusLabel.textContent = formatTranslation('updaterAvailable', { version: autoUpdateState.version || '?' });
+            updateStatusSubtext.textContent = translate('updateManualDownloadHint');
+            setUpdatePill(translate('updateStateReady'), 'bg-amber-500 text-gray-900');
             setUpdateButtonState({ disabled: false, busy: false, mode: 'download' });
             toggleUpdateProgress(false);
             setUpdateIcon('fa-cloud-arrow-down');
             break;
         case 'up-to-date':
-            updateStatusLabel.textContent = currentTranslations['updaterNoUpdates'] || 'No updates available.';
+            updateStatusLabel.textContent = translate('updaterNoUpdates');
             renderUpdateLastChecked(autoUpdateState.lastCheckedAt);
-            setUpdatePill('Up to date', 'bg-emerald-600 text-white');
+            setUpdatePill(translate('updateStateUpToDate'), 'bg-emerald-600 text-white');
             setUpdateButtonState({ disabled: false, busy: false });
             toggleUpdateProgress(false);
             setUpdateIcon('fa-circle-check');
             break;
         case 'downloading':
-            updateStatusLabel.textContent = (currentTranslations['updaterDownloading'] || 'Downloading update...')
-                .replace('{version}', autoUpdateState.version || '?');
+            updateStatusLabel.textContent = formatTranslation('updaterDownloading', { version: autoUpdateState.version || '?' });
             updateStatusSubtext.textContent = `${Math.round(autoUpdateState.percent)}% — ${formatDownloadSpeed(autoUpdateState.bytesPerSecond)}`;
-            setUpdatePill('Downloading', 'bg-blue-600 text-white');
+            setUpdatePill(translate('updateStateDownloading'), 'bg-blue-600 text-white');
             setUpdateButtonState({ disabled: true, busy: true, mode: 'download' });
             toggleUpdateProgress(true, autoUpdateState.percent, autoUpdateState.bytesPerSecond);
             setUpdateIcon('fa-cloud-arrow-down', true);
             break;
         case 'installing':
-            updateStatusLabel.textContent = currentTranslations['updateInstallingLabel'] || 'Installing update...';
-            updateStatusSubtext.textContent = currentTranslations['updateInstallingSubtext'] || 'The launcher will restart automatically.';
-            setUpdatePill('Installing', 'bg-purple-600 text-white');
+            updateStatusLabel.textContent = translate('updateInstallingLabel');
+            updateStatusSubtext.textContent = translate('updateInstallingSubtext');
+            setUpdatePill(translate('updateStateInstalling'), 'bg-purple-600 text-white');
             setUpdateButtonState({ disabled: true, busy: true, mode: 'installing' });
             toggleUpdateProgress(false);
             setUpdateIcon('fa-rocket', true);
             break;
         case 'error':
-            updateStatusLabel.textContent = `${currentTranslations['notificationUpdateError'] || 'Update error'}${autoUpdateState.errorMessage ? `: ${autoUpdateState.errorMessage}` : ''}`;
+            updateStatusLabel.textContent = `${translate('notificationUpdateError')}${autoUpdateState.errorMessage ? `: ${autoUpdateState.errorMessage}` : ''}`;
             renderUpdateLastChecked(autoUpdateState.lastCheckedAt);
-            setUpdatePill('Error', 'bg-rose-600 text-white');
+            setUpdatePill(translate('updateStateError'), 'bg-rose-600 text-white');
             setUpdateButtonState({ disabled: false, busy: false });
             toggleUpdateProgress(false);
             setUpdateIcon('fa-triangle-exclamation');
             break;
         default:
-            updateStatusLabel.textContent = currentTranslations['updaterReady'] || 'Auto-update ready.';
+            updateStatusLabel.textContent = translate('updaterReady');
             renderUpdateLastChecked(autoUpdateState.lastCheckedAt);
-            setUpdatePill('Idle', 'bg-gray-600 text-gray-100');
+            setUpdatePill(translate('updateStateIdle'), 'bg-gray-600 text-gray-100');
             setUpdateButtonState({ disabled: false, busy: false });
             toggleUpdateProgress(false);
             setUpdateIcon('fa-bolt');
@@ -434,7 +471,10 @@ function renderMemoryUsage() {
     if (hasMemory) {
         const finalMemUsage = Math.max(0, lastMemoryGB);
         if (hasAllocated) {
-            memoryUsageSpan.textContent = `${finalMemUsage.toFixed(2)} / ${allocatedRamCache} GB`;
+            memoryUsageSpan.textContent = formatTranslation('memoryUsageAllocatedFormat', {
+                used: finalMemUsage.toFixed(2),
+                allocated: allocatedRamCache
+            });
             const usagePercent = (finalMemUsage / allocated) * 100;
             if (usagePercent >= 90) {
                 memoryUsageSpan.style.color = '#ef4444';
@@ -444,11 +484,13 @@ function renderMemoryUsage() {
                 memoryUsageSpan.style.color = '#4ade80';
             }
         } else {
-            memoryUsageSpan.textContent = `${finalMemUsage.toFixed(2)} GB`;
+            memoryUsageSpan.textContent = formatTranslation('memoryUsageFormat', { value: finalMemUsage.toFixed(2) });
             memoryUsageSpan.style.color = '';
         }
     } else {
-        memoryUsageSpan.textContent = hasAllocated ? `0.00 / ${allocatedRamCache} GB` : '0.00 GB';
+        memoryUsageSpan.textContent = hasAllocated
+            ? formatTranslation('memoryUsageAllocatedPlaceholder', { allocated: allocatedRamCache })
+            : translate('memoryUsagePlaceholder');
         memoryUsageSpan.style.color = '';
     }
 }
@@ -510,8 +552,8 @@ const ramAllocationModalContainer = ramAllocationModalSelect?.closest('div');
 const ramAllocationSettingsContainer = ramAllocationSettingsSelect?.closest('div');
 
 function getAddonLabel(type) {
-    if (type === 'fabric') return currentTranslations['modsLabel'] || 'Mods';
-    return currentTranslations['pluginsButton'] || 'Plugins';
+    if (type === 'fabric') return translate('modsLabel');
+    return translate('pluginsButton');
 }
 
 function getAddonIcon(type) {
@@ -520,7 +562,7 @@ function getAddonIcon(type) {
 }
 
 function getServerTypeSuffix(type) {
-    if (type === 'fabric') return ' (Modded)';
+    if (type === 'fabric') return translate('serverTypeModdedSuffix');
     return '';
 }
 
@@ -624,7 +666,7 @@ function setRamAutoState({ isAuto, toggle, wrapper, slider, label, cacheSetter }
     if (isAuto) {
         if (slider) slider.dataset.userDirty = 'false';
         if (cacheSetter) cacheSetter(null);
-        if (label) label.textContent = currentTranslations['ramAuto'] || 'Auto (Detect System)';
+        if (label) label.textContent = translate('ramAuto');
     } else if (slider && label) {
         renderRamSliderLabel(slider, label);
     }
@@ -632,13 +674,13 @@ function setRamAutoState({ isAuto, toggle, wrapper, slider, label, cacheSetter }
 
 function refreshRamSliderLabels() {
     if (ramAutoModalToggle?.checked) {
-        if (ramAllocationModalValue) ramAllocationModalValue.textContent = currentTranslations['ramAuto'] || 'Auto (Detect System)';
+        if (ramAllocationModalValue) ramAllocationModalValue.textContent = translate('ramAuto');
     } else {
         renderRamSliderLabel(ramAllocationModalSelect, ramAllocationModalValue);
     }
 
     if (ramAutoSettingsToggle?.checked) {
-        if (ramAllocationSettingsValue) ramAllocationSettingsValue.textContent = currentTranslations['ramAuto'] || 'Auto (Detect System)';
+        if (ramAllocationSettingsValue) ramAllocationSettingsValue.textContent = translate('ramAuto');
     } else {
         renderRamSliderLabel(ramAllocationSettingsSelect, ramAllocationSettingsValue);
     }
@@ -663,7 +705,7 @@ function updatePluginsButtonAppearance(serverType) {
             textSpan.textContent = label;
         }
     }
-    const propsLabel = currentTranslations['serverPropsHeader'] || 'Server Properties';
+    const propsLabel = translate('serverPropsHeader');
     if (pluginsModalIcon) {
         pluginsModalIcon.className = `fas ${iconClass} accent-text text-xl`;
     }
@@ -679,12 +721,12 @@ function updatePluginsButtonAppearance(serverType) {
     if (uploadPluginButton) {
         uploadPluginButton.disabled = false;
         uploadPluginButton.classList.remove('btn-disabled');
-        const uploadLabel = currentTranslations['uploadButton'] || 'Upload';
+        const uploadLabel = translate('uploadButton');
         uploadPluginButton.innerHTML = `<i class="fas fa-upload mr-1"></i>${uploadLabel}`;
         uploadPluginButton.title = uploadLabel;
     }
     if (openPluginsFolderButton) {
-        const openFolderLabel = currentTranslations['openFolderButton'] || 'Open Folder';
+        const openFolderLabel = translate('openFolderButton');
         openPluginsFolderButton.innerHTML = `<i class="fas fa-folder-open mr-1"></i>${openFolderLabel}`;
         openPluginsFolderButton.title = openFolderLabel;
     }
@@ -694,8 +736,8 @@ function populateServerTypeSelect(selectEl, currentType) {
     if (!selectEl) return;
     const normalizedType = normalizeUiServerType(currentType);
     const options = [
-        { value: 'paper', label: currentTranslations['serverTypeJavaDefault'] || 'Paper (Standard)' },
-        { value: 'fabric', label: currentTranslations['serverTypeJavaModded'] || 'Fabric (Modded)' }
+        { value: 'paper', label: translate('serverTypeJavaDefault') },
+        { value: 'fabric', label: translate('serverTypeJavaModded') }
     ];
     selectEl.innerHTML = '';
     for (const opt of options) {
@@ -714,29 +756,40 @@ async function setLanguage(lang) {
             if (lang !== 'en') return setLanguage('en');
             throw new Error('Default English translations not found.');
         }
-        currentTranslations = translations;
-        
-        // Update all elements with data-key attribute (including option elements)
+
+        if (lang === 'en') {
+            defaultTranslations = translations;
+        } else if (!hasDefaultTranslations()) {
+            await ensureDefaultTranslations();
+        }
+
+        currentTranslations = (lang === 'en')
+            ? { ...defaultTranslations }
+            : { ...defaultTranslations, ...translations };
+
         document.querySelectorAll('[data-key]').forEach(element => {
             const key = element.getAttribute('data-key');
-            if (translations[key]) {
-                element.textContent = translations[key];
+            const localized = translate(key, element.textContent);
+            if (localized) {
+                element.textContent = localized;
             }
         });
 
         document.querySelectorAll('[data-key-placeholder]').forEach(element => {
             const key = element.getAttribute('data-key-placeholder');
-            if (translations[key]) {
-                element.placeholder = translations[key];
+            const localized = translate(key, element.placeholder);
+            if (localized) {
+                element.placeholder = localized;
             }
         });
 
         document.querySelectorAll('[data-key-aria-label]').forEach(element => {
             const key = element.getAttribute('data-key-aria-label');
-            if (translations[key]) {
-                element.setAttribute('aria-label', translations[key]);
+            const localized = translate(key, element.getAttribute('aria-label') || '');
+            if (localized) {
+                element.setAttribute('aria-label', localized);
                 if (!element.classList.contains('no-tooltip')) {
-                    element.title = translations[key];
+                    element.title = localized;
                 } else {
                     element.removeAttribute('title');
                 }
@@ -744,18 +797,19 @@ async function setLanguage(lang) {
         });
 
         const currentStatusKey = statusMessageSpan.dataset.key;
-        if(currentStatusKey && translations[currentStatusKey]) {
-            statusMessageSpan.textContent = translations[currentStatusKey];
+        if (currentStatusKey) {
+            const localizedStatus = translate(currentStatusKey, statusMessageSpan.textContent);
+            if (localizedStatus) {
+                statusMessageSpan.textContent = localizedStatus;
+            }
         }
 
         updatePluginsButtonAppearance(currentServerConfig?.serverType);
 
-        // Repopulate dropdowns with translated labels
         const serverType = normalizeUiServerType(currentServerConfig?.serverType);
         populateServerTypeSelect(serverTypeModalSelect, serverType);
         populateServerTypeSelect(serverTypeSettingsSelect, serverType);
         
-        // Repopulate version dropdowns with translated labels (Latest, etc.)
         if (mcVersionModalSelect && availableMcVersionsCache[serverType]) {
             const currentModalVersion = mcVersionModalSelect.value;
             await populateMcVersionSelect(mcVersionModalSelect, currentModalVersion, serverType);
@@ -884,20 +938,25 @@ async function copyTextToClipboardSafe(text) {
     return success;
 }
 
-async function handleCopyIp(targetEl, button, label) {
+async function handleCopyIp(targetEl, button, labelKey) {
     if (!targetEl) return;
+    const label = translate(labelKey);
+    const resolvedLabel = label || labelKey || '';
     const value = (targetEl.textContent || '').trim();
     const invalid = !value || value === '-' || value.toLowerCase() === 'error' || value.toLowerCase().includes('fetching');
     if (invalid) {
-        addToConsole(`${label} not ready to copy.`, 'WARN');
+        const notReady = formatTranslation('notReadyToCopy', { label: resolvedLabel }) || resolvedLabel;
+        addToConsole(notReady, 'WARN');
         return;
     }
     const success = await copyTextToClipboardSafe(value);
     if (success) {
         flashCopyFeedback(button);
-        addToConsole(`${label} copied to clipboard.`, 'SUCCESS');
+        const copiedMsg = formatTranslation('copiedToClipboard', { label: resolvedLabel }) || resolvedLabel;
+        addToConsole(copiedMsg, 'SUCCESS');
     } else {
-        addToConsole(`Could not copy ${label}.`, 'ERROR');
+        const failureMsg = formatTranslation('copyFailed', { label: resolvedLabel }) || resolvedLabel;
+        addToConsole(failureMsg, 'ERROR');
     }
 }
 
@@ -928,7 +987,7 @@ function setStatus(fallbackText, pulse = false, translationKey = null) {
     if (key === 'downloading' && typeof fallbackText === 'string') {
         const m = fallbackText.match(/\(([^)]+)\)/);
         if (m && m[1]) {
-            const base = currentTranslations['downloading'] || 'Downloading';
+            const base = translate('downloading');
             message = `${base} (${m[1]})`;
         }
     }
@@ -1012,7 +1071,7 @@ function updateButtonStates(isRunning) {
         const suffix = getServerTypeSuffix(currentServerConfig.serverType);
         serverVersionSpan.textContent = currentServerConfig.version + suffix;
     } else {
-        serverVersionSpan.textContent = 'N/A';
+        serverVersionSpan.textContent = translate('serverVersionPlaceholder');
     }
 }
 
@@ -1268,7 +1327,7 @@ downloadModalButton.addEventListener('click', () => {
     const ram = isAuto ? 'auto' : sliderValueToRamConfig(parseFloat(ramAllocationModalSelect.value));
     const serverType = normalizeUiServerType(serverTypeModalSelect?.value);
     if (!version) {
-        addToConsole("No Minecraft version selected.", "ERROR");
+        addToConsole(translate('noVersionSelected'), 'ERROR');
         return;
     }
     showDownloadLoading();
@@ -1526,8 +1585,8 @@ lockServerPathButton?.addEventListener('click', async () => {
     addToConsole(newLocked ? 'Server path locked.' : 'Server path unlocked.', 'INFO');
 });
 
-copyLocalIpButton?.addEventListener('click', () => handleCopyIp(localIpAddressSpan, copyLocalIpButton, 'Local IP'));
-copyPublicIpButton?.addEventListener('click', () => handleCopyIp(publicIpAddressSpan, copyPublicIpButton, 'Public IP'));
+copyLocalIpButton?.addEventListener('click', () => handleCopyIp(localIpAddressSpan, copyLocalIpButton, 'localIpLabel'));
+copyPublicIpButton?.addEventListener('click', () => handleCopyIp(publicIpAddressSpan, copyPublicIpButton, 'publicIpLabel'));
 
 
 startButton.addEventListener('click', () => { 
@@ -1688,7 +1747,15 @@ languageSettingsSelect.addEventListener('change', (event) => {
 
 window.electronAPI.onWindowMaximized((isMaximized) => {
     maximizeBtnIcon.className = isMaximized ? 'far fa-window-restore' : 'far fa-square';
-    maximizeBtn.setAttribute('aria-label', isMaximized ? 'Restore' : 'Maximize');
+    const labelKey = isMaximized ? 'restoreButton' : 'maximizeButton';
+    const label = translate(labelKey);
+    maximizeBtn.setAttribute('data-key-aria-label', labelKey);
+    maximizeBtn.setAttribute('aria-label', label);
+    if (!maximizeBtn.classList.contains('no-tooltip')) {
+        maximizeBtn.title = label;
+    } else {
+        maximizeBtn.removeAttribute('title');
+    }
 });
 
 window.electronAPI.onUpdateConsole((message, type) => addToConsole(message, type));
@@ -1735,9 +1802,11 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         lastMemoryGB = null;
         const allocated = parseFloat(allocatedRamCache);
         const hasAllocated = !Number.isNaN(allocated) && allocated > 0;
-        memoryUsageSpan.textContent = hasAllocated ? `0.00 / ${allocatedRamCache} GB` : '0.00 GB';
+        memoryUsageSpan.textContent = hasAllocated
+            ? formatTranslation('memoryUsageAllocatedPlaceholder', { allocated: allocatedRamCache })
+            : translate('memoryUsagePlaceholder');
         memoryUsageSpan.style.color = '';
-        serverTpsSpan.textContent = '0.0 ms';
+        serverTpsSpan.textContent = translate('latencyPlaceholder');
         serverTpsSpan.style.color = '';
         // NU resetăm allocatedRamCache aici - păstrăm valoarea pentru afișare
     }
@@ -1775,7 +1844,7 @@ window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, tps, la
     if (typeof cmdLatencyMs !== 'undefined' && cmdLatencyMs !== null) {
         const ms = Math.max(0, parseFloat(cmdLatencyMs) || 0);
         const msText = ms >= 100 ? ms.toFixed(0) : ms.toFixed(1);
-        serverTpsSpan.textContent = `${msText} ms`;
+        serverTpsSpan.textContent = formatTranslation('latencyFormat', { value: msText });
         if (ms >= 300) {
             serverTpsSpan.style.color = '#ef4444';
         } else if (ms >= 150) {
@@ -1883,11 +1952,11 @@ function setLoadingText(fallbackText, translationKey = null, options = {}) {
     const key = preferFallback ? null : (translationKey || loadingLauncherText?.dataset.key);
     const getter = () => {
         if (!key) return null;
-        const t = currentTranslations[key];
-        return (t && typeof t === 'string' && t.trim()) ? t : null;
+        const localized = translate(key);
+        return (localized && localized.trim()) ? localized : null;
     };
     loadingView.setText(
-        fallbackText || currentTranslations['loadingLauncher'] || 'Loading Launcher...',
+        fallbackText || translate('loadingLauncher'),
         preferFallback ? null : getter
     );
 }
@@ -1929,13 +1998,6 @@ async function applyPreferencesStartupStage(state) {
         iconTarget.src = bootstrap.iconPath;
     }
 
-    const titleText = `Server Launcher v${bootstrap.version || '?.?.?'}${bootstrap.isDev ? ' — Development Version' : ''}`;
-    document.title = titleText;
-    const titleEl = document.getElementById('app-title-version');
-    if (titleEl) {
-        titleEl.textContent = titleText;
-    }
-
     setRamSliderBounds(bootstrap.systemMemoryGb || DEFAULT_MAX_RAM_GB);
 
     availableThemes = (bootstrap.themes && bootstrap.themes.length) ? bootstrap.themes : getFallbackThemes();
@@ -1961,6 +2023,17 @@ async function applyPreferencesStartupStage(state) {
     if (languageSettingsSelect) languageSettingsSelect.value = savedLang;
     if (languageJavaSelect) languageJavaSelect.value = savedLang;
     await setLanguage(savedLang);
+
+    const appName = translate('appTitle');
+    const versionValue = bootstrap.version || '?.?.?';
+    const versionText = formatTranslation('appVersionDisplay', { app: appName, version: versionValue }) || `${appName} v${versionValue}`;
+    const devSuffix = bootstrap.isDev ? translate('appVersionDevSuffix') : '';
+    const titleText = `${versionText}${devSuffix}`;
+    document.title = titleText;
+    const titleEl = document.getElementById('app-title-version');
+    if (titleEl) {
+        titleEl.textContent = titleText;
+    }
 }
 
 async function syncStateStartupStage() {
@@ -2094,7 +2167,10 @@ function startCountdown(seconds, messageKey, callback) {
         }
 
         if (remaining > 0) {
-            const message = (currentTranslations[messageKey] || "Auto-starting server") + ` in ${remaining}s...`;
+            const messageKeyToUse = messageKey || 'autoStartingServer';
+            const prefix = translate(messageKeyToUse);
+            const suffix = formatTranslation('autoStartCountdownSuffix', { seconds: remaining });
+            const message = `${prefix}${suffix}`;
             statusMessageSpan.textContent = message;
             statusMessageSpan.dataset.key = '';
             statusBarContent.classList.add('status-bar-pulse');
