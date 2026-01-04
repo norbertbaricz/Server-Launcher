@@ -34,6 +34,8 @@ const setupPage = document.getElementById('setup-page');
 const javaPage = document.getElementById('java-page');
 const mcVersionModalSelect = document.getElementById('mc-version-modal');
 const ramAllocationModalSelect = document.getElementById('ram-allocation-modal');
+const ramAutoModalToggle = document.getElementById('ram-auto-modal-toggle');
+const ramAllocationModalWrapper = document.getElementById('ram-allocation-modal-wrapper');
 const languageModalSelect = document.getElementById('language-modal-select');
 const languageJavaSelect = document.getElementById('language-java-select');
 const themeJavaSelect = document.getElementById('theme-java-select');
@@ -47,10 +49,12 @@ const dashboardView = document.getElementById('dashboard-view');
 const settingsPage = document.getElementById('settings-page');
 const mcVersionSettingsSelect = document.getElementById('mc-version-settings');
 const ramAllocationSettingsSelect = document.getElementById('ram-allocation-settings');
-const javaArgumentsSettingsSelect = document.getElementById('java-arguments-settings');
+const ramAutoSettingsToggle = document.getElementById('ram-auto-settings-toggle');
+const ramAllocationSettingsWrapper = document.getElementById('ram-allocation-settings-wrapper');
+const ramAllocationModalValue = document.getElementById('ram-allocation-modal-value');
+const ramAllocationSettingsValue = document.getElementById('ram-allocation-settings-value');
 const languageSettingsSelect = document.getElementById('language-settings-select');
 const themeSelect = document.getElementById('theme-select');
-const desktopNotificationsCheckbox = document.getElementById('notifications-checkbox');
 const serverTypeSettingsSelect = document.getElementById('server-type-settings');
 const startWithSystemCheckbox = document.getElementById('start-with-system-checkbox');
 const saveSettingsButton = document.getElementById('save-settings-button');
@@ -65,9 +69,35 @@ const chooseServerPathButton = document.getElementById('choose-server-path-butto
 const lockServerPathButton = document.getElementById('lock-server-path-button');
 const lockServerPathIcon = document.getElementById('lock-server-path-icon');
 const lockServerPathText = document.getElementById('lock-server-path-text');
+const updateStatusLabel = document.getElementById('update-status-label');
+const updateStatusSubtext = document.getElementById('update-status-subtext');
+const updateStatusPill = document.getElementById('update-status-pill');
+const updateStatusIcon = document.getElementById('update-status-icon');
+const updateStatusIconInner = updateStatusIcon ? updateStatusIcon.querySelector('i') : null;
+const checkUpdatesButton = document.getElementById('check-updates-button');
+const checkUpdatesButtonIcon = document.getElementById('check-updates-button-icon');
+const checkUpdatesButtonText = document.getElementById('check-updates-button-text');
+const updateProgressWrapper = document.getElementById('update-progress-wrapper');
+const updateProgressBar = document.getElementById('update-progress-bar');
+const updateProgressSpeed = document.getElementById('update-progress-speed');
+const updateProgressPercent = document.getElementById('update-progress-percent');
 
 let availableThemes = [];
 let themeMap = {};
+let currentTranslations = {};
+const UPDATE_PILL_BASE_CLASS = 'text-xs font-semibold px-3 py-1 rounded-full whitespace-nowrap';
+const UPDATE_BUTTON_BASE_CLASS = 'btn-secondary px-4 py-2 rounded-md font-semibold flex items-center gap-2';
+const autoUpdateState = {
+    status: 'idle',
+    version: null,
+    supported: true,
+    hint: null,
+    percent: 0,
+    bytesPerSecond: 0,
+    lastCheckedAt: null,
+    errorMessage: null,
+    conflict: false
+};
 
 // Default to locked state until IPC confirms otherwise
 if (chooseServerPathButton) {
@@ -94,6 +124,7 @@ const pluginsSaveApplyButton = document.getElementById('plugins-save-apply-butto
 const pluginsList = document.getElementById('plugins-list');
 const uploadPluginButton = document.getElementById('upload-plugin-button');
 const openPluginsFolderButton = document.getElementById('open-plugins-folder-button');
+const serverPropertiesSearch = document.getElementById('server-properties-search');
 
 const loadingLauncherText = document.querySelector('#loading-screen [data-key="loadingLauncher"]');
 
@@ -109,14 +140,10 @@ let LINES_PER_FLUSH = DEFAULT_LINES_PER_FLUSH;
 const pendingConsoleLines = [];
 let consoleFlushScheduled = false;
 
-function applyLowSpecMode(enabled) {
-    MAX_CONSOLE_LINES = enabled ? 400 : DEFAULT_MAX_CONSOLE_LINES;
-    LINES_PER_FLUSH = enabled ? 150 : DEFAULT_LINES_PER_FLUSH;
-    const bodyEl = document.body;
-    if (bodyEl) {
-        bodyEl.classList.toggle('low-spec-mode', !!enabled);
-    }
-}
+const MIN_RAM_GB = 2;
+const RAM_STEP_GB = 0.25;
+const DEFAULT_MAX_RAM_GB = 16;
+let maxSystemRamGB = DEFAULT_MAX_RAM_GB;
 
 function scheduleConsoleFlush() {
     if (consoleFlushScheduled) return;
@@ -160,6 +187,243 @@ function enqueueConsoleLine(html) {
     scheduleConsoleFlush();
 }
 
+function formatDownloadSpeed(bytesPerSecond) {
+    const speed = Number(bytesPerSecond) || 0;
+    if (speed <= 0) return '0 KB/s';
+    const kb = speed / 1024;
+    if (kb < 1024) return `${Math.max(0, kb).toFixed(0)} KB/s`;
+    return `${(kb / 1024).toFixed(1)} MB/s`;
+}
+
+function renderUpdateLastChecked(timestamp) {
+    if (!updateStatusSubtext) return;
+    if (!timestamp) {
+        updateStatusSubtext.textContent = currentTranslations['updaterNeverChecked'] || 'Last checked: never';
+        return;
+    }
+    const localeTime = new Date(timestamp).toLocaleString();
+    const template = currentTranslations['updaterLastChecked'] || 'Last checked: {time}';
+    updateStatusSubtext.textContent = template.replace('{time}', localeTime);
+}
+
+function setUpdatePill(text, extraClasses) {
+    if (!updateStatusPill) return;
+    updateStatusPill.className = `${UPDATE_PILL_BASE_CLASS} ${extraClasses}`.trim();
+    updateStatusPill.textContent = text;
+}
+
+function setUpdateIcon(iconClass, spinning = false) {
+    if (!updateStatusIconInner) return;
+    const spinClass = spinning ? ' fa-spin' : '';
+    updateStatusIconInner.className = `fas ${iconClass}${spinClass}`.trim();
+}
+
+function setUpdateButtonState({ disabled = false, busy = false, mode = 'check' } = {}) {
+    if (!checkUpdatesButton) return;
+    let className = UPDATE_BUTTON_BASE_CLASS;
+    if (disabled) className += ' btn-disabled';
+    checkUpdatesButton.className = className;
+    checkUpdatesButton.disabled = disabled;
+    if (checkUpdatesButtonIcon) {
+        let baseIcon = 'fa-sync-alt';
+        switch (mode) {
+            case 'download':
+                baseIcon = 'fa-download';
+                break;
+            case 'restart':
+                baseIcon = 'fa-power-off';
+                break;
+            case 'installing':
+                baseIcon = 'fa-rocket';
+                break;
+            default:
+                baseIcon = 'fa-sync-alt';
+        }
+        const spin = busy ? ' fa-spin' : '';
+        checkUpdatesButtonIcon.className = `fas ${baseIcon} text-sm${spin}`.trim();
+    }
+    if (checkUpdatesButtonText) {
+        let label;
+        switch (mode) {
+            case 'download':
+                label = currentTranslations['downloadUpdateButton'] || 'Download Update';
+                break;
+            case 'restart':
+                label = currentTranslations['javaRestartButton'] || 'Restart Launcher';
+                break;
+            case 'installing':
+                label = currentTranslations['updateInstallingLabel'] || 'Installing update...';
+                break;
+            default:
+                label = currentTranslations['checkUpdatesButton'] || 'Check for Updates';
+        }
+        checkUpdatesButtonText.textContent = label;
+    }
+}
+
+function toggleUpdateProgress(show, percent = 0, bytesPerSecond = 0) {
+    if (!updateProgressWrapper || !updateProgressBar || !updateProgressSpeed || !updateProgressPercent) return;
+    updateProgressWrapper.classList.toggle('hidden', !show);
+    if (!show) return;
+    const clamped = Math.max(0, Math.min(100, Number(percent) || 0));
+    updateProgressBar.style.width = `${clamped}%`;
+    updateProgressPercent.textContent = `${clamped.toFixed(0)}%`;
+    updateProgressSpeed.textContent = formatDownloadSpeed(bytesPerSecond);
+}
+function renderAutoUpdateState() {
+    if (!updateStatusLabel) return;
+    switch (autoUpdateState.status) {
+        case 'unsupported':
+            updateStatusLabel.textContent = autoUpdateState.hint || currentTranslations['updaterUnsupported'] || 'Auto-update not available for this build.';
+            renderUpdateLastChecked(autoUpdateState.lastCheckedAt);
+            setUpdatePill('Disabled', 'bg-gray-700 text-gray-200');
+            setUpdateButtonState({ disabled: true, busy: false });
+            toggleUpdateProgress(false);
+            setUpdateIcon('fa-ban');
+            break;
+        case 'checking':
+            updateStatusLabel.textContent = autoUpdateState.conflict
+                ? (currentTranslations['updaterInProgress'] || 'An update check is already running.')
+                : (currentTranslations['updaterChecking'] || 'Checking for updates...');
+            renderUpdateLastChecked(autoUpdateState.lastCheckedAt);
+            setUpdatePill('Checking', 'bg-blue-600 text-white');
+            setUpdateButtonState({ disabled: true, busy: true });
+            toggleUpdateProgress(false);
+            setUpdateIcon('fa-spinner', true);
+            break;
+        case 'available':
+            updateStatusLabel.textContent = (currentTranslations['updaterAvailable'] || 'Update available! Version: {version}')
+                .replace('{version}', autoUpdateState.version || '?');
+            updateStatusSubtext.textContent = (currentTranslations['updateManualDownloadHint'] || 'Click Download to install the new version when you are ready.');
+            setUpdatePill('Ready', 'bg-amber-500 text-gray-900');
+            setUpdateButtonState({ disabled: false, busy: false, mode: 'download' });
+            toggleUpdateProgress(false);
+            setUpdateIcon('fa-cloud-arrow-down');
+            break;
+        case 'up-to-date':
+            updateStatusLabel.textContent = currentTranslations['updaterNoUpdates'] || 'No updates available.';
+            renderUpdateLastChecked(autoUpdateState.lastCheckedAt);
+            setUpdatePill('Up to date', 'bg-emerald-600 text-white');
+            setUpdateButtonState({ disabled: false, busy: false });
+            toggleUpdateProgress(false);
+            setUpdateIcon('fa-circle-check');
+            break;
+        case 'downloading':
+            updateStatusLabel.textContent = (currentTranslations['updaterDownloading'] || 'Downloading update...')
+                .replace('{version}', autoUpdateState.version || '?');
+            updateStatusSubtext.textContent = `${Math.round(autoUpdateState.percent)}% — ${formatDownloadSpeed(autoUpdateState.bytesPerSecond)}`;
+            setUpdatePill('Downloading', 'bg-blue-600 text-white');
+            setUpdateButtonState({ disabled: true, busy: true, mode: 'download' });
+            toggleUpdateProgress(true, autoUpdateState.percent, autoUpdateState.bytesPerSecond);
+            setUpdateIcon('fa-cloud-arrow-down', true);
+            break;
+        case 'installing':
+            updateStatusLabel.textContent = currentTranslations['updateInstallingLabel'] || 'Installing update...';
+            updateStatusSubtext.textContent = currentTranslations['updateInstallingSubtext'] || 'The launcher will restart automatically.';
+            setUpdatePill('Installing', 'bg-purple-600 text-white');
+            setUpdateButtonState({ disabled: true, busy: true, mode: 'installing' });
+            toggleUpdateProgress(false);
+            setUpdateIcon('fa-rocket', true);
+            break;
+        case 'error':
+            updateStatusLabel.textContent = `${currentTranslations['notificationUpdateError'] || 'Update error'}${autoUpdateState.errorMessage ? `: ${autoUpdateState.errorMessage}` : ''}`;
+            renderUpdateLastChecked(autoUpdateState.lastCheckedAt);
+            setUpdatePill('Error', 'bg-rose-600 text-white');
+            setUpdateButtonState({ disabled: false, busy: false });
+            toggleUpdateProgress(false);
+            setUpdateIcon('fa-triangle-exclamation');
+            break;
+        default:
+            updateStatusLabel.textContent = currentTranslations['updaterReady'] || 'Auto-update ready.';
+            renderUpdateLastChecked(autoUpdateState.lastCheckedAt);
+            setUpdatePill('Idle', 'bg-gray-600 text-gray-100');
+            setUpdateButtonState({ disabled: false, busy: false });
+            toggleUpdateProgress(false);
+            setUpdateIcon('fa-bolt');
+            break;
+    }
+}
+
+function handleUpdaterEvent(payload = {}) {
+    if (!payload || typeof payload !== 'object') return;
+    const { type } = payload;
+    autoUpdateState.conflict = false;
+    switch (type) {
+        case 'unsupported':
+            autoUpdateState.status = 'unsupported';
+            autoUpdateState.supported = false;
+            autoUpdateState.hint = payload.reason || null;
+            if (payload.timestamp) autoUpdateState.lastCheckedAt = payload.timestamp;
+            break;
+        case 'checking':
+            autoUpdateState.status = 'checking';
+            autoUpdateState.supported = true;
+            autoUpdateState.errorMessage = null;
+            autoUpdateState.conflict = payload.reason === 'already-checking';
+            break;
+        case 'in-progress':
+            if (payload.reason === 'download-in-progress') {
+                autoUpdateState.status = 'downloading';
+                autoUpdateState.conflict = false;
+            } else {
+                autoUpdateState.status = 'checking';
+                autoUpdateState.conflict = true;
+            }
+            break;
+        case 'download-started':
+            autoUpdateState.status = 'downloading';
+            autoUpdateState.percent = 0;
+            autoUpdateState.bytesPerSecond = 0;
+            autoUpdateState.version = payload.version || autoUpdateState.version;
+            break;
+        case 'available':
+            autoUpdateState.status = 'available';
+            autoUpdateState.version = payload.version || autoUpdateState.version;
+            autoUpdateState.lastCheckedAt = payload.timestamp || Date.now();
+            autoUpdateState.percent = 0;
+            autoUpdateState.bytesPerSecond = 0;
+            break;
+        case 'not-available':
+            autoUpdateState.status = 'up-to-date';
+            autoUpdateState.lastCheckedAt = payload.timestamp || Date.now();
+            autoUpdateState.version = null;
+            autoUpdateState.percent = 0;
+            autoUpdateState.bytesPerSecond = 0;
+            break;
+        case 'progress':
+            autoUpdateState.status = 'downloading';
+            autoUpdateState.percent = Number(payload.percent) || 0;
+            autoUpdateState.bytesPerSecond = Number(payload.bytesPerSecond) || 0;
+            autoUpdateState.version = payload.version || autoUpdateState.version;
+            break;
+        case 'downloaded':
+            autoUpdateState.status = 'installing';
+            autoUpdateState.version = payload.version || autoUpdateState.version;
+            autoUpdateState.lastCheckedAt = payload.timestamp || Date.now();
+            autoUpdateState.percent = 100;
+            autoUpdateState.bytesPerSecond = 0;
+            break;
+        case 'error':
+            autoUpdateState.status = 'error';
+            autoUpdateState.errorMessage = payload.message || null;
+            autoUpdateState.lastCheckedAt = payload.timestamp || Date.now();
+            autoUpdateState.percent = 0;
+            autoUpdateState.bytesPerSecond = 0;
+            break;
+        case 'idle':
+            autoUpdateState.status = 'idle';
+            autoUpdateState.supported = true;
+            autoUpdateState.percent = 0;
+            autoUpdateState.bytesPerSecond = 0;
+            break;
+        default:
+            return;
+    }
+    renderAutoUpdateState();
+}
+
+renderAutoUpdateState();
+
 // In-app toasts removed; rely on desktop notifications only
 
 function renderMemoryUsage() {
@@ -198,9 +462,10 @@ let lastMemoryGB = null;
 let autoStartIsActive = false; 
 let countdownInterval = null;
 let isDownloadingFromServer = false;
-let currentTranslations = {};
 let launcherSettingsCache = {};
 let setupRequired = false;
+let ramModalUserValue = null;
+let ramSettingsUserValue = null;
 const viewState = {
     activeViewKey: dashboardView ? 'dashboard' : null,
     isSettingsViewOpen: false,
@@ -243,7 +508,6 @@ function normalizeUiServerType(type) {
 
 const ramAllocationModalContainer = ramAllocationModalSelect?.closest('div');
 const ramAllocationSettingsContainer = ramAllocationSettingsSelect?.closest('div');
-const javaArgumentsSettingsContainer = javaArgumentsSettingsSelect?.closest('div');
 
 function getAddonLabel(type) {
     if (type === 'fabric') return currentTranslations['modsLabel'] || 'Mods';
@@ -267,7 +531,117 @@ function applyServerTypeUiState() {
     };
     toggleHidden(ramAllocationModalContainer, false);
     toggleHidden(ramAllocationSettingsContainer, false);
-    toggleHidden(javaArgumentsSettingsContainer, false);
+}
+
+function normalizeRamMax(rawGb) {
+    const numeric = Number(rawGb);
+    const rounded = Number.isFinite(numeric) ? Math.max(MIN_RAM_GB, numeric) : DEFAULT_MAX_RAM_GB;
+    const stepped = Math.round(rounded / RAM_STEP_GB) * RAM_STEP_GB;
+    return Math.max(MIN_RAM_GB, stepped);
+}
+
+function setRamSliderBounds(maxGb) {
+    maxSystemRamGB = normalizeRamMax(maxGb);
+    [
+        { slider: ramAllocationModalSelect, label: ramAllocationModalValue, cache: ramModalUserValue },
+        { slider: ramAllocationSettingsSelect, label: ramAllocationSettingsValue, cache: ramSettingsUserValue }
+    ].forEach(({ slider, label, cache }) => {
+        if (!slider) return;
+        slider.min = MIN_RAM_GB;
+        slider.max = maxSystemRamGB;
+        slider.step = RAM_STEP_GB;
+        const base = cache !== null && typeof cache !== 'undefined' ? cache : MIN_RAM_GB;
+        slider.value = Math.min(maxSystemRamGB, Math.max(MIN_RAM_GB, base));
+        slider.dataset.userDirty = cache !== null && typeof cache !== 'undefined' ? 'true' : 'false';
+        renderRamSliderLabel(slider, label);
+    });
+    refreshRamSliderLabels();
+}
+
+function ramConfigToSliderValue(ramValue) {
+    if (!ramValue || ramValue === 'auto') return MIN_RAM_GB;
+    const lower = String(ramValue).toLowerCase();
+    const numeric = parseFloat(lower.replace(/[^0-9.]/g, ''));
+    if (!Number.isFinite(numeric)) return MIN_RAM_GB;
+    const valueGb = lower.includes('g') ? numeric : (numeric / 1024);
+    const clamped = Math.min(maxSystemRamGB, Math.max(MIN_RAM_GB, valueGb));
+    const stepped = Math.round(clamped / RAM_STEP_GB) * RAM_STEP_GB;
+    return Math.min(maxSystemRamGB, Math.max(MIN_RAM_GB, stepped));
+}
+
+function sliderValueToRamConfig(valueGb) {
+    const effective = Number.isFinite(valueGb) ? valueGb : MIN_RAM_GB;
+    if (effective <= MIN_RAM_GB) return `${Math.round(MIN_RAM_GB * 1024)}M`;
+    const clamped = Math.max(MIN_RAM_GB, Math.min(effective, maxSystemRamGB));
+    const mb = Math.round(clamped * 1024);
+    return `${mb}M`;
+}
+
+function renderRamSliderLabel(slider, label) {
+    if (!slider || !label) return;
+    let value = parseFloat(slider.value);
+    if (!Number.isFinite(value)) value = 0;
+
+    if (value <= MIN_RAM_GB) {
+        value = MIN_RAM_GB;
+        slider.value = value;
+    }
+    if (value < MIN_RAM_GB) {
+        value = MIN_RAM_GB;
+        slider.value = value;
+    }
+    const display = Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
+    label.textContent = `${display} GB`;
+}
+
+function restoreRamSlider(slider, label, cachedValue, fallbackRam) {
+    if (!slider || !label) return;
+    const hasCache = cachedValue !== null && typeof cachedValue !== 'undefined';
+    if (hasCache) {
+        slider.value = cachedValue;
+        slider.dataset.userDirty = 'true';
+        renderRamSliderLabel(slider, label);
+        return;
+    }
+    applyRamConfigToSlider(slider, label, fallbackRam, { force: true });
+}
+
+function applyRamConfigToSlider(slider, label, ramValue, { force = false } = {}) {
+    if (!slider || !label) return;
+    const isDirty = slider.dataset.userDirty === 'true';
+    if (isDirty && !force) {
+        renderRamSliderLabel(slider, label);
+        return;
+    }
+    slider.dataset.userDirty = 'false';
+    slider.value = ramConfigToSliderValue(ramValue);
+    renderRamSliderLabel(slider, label);
+}
+
+function setRamAutoState({ isAuto, toggle, wrapper, slider, label, cacheSetter }) {
+    if (toggle) toggle.checked = !!isAuto;
+    if (wrapper) wrapper.classList.toggle('visible', !isAuto);
+    if (isAuto) {
+        if (slider) slider.dataset.userDirty = 'false';
+        if (cacheSetter) cacheSetter(null);
+        if (label) label.textContent = currentTranslations['ramAuto'] || 'Auto (Detect System)';
+    } else if (slider && label) {
+        renderRamSliderLabel(slider, label);
+    }
+}
+
+function refreshRamSliderLabels() {
+    if (ramAutoModalToggle?.checked) {
+        if (ramAllocationModalValue) ramAllocationModalValue.textContent = currentTranslations['ramAuto'] || 'Auto (Detect System)';
+    } else {
+        renderRamSliderLabel(ramAllocationModalSelect, ramAllocationModalValue);
+    }
+
+    if (ramAutoSettingsToggle?.checked) {
+        if (ramAllocationSettingsValue) ramAllocationSettingsValue.textContent = currentTranslations['ramAuto'] || 'Auto (Detect System)';
+    } else {
+        renderRamSliderLabel(ramAllocationSettingsSelect, ramAllocationSettingsValue);
+    }
 }
 
 function updatePluginsButtonAppearance(serverType) {
@@ -391,13 +765,24 @@ async function setLanguage(lang) {
             await populateMcVersionSelect(mcVersionSettingsSelect, currentSettingsVersion, serverType);
         }
 
+        renderAutoUpdateState();
+        refreshRamSliderLabels();
+
     } catch (error) {
         addToConsole(`Could not apply language: ${error.message}`, 'ERROR');
     }
 }
 
 async function populateLanguageSelects() {
-    const languages = await window.electronAPI.getAvailableLanguages();
+    let languages = [];
+    try {
+        languages = await window.electronAPI.getAvailableLanguages();
+    } catch (error) {
+        addToConsole(`Could not fetch languages: ${error.message}`, 'DEBUG');
+    }
+    if (!Array.isArray(languages) || !languages.length) {
+        languages = [{ code: 'en', name: 'English' }];
+    }
     
     const createOption = (lang) => {
         const option = document.createElement('option');
@@ -410,14 +795,14 @@ async function populateLanguageSelects() {
         return option;
     };
 
-    languageModalSelect.innerHTML = '';
-    languageJavaSelect.innerHTML = '';
-    languageSettingsSelect.innerHTML = '';
+    if (languageModalSelect) languageModalSelect.innerHTML = '';
+    if (languageJavaSelect) languageJavaSelect.innerHTML = '';
+    if (languageSettingsSelect) languageSettingsSelect.innerHTML = '';
 
     languages.forEach(lang => {
-        languageModalSelect.appendChild(createOption(lang));
-        languageJavaSelect.appendChild(createOption(lang).cloneNode(true));
-        languageSettingsSelect.appendChild(createOption(lang).cloneNode(true));
+        if (languageModalSelect) languageModalSelect.appendChild(createOption(lang));
+        if (languageJavaSelect) languageJavaSelect.appendChild(createOption(lang).cloneNode(true));
+        if (languageSettingsSelect) languageSettingsSelect.appendChild(createOption(lang).cloneNode(true));
     });
 }
 
@@ -751,7 +1136,9 @@ async function refreshUISetupState() {
             updatePluginsButtonAppearance(serverTypeModalSelect.value);
         };
         await populateMcVersionSelect(mcVersionModalSelect, currentServerConfig.version, serverType);
-        ramAllocationModalSelect.value = currentServerConfig.ram || 'auto';
+        restoreRamSlider(ramAllocationModalSelect, ramAllocationModalValue, ramModalUserValue, currentServerConfig.ram || 'auto');
+        const modalIsAuto = !currentServerConfig.ram || currentServerConfig.ram === 'auto';
+        setRamAutoState({ isAuto: modalIsAuto, toggle: ramAutoModalToggle, wrapper: ramAllocationModalWrapper, slider: ramAllocationModalSelect, label: ramAllocationModalValue, cacheSetter: (val) => { ramModalUserValue = val; } });
         updateButtonStates(localIsServerRunning);
     } else {
         if (viewState.isSettingsViewOpen) closeSettingsView();
@@ -779,45 +1166,106 @@ async function populateServerProperties() {
         return;
     }
 
+    // Separate and sort properties: toggles first (alphabetical), then text inputs (alphabetical)
+    const toggleProps = [];
+    const textProps = [];
+    
     for (const key in properties) {
         const value = properties[key];
-        const propDiv = document.createElement('div');
-        propDiv.className = 'flex items-center justify-between';
+        if (value === 'true' || value === 'false') {
+            toggleProps.push({ key, value });
+        } else {
+            textProps.push({ key, value });
+        }
+    }
+    
+    toggleProps.sort((a, b) => a.key.localeCompare(b.key));
+    textProps.sort((a, b) => a.key.localeCompare(b.key));
+    
+    const sortedProperties = [...toggleProps, ...textProps];
+
+    for (const { key, value } of sortedProperties) {
+        const propCard = document.createElement('div');
+        propCard.className = 'bg-gray-700 rounded-md p-3';
+
         const label = document.createElement('label');
         label.textContent = key.replace(/-/g, ' ');
-        label.className = 'text-sm text-gray-300 capitalize';
+        label.className = 'block text-sm font-medium text-gray-300 capitalize mb-2';
         label.htmlFor = `prop-${key}`;
+
         let input;
         if (value === 'true' || value === 'false') {
-            input = document.createElement('select');
-            input.className = 'w-1/2 bg-gray-600 border border-gray-500 text-gray-200 text-sm rounded-md p-1.5 focus:ring-blue-500 focus:border-blue-500';
-            const trueOpt = document.createElement('option');
-            trueOpt.value = 'true';
-            trueOpt.textContent = 'True';
-            const falseOpt = document.createElement('option');
-            falseOpt.value = 'false';
-            falseOpt.textContent = 'False';
-            input.appendChild(trueOpt);
-            input.appendChild(falseOpt);
-            input.value = value;
-        } else {
+            // Toggle switch for boolean values - keep on same line
+            const propDiv = document.createElement('div');
+            propDiv.className = 'flex items-center justify-between gap-3';
+            
+            label.className = 'text-sm text-gray-300 capitalize flex-1';
+            label.classList.remove('block', 'mb-2', 'font-medium');
+            
+            const wrapper = document.createElement('label');
+            wrapper.className = 'switch cursor-pointer';
             input = document.createElement('input');
-            input.type = 'text';
-            input.className = 'w-1/2 bg-gray-600 border border-gray-500 text-gray-200 text-sm rounded-md p-1.5 focus:ring-blue-500 focus:border-blue-500';
-            input.value = value;
+            input.type = 'checkbox';
+            input.className = 'sr-only';
+            input.checked = value === 'true';
+            input.id = `prop-${key}`;
+            input.dataset.key = key;
+            input.dataset.type = 'boolean';
+
+            const track = document.createElement('div');
+            track.className = 'switch-track';
+            const thumb = document.createElement('div');
+            thumb.className = 'switch-thumb';
+            track.appendChild(thumb);
+            wrapper.appendChild(input);
+            wrapper.appendChild(track);
+
+            propDiv.appendChild(label);
+            propDiv.appendChild(wrapper);
+            propCard.appendChild(propDiv);
+            serverPropertiesContainer.appendChild(propCard);
+            continue;
         }
+
+        input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'w-full bg-gray-600 border border-gray-500 text-gray-200 text-sm rounded-md p-2.5 focus:ring-blue-500 focus:border-blue-500';
+        input.value = value;
         input.id = `prop-${key}`;
         input.dataset.key = key;
-        propDiv.appendChild(label);
-        propDiv.appendChild(input);
-        serverPropertiesContainer.appendChild(propDiv);
+        
+        propCard.appendChild(label);
+        propCard.appendChild(input);
+        serverPropertiesContainer.appendChild(propCard);
     }
+
+    filterServerPropertiesCards(serverPropertiesSearch?.value || '');
+}
+
+function filterServerPropertiesCards(term = '') {
+    if (!serverPropertiesContainer) return;
+    const searchTerm = String(term || '').toLowerCase();
+    const propCards = serverPropertiesContainer.querySelectorAll('.bg-gray-700');
+    propCards.forEach(card => {
+        const label = card.querySelector('label');
+        if (!label) return;
+        const propName = label.textContent.toLowerCase();
+        card.style.display = (!searchTerm || propName.includes(searchTerm)) ? '' : 'none';
+    });
+}
+
+// Server properties search functionality
+if (serverPropertiesSearch) {
+    serverPropertiesSearch.addEventListener('input', (e) => {
+        filterServerPropertiesCards(e.target.value);
+    });
 }
 
 downloadModalButton.addEventListener('click', () => {
     if (downloadModalButton.disabled) return;
     const version = mcVersionModalSelect.value;
-    const ram = ramAllocationModalSelect.value;
+    const isAuto = ramAutoModalToggle?.checked;
+    const ram = isAuto ? 'auto' : sliderValueToRamConfig(parseFloat(ramAllocationModalSelect.value));
     const serverType = normalizeUiServerType(serverTypeModalSelect?.value);
     if (!version) {
         addToConsole("No Minecraft version selected.", "ERROR");
@@ -825,6 +1273,10 @@ downloadModalButton.addEventListener('click', () => {
     }
     showDownloadLoading();
     window.electronAPI.configureServer({ serverType, mcVersion: version, ramAllocation: ram, javaArgs: 'Default' });
+    if (ramAllocationModalSelect) {
+        ramAllocationModalSelect.dataset.userDirty = 'false';
+        ramModalUserValue = isAuto ? null : ramConfigToSliderValue(ram);
+    }
 });
 
 pluginsFolderButton.addEventListener('click', async () => {
@@ -842,7 +1294,6 @@ settingsButton.addEventListener('click', async () => {
     launcherSettingsCache = await window.electronAPI.getSettings();
     startWithSystemCheckbox.checked = launcherSettingsCache.openAtLogin;
     autoStartServerCheckbox.checked = launcherSettingsCache.autoStartServer;
-    desktopNotificationsCheckbox.checked = (launcherSettingsCache.notificationsEnabled !== false);
     
     const delay = launcherSettingsCache.autoStartDelay || 5;
     autoStartDelaySlider.value = delay;
@@ -876,8 +1327,9 @@ settingsButton.addEventListener('click', async () => {
     };
     await populateMcVersionSelect(mcVersionSettingsSelect, serverConfig.version, currentType);
     applyServerTypeUiState(currentType);
-    ramAllocationSettingsSelect.value = serverConfig.ram || 'auto';
-    javaArgumentsSettingsSelect.value = serverConfig.javaArgs || 'Default';
+    restoreRamSlider(ramAllocationSettingsSelect, ramAllocationSettingsValue, ramSettingsUserValue, serverConfig.ram || 'auto');
+    const settingsIsAuto = !serverConfig.ram || serverConfig.ram === 'auto';
+    setRamAutoState({ isAuto: settingsIsAuto, toggle: ramAutoSettingsToggle, wrapper: ramAllocationSettingsWrapper, slider: ramAllocationSettingsSelect, label: ramAllocationSettingsValue, cacheSetter: (val) => { ramSettingsUserValue = val; } });
     updatePluginsButtonAppearance(serverConfig.serverType);
     // Ensure Server Configuration fields are locked during starting or running
     updateSettingsLockState(localIsServerRunning || isStarting);
@@ -898,27 +1350,9 @@ saveSettingsButton.addEventListener('click', async () => {
     const selectedLanguage = languageSettingsSelect.value;
     const prevLanguage = launcherSettingsCache.language || 'en';
     launcherSettingsCache.language = selectedLanguage;
-    launcherSettingsCache.notificationsEnabled = desktopNotificationsCheckbox.checked;
     
     window.electronAPI.setSettings(launcherSettingsCache);
-    // Low-spec mode now applies automatically based on hardware; renderer uses the value from getSettings
-
-    if (autoStartEnabled) {
-        const delayChanged = selectedAutoStartDelay !== prevAutoStartDelay;
-        if (!localIsServerRunning && !isStarting && !isStopping) {
-            if (!prevAutoStartEnabled || delayChanged || !autoStartIsActive) {
-                if (beginAutoStartCountdown(selectedAutoStartDelay, 'initial')) {
-                    addToConsole(`Auto-start countdown scheduled in ${selectedAutoStartDelay}s.`, 'INFO');
-                }
-            }
-        } else if (!prevAutoStartEnabled || delayChanged) {
-            addToConsole('Auto-start enabled and will trigger after the current session ends.', 'INFO');
-        }
-    } else if (prevAutoStartEnabled || autoStartIsActive) {
-        if (cancelAutoStartCountdown('autoStartCancelled')) {
-            addToConsole('Auto-start countdown stopped via Settings.', 'INFO');
-        }
-    }
+    // Performance mode is always on; no hardware detection or toggles remain.
 
     // Apply language only if it actually changed
     if (selectedLanguage !== prevLanguage) {
@@ -927,14 +1361,20 @@ saveSettingsButton.addEventListener('click', async () => {
     
     const newProperties = {};
     serverPropertiesContainer.querySelectorAll('input, select').forEach(input => {
-        newProperties[input.dataset.key] = input.value;
+        const key = input.dataset.key;
+        if (!key) return;
+        if (input.type === 'checkbox' || input.dataset.type === 'boolean') {
+            newProperties[key] = input.checked ? 'true' : 'false';
+        } else {
+            newProperties[key] = input.value;
+        }
     });
     if (Object.keys(newProperties).length > 0) window.electronAPI.setServerProperties(newProperties);
     
     const newServerType = normalizeUiServerType(serverTypeSettingsSelect?.value);
     const newMcVersion = mcVersionSettingsSelect.value || '';
-    const newRam = ramAllocationSettingsSelect.value || 'auto';
-    const newJavaArgs = javaArgumentsSettingsSelect.value || 'Default';
+    const newRam = (ramAutoSettingsToggle?.checked) ? 'auto' : sliderValueToRamConfig(parseFloat(ramAllocationSettingsSelect?.value));
+    const newJavaArgs = 'Default';
     const prevType = normalizeUiServerType(currentServerConfig?.serverType);
     const prevVersion = (currentServerConfig?.version) || '';
     const prevRam = (currentServerConfig?.ram) || 'auto';
@@ -947,9 +1387,49 @@ saveSettingsButton.addEventListener('click', async () => {
     );
     if (requiresReconfigure) {
         window.electronAPI.configureServer({ serverType: newServerType, mcVersion: newMcVersion, ramAllocation: newRam, javaArgs: newJavaArgs });
+        if (ramAllocationSettingsSelect) {
+            ramAllocationSettingsSelect.dataset.userDirty = 'false';
+            ramSettingsUserValue = newRam === 'auto' ? null : ramConfigToSliderValue(newRam);
+        }
     } else {
         // No reconfigure: refresh IPs so translated placeholders are replaced with actual values
         try { await fetchAndDisplayIPs(localIsServerRunning); } catch (_) {}
+    }
+
+    const shouldDeferAutoStart = requiresReconfigure || isDownloadingFromServer;
+    const delayChanged = selectedAutoStartDelay !== prevAutoStartDelay;
+    const countdownWasActive = autoStartIsActive || !!countdownInterval;
+    const countdownNeedsRestart = !prevAutoStartEnabled || delayChanged || !countdownWasActive;
+    if (autoStartEnabled) {
+        if (shouldDeferAutoStart) {
+            if (countdownWasActive) {
+                cancelAutoStartCountdown('autoStartCancelled');
+                addToConsole('Auto-start countdown cancelled while new server files download.', 'INFO');
+            }
+            if (countdownNeedsRestart || countdownWasActive) {
+                queueAutoStartRequest(
+                    selectedAutoStartDelay,
+                    'initial',
+                    'Auto-start countdown queued until server setup completes.',
+                    'Server download complete. Restarting auto-start countdown.'
+                );
+            }
+        } else if (!localIsServerRunning && !isStarting && !isStopping) {
+            if (countdownNeedsRestart) {
+                if (countdownWasActive) {
+                    cancelAutoStartCountdown();
+                }
+                if (beginAutoStartCountdown(selectedAutoStartDelay, 'initial')) {
+                    addToConsole(`Auto-start countdown scheduled in ${selectedAutoStartDelay}s.`, 'INFO');
+                }
+            }
+        } else if (!prevAutoStartEnabled || delayChanged) {
+            addToConsole('Auto-start enabled and will trigger after the current session ends.', 'INFO');
+        }
+    } else if (prevAutoStartEnabled || autoStartIsActive) {
+        if (cancelAutoStartCountdown('autoStartCancelled')) {
+            addToConsole('Auto-start countdown stopped via Settings.', 'INFO');
+        }
     }
     
     addToConsole(requiresReconfigure ? "Settings saved and applied (reconfigured)." : "Settings saved.", "SUCCESS");
@@ -988,9 +1468,44 @@ function updateSettingsLockState(locked) {
     if (serverTypeSettingsSelect) serverTypeSettingsSelect.disabled = locked;
     if (mcVersionSettingsSelect) mcVersionSettingsSelect.disabled = locked;
     if (ramAllocationSettingsSelect) ramAllocationSettingsSelect.disabled = locked;
-    if (javaArgumentsSettingsSelect) javaArgumentsSettingsSelect.disabled = locked;
     // Keep non-critical settings enabled (autostart, notifications, theme, language, etc.)
 }
+
+ramAutoModalToggle?.addEventListener('change', () => {
+    const isAuto = ramAutoModalToggle.checked;
+    setRamAutoState({ isAuto, toggle: ramAutoModalToggle, wrapper: ramAllocationModalWrapper, slider: ramAllocationModalSelect, label: ramAllocationModalValue, cacheSetter: (val) => { ramModalUserValue = val; } });
+});
+
+ramAllocationModalSelect?.addEventListener('input', () => {
+    if (ramAllocationModalSelect) {
+        ramAllocationModalSelect.dataset.userDirty = 'true';
+        let val = parseFloat(ramAllocationModalSelect.value);
+        if (Number.isFinite(val) && val > 0 && val < MIN_RAM_GB) {
+            val = MIN_RAM_GB;
+            ramAllocationModalSelect.value = val;
+        }
+        ramModalUserValue = val;
+    }
+    renderRamSliderLabel(ramAllocationModalSelect, ramAllocationModalValue);
+});
+
+ramAutoSettingsToggle?.addEventListener('change', () => {
+    const isAuto = ramAutoSettingsToggle.checked;
+    setRamAutoState({ isAuto, toggle: ramAutoSettingsToggle, wrapper: ramAllocationSettingsWrapper, slider: ramAllocationSettingsSelect, label: ramAllocationSettingsValue, cacheSetter: (val) => { ramSettingsUserValue = val; } });
+});
+
+ramAllocationSettingsSelect?.addEventListener('input', () => {
+    if (ramAllocationSettingsSelect) {
+        ramAllocationSettingsSelect.dataset.userDirty = 'true';
+        let val = parseFloat(ramAllocationSettingsSelect.value);
+        if (Number.isFinite(val) && val > 0 && val < MIN_RAM_GB) {
+            val = MIN_RAM_GB;
+            ramAllocationSettingsSelect.value = val;
+        }
+        ramSettingsUserValue = val;
+    }
+    renderRamSliderLabel(ramAllocationSettingsSelect, ramAllocationSettingsValue);
+});
 
 chooseServerPathButton?.addEventListener('click', async () => {
     if (chooseServerPathButton.disabled || lockServerPathButton?.dataset.locked === 'true') return;
@@ -1064,6 +1579,48 @@ autoStartServerCheckbox.addEventListener('change', () => {
 
 autoStartDelaySlider.addEventListener('input', () => {
     autoStartDelayValue.textContent = `${autoStartDelaySlider.value}s`;
+});
+
+checkUpdatesButton?.addEventListener('click', async () => {
+    if (checkUpdatesButton.disabled) return;
+    try {
+        if (autoUpdateState.status === 'available') {
+            setUpdateButtonState({ disabled: true, busy: true, mode: 'download' });
+            autoUpdateState.status = 'downloading';
+            autoUpdateState.percent = 0;
+            autoUpdateState.bytesPerSecond = 0;
+            renderAutoUpdateState();
+            const response = await window.electronAPI.downloadUpdate();
+            const responseReason = response?.reason;
+            if (responseReason && responseReason !== 'started') {
+                addToConsole(`Update download could not start: ${responseReason}`, 'WARN');
+                if (responseReason === 'in-progress' || responseReason === 'download-in-progress') {
+                    autoUpdateState.status = 'downloading';
+                } else if (responseReason === 'no-update') {
+                    autoUpdateState.status = 'up-to-date';
+                } else if (responseReason === 'unsupported') {
+                    autoUpdateState.status = 'unsupported';
+                } else if (responseReason === 'error') {
+                    autoUpdateState.status = 'error';
+                    autoUpdateState.errorMessage = response?.error || responseReason;
+                } else {
+                    autoUpdateState.status = 'available';
+                }
+                renderAutoUpdateState();
+            }
+            return;
+        }
+        if (autoUpdateState.status === 'downloading' || autoUpdateState.status === 'installing') {
+            return;
+        }
+        setUpdateButtonState({ disabled: true, busy: true, mode: 'check' });
+        await window.electronAPI.checkForUpdates();
+    } catch (error) {
+        addToConsole(`Manual update action failed: ${error.message}`, 'ERROR');
+        autoUpdateState.status = 'error';
+        autoUpdateState.errorMessage = error.message;
+        renderAutoUpdateState();
+    }
 });
 
 commandInput.addEventListener('keydown', (event) => {
@@ -1140,6 +1697,7 @@ window.electronAPI.onSetupFinished(async () => {
     isDownloadingFromServer = false;
     hideDownloadLoading();
     await refreshUISetupState();
+    tryProcessPendingAutoStart();
 });
 
 window.electronAPI.onServerStateChange(async (isRunning) => {
@@ -1184,17 +1742,8 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         // NU resetăm allocatedRamCache aici - păstrăm valoarea pentru afișare
     }
 
-    if (
-        !isRunning &&
-        pendingAutoStartRequest &&
-        !autoStartIsActive &&
-        !isStarting &&
-        !isStopping &&
-        (launcherSettingsCache?.autoStartServer)
-    ) {
-        const { delay, type } = pendingAutoStartRequest;
-        pendingAutoStartRequest = null;
-        beginAutoStartCountdown(delay, type);
+    if (!isRunning) {
+        tryProcessPendingAutoStart();
     }
 
     updateButtonStates(isRunning);
@@ -1280,84 +1829,216 @@ async function fetchAndDisplayIPs(showPort = true) {
     } catch (error) { publicIpAddressSpan.textContent = 'Offline'; }
 }
 
+async function detectSystemMemoryGb() {
+    try {
+        const info = await window.electronAPI.getSystemMemory();
+        const total = Number(info?.totalGB);
+        if (Number.isFinite(total) && total > 0) return total;
+    } catch (error) {
+        addToConsole(`Could not read system memory: ${error.message}`, 'DEBUG');
+    }
+    const navMem = Number(navigator?.deviceMemory);
+    if (Number.isFinite(navMem) && navMem > 0) return navMem;
+    return DEFAULT_MAX_RAM_GB;
+}
+
 let loadingScreenActive = true;
 
-function setLoadingText(fallbackText, translationKey = null) {
-    const key = translationKey || loadingLauncherText?.dataset.key;
+const STARTUP_STAGE_DEFINITIONS = [
+    {
+        key: 'bootstrap',
+        weight: 3,
+        labelKey: 'loadingBootstrap',
+        fallback: 'Preparing launcher services...',
+        runner: bootstrapStartupStage
+    },
+    {
+        key: 'preferences',
+        weight: 2,
+        labelKey: 'loadingApplyPreferences',
+        fallback: 'Applying saved preferences...',
+        runner: applyPreferencesStartupStage
+    },
+    {
+        key: 'sync-state',
+        weight: 3,
+        labelKey: 'loadingSyncState',
+        fallback: 'Loading server configuration...',
+        runner: syncStateStartupStage
+    },
+    {
+        key: 'finalize',
+        weight: 1,
+        labelKey: 'loadingFinalize',
+        fallback: 'Finalizing dashboard...',
+        runner: finalizeStartupStage
+    }
+];
+
+const STARTUP_TOTAL_STAGE_WEIGHT = STARTUP_STAGE_DEFINITIONS.reduce((sum, stage) => sum + (stage.weight || 1), 0) || 1;
+const startupDiagnostics = [];
+
+function setLoadingText(fallbackText, translationKey = null, options = {}) {
+    const preferFallback = Boolean(options?.preferFallback);
+    const key = preferFallback ? null : (translationKey || loadingLauncherText?.dataset.key);
     const getter = () => {
         if (!key) return null;
         const t = currentTranslations[key];
         return (t && typeof t === 'string' && t.trim()) ? t : null;
     };
-    loadingView.setText(fallbackText || currentTranslations['loadingLauncher'] || 'Loading Launcher...', getter);
+    loadingView.setText(
+        fallbackText || currentTranslations['loadingLauncher'] || 'Loading Launcher...',
+        preferFallback ? null : getter
+    );
+}
+
+async function bootstrapStartupStage(state) {
+    const iconPromise = window.electronAPI.getIconPath();
+    const versionPromise = window.electronAPI.getAppVersion();
+    const isDevPromise = (window.electronAPI.isDev ? window.electronAPI.isDev() : Promise.resolve(false)).catch(() => false);
+    const settingsPromise = window.electronAPI.getSettings();
+    const themesPromise = window.electronAPI.getAvailableThemes().catch(() => null);
+    const pathInfoPromise = window.electronAPI.getServerPathInfo().catch(() => null);
+    const systemMemoryPromise = detectSystemMemoryGb();
+
+    const [iconPath, version, isDevRaw, settings, themes, pathInfo, systemMemoryGb] = await Promise.all([
+        iconPromise,
+        versionPromise,
+        isDevPromise,
+        settingsPromise,
+        themesPromise,
+        pathInfoPromise,
+        systemMemoryPromise
+    ]);
+
+    state.bootstrap = {
+        iconPath: iconPath || null,
+        version: version || '?.?.?',
+        isDev: !!isDevRaw,
+        settings: settings || {},
+        themes: Array.isArray(themes) ? themes : null,
+        pathInfo: pathInfo || null,
+        systemMemoryGb: systemMemoryGb || DEFAULT_MAX_RAM_GB
+    };
+}
+
+async function applyPreferencesStartupStage(state) {
+    const bootstrap = state.bootstrap || {};
+    const iconTarget = document.getElementById('app-icon');
+    if (iconTarget && bootstrap.iconPath) {
+        iconTarget.src = bootstrap.iconPath;
+    }
+
+    const titleText = `Server Launcher v${bootstrap.version || '?.?.?'}${bootstrap.isDev ? ' — Development Version' : ''}`;
+    document.title = titleText;
+    const titleEl = document.getElementById('app-title-version');
+    if (titleEl) {
+        titleEl.textContent = titleText;
+    }
+
+    setRamSliderBounds(bootstrap.systemMemoryGb || DEFAULT_MAX_RAM_GB);
+
+    availableThemes = (bootstrap.themes && bootstrap.themes.length) ? bootstrap.themes : getFallbackThemes();
+    rebuildThemeMap(availableThemes);
+    populateThemeSelectors();
+
+    launcherSettingsCache = bootstrap.settings || {};
+    const savedTheme = ensureThemeCode(launcherSettingsCache.theme || 'skypixel');
+    applyThemeClass(savedTheme);
+    if (themeSelect) themeSelect.value = savedTheme;
+    if (themeJavaSelect) themeJavaSelect.value = savedTheme;
+
+    if (bootstrap.pathInfo) {
+        if (serverPathDisplay && bootstrap.pathInfo.path) {
+            serverPathDisplay.value = bootstrap.pathInfo.path;
+        }
+        updateServerPathLockState(!!bootstrap.pathInfo.locked);
+    }
+
+    await populateLanguageSelects();
+    const savedLang = launcherSettingsCache.language || 'en';
+    if (languageModalSelect) languageModalSelect.value = savedLang;
+    if (languageSettingsSelect) languageSettingsSelect.value = savedLang;
+    if (languageJavaSelect) languageJavaSelect.value = savedLang;
+    await setLanguage(savedLang);
+}
+
+async function syncStateStartupStage() {
+    await refreshUISetupState();
+}
+
+async function finalizeStartupStage() {
+    try {
+        await fetchAndDisplayIPs(true);
+    } catch (error) {
+        addToConsole(`Could not refresh IP information during startup: ${error.message}`, 'DEBUG');
+    }
+}
+
+async function runStartupStages(state) {
+    const totalStages = STARTUP_STAGE_DEFINITIONS.length;
+    for (let index = 0; index < totalStages; index++) {
+        const stage = STARTUP_STAGE_DEFINITIONS[index];
+        const startedAt = performance.now();
+        const message = formatStartupStageMessage(stage, index, totalStages);
+        setLoadingText(message, null, { preferFallback: true });
+        try {
+            await stage.runner(state);
+            recordStartupDiagnostic(stage.key, 'success', performance.now() - startedAt);
+        } catch (error) {
+            recordStartupDiagnostic(stage.key, 'error', performance.now() - startedAt, error);
+            addToConsole(`Startup stage "${stage.key}" failed: ${error.message}`, 'WARN');
+        }
+    }
+}
+
+function formatStartupStageMessage(stage, index, total) {
+    const base = (stage.labelKey && currentTranslations[stage.labelKey])
+        ? currentTranslations[stage.labelKey]
+        : stage.fallback || 'Loading...';
+    if (total <= 1) {
+        return base;
+    }
+    return `[${index + 1}/${total}] ${base}`;
+}
+
+function recordStartupDiagnostic(stageKey, status, durationMs, error) {
+    startupDiagnostics.push({
+        key: stageKey,
+        status,
+        duration: Math.round(durationMs),
+        error: error ? error.message : null
+    });
+}
+
+function completeInitialLoading() {
+    loadingView.hide();
+    setTimeout(() => {
+        loadingScreenActive = false;
+        if (!localIsServerRunning) {
+            setStatus(currentTranslations['launcherInitialized'] || 'Launcher initialized.', false, 'launcherInitialized');
+        }
+        window.electronAPI.appReadyToShow();
+    }, 550);
 }
 
 async function initializeApp() {
+    const startupState = {};
     try {
-        const iconPromise = window.electronAPI.getIconPath();
-        const versionPromise = window.electronAPI.getAppVersion();
-        const isDevPromise = (window.electronAPI.isDev ? window.electronAPI.isDev() : Promise.resolve(false)).catch(() => false);
-        const settingsPromise = window.electronAPI.getSettings();
-        const themesPromise = window.electronAPI.getAvailableThemes().catch(() => null);
-        const pathInfoPromise = window.electronAPI.getServerPathInfo().catch(() => null);
-
-        const [iconPath, version, isDevRaw, settings, themes, pathInfo] = await Promise.all([
-            iconPromise,
-            versionPromise,
-            isDevPromise,
-            settingsPromise,
-            themesPromise,
-            pathInfoPromise
-        ]);
-
-        document.getElementById('app-icon').src = iconPath;
-        const isDev = !!isDevRaw;
-        const titleText = `Server Launcher v${version}${isDev ? ' — Development Version' : ''}`;
-        document.title = titleText;
-        document.getElementById('app-title-version').textContent = titleText;
-
-        availableThemes = Array.isArray(themes) && themes?.length ? themes : getFallbackThemes();
-        rebuildThemeMap(availableThemes);
-        populateThemeSelectors();
-
-        launcherSettingsCache = settings || {};
-        applyLowSpecMode(!!settings?.autoLowSpecMode);
-        const savedTheme = ensureThemeCode(launcherSettingsCache.theme || 'skypixel');
-        applyThemeClass(savedTheme);
-        if (themeSelect) themeSelect.value = savedTheme;
-
-        if (pathInfo) {
-            if (serverPathDisplay && pathInfo?.path) serverPathDisplay.value = pathInfo.path;
-            updateServerPathLockState(!!pathInfo?.locked);
-        }
-        
-        await populateLanguageSelects();
-        const savedLang = launcherSettingsCache.language || 'en';
-        languageModalSelect.value = savedLang;
-        languageSettingsSelect.value = savedLang;
-        languageJavaSelect.value = savedLang;
-        if (themeJavaSelect) themeJavaSelect.value = savedTheme;
-        
-        await setLanguage(savedLang);
-        // Keep startup progress in the loading screen (not the status bar)
-        setLoadingText('Launcher initializing...', 'launcherInitializing');
-        
-        await refreshUISetupState();
-
+        loadingView.show();
+        setLoadingText(currentTranslations['loadingLauncher'] || 'Loading Launcher...', 'loadingLauncher');
+        await runStartupStages(startupState);
+        setLoadingText(
+            currentTranslations['launcherInitialized'] || 'Launcher initialized.',
+            'launcherInitialized',
+            { preferFallback: true }
+        );
     } catch (error) {
+        recordStartupDiagnostic('initializeApp', 'error', 0, error);
         addToConsole(`Initialization failed: ${error.message}`, 'ERROR');
         setStatus('Initialization Error!', false, 'error');
     } finally {
-        loadingScreen.style.opacity = '0';
-        setTimeout(() => {
-            loadingScreen.classList.add('hidden');
-            loadingScreenActive = false;
-            // After startup finishes, show a stable state in the status bar.
-            if (!localIsServerRunning) {
-                setStatus(currentTranslations['launcherInitialized'] || 'Launcher initialized.', false, 'launcherInitialized');
-            }
-            window.electronAPI.appReadyToShow();
-        }, 500);
+        completeInitialLoading();
     }
 }
 
@@ -1394,6 +2075,10 @@ window.electronAPI.onUpdateStatus((message, pulse = false, key = null) => {
     if ((lowerMessage.includes('failed') || lowerMessage.includes('error')) && viewState.isSetupViewOpen) {
         hideDownloadLoading();
     }
+});
+
+window.electronAPI.onUpdaterEvent((payload) => {
+    handleUpdaterEvent(payload || {});
 });
 
 function startCountdown(seconds, messageKey, callback) {
@@ -1477,17 +2162,42 @@ function beginAutoStartCountdown(delay, type = 'initial') {
     return true;
 }
 
-function queueAutoStartRequest(delay, type, message) {
-    pendingAutoStartRequest = { delay, type };
+function queueAutoStartRequest(delay, type, message, resumeMessage = null) {
+    pendingAutoStartRequest = { delay, type, resumeMessage };
     if (message) {
         addToConsole(message, 'INFO');
     }
 }
 
+function tryProcessPendingAutoStart() {
+    if (
+        !pendingAutoStartRequest ||
+        autoStartIsActive ||
+        localIsServerRunning ||
+        isStarting ||
+        isStopping ||
+        isDownloadingFromServer ||
+        !(launcherSettingsCache?.autoStartServer)
+    ) {
+        return false;
+    }
+    const request = pendingAutoStartRequest;
+    pendingAutoStartRequest = null;
+    if (beginAutoStartCountdown(request.delay, request.type) && request.resumeMessage) {
+        addToConsole(request.resumeMessage, 'INFO');
+    }
+    return true;
+}
+
 window.electronAPI.onStartCountdown((type, delay) => {
     addToConsole(`Received 'start-countdown' event. Type: ${type}, Delay: ${delay}`, 'INFO');
     if (!beginAutoStartCountdown(delay, type)) {
-        queueAutoStartRequest(delay, type, 'Auto-start countdown queued until the server is fully stopped.');
+        queueAutoStartRequest(
+            delay,
+            type,
+            'Auto-start countdown queued until the server is fully stopped.',
+            'Server stopped. Resuming queued auto-start countdown.'
+        );
     }
 });
 
@@ -1733,7 +2443,11 @@ pluginsSaveApplyButton?.addEventListener('click', () => {
         const updatedProperties = {};
         inputs.forEach(input => {
             if (input.dataset?.key) {
-                updatedProperties[input.dataset.key] = input.value;
+                if (input.type === 'checkbox' || input.dataset.type === 'boolean') {
+                    updatedProperties[input.dataset.key] = input.checked ? 'true' : 'false';
+                } else {
+                    updatedProperties[input.dataset.key] = input.value;
+                }
             }
         });
         if (Object.keys(updatedProperties).length > 0) {

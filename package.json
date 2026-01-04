@@ -5,11 +5,7 @@
   "main": "main.js",
   "scripts": {
     "start": "electron . --no-sandbox",
-    "dist": "tailwindcss -i ./src/styles/tailwind.input.css -o ./src/renderer/tailwind.css --minify && electron-builder --publish never -mwl",
-    "dist:windows": "tailwindcss -i ./src/styles/tailwind.input.css -o ./src/renderer/tailwind.css --minify && electron-builder --publish never --win nsis portable",
-    "dist:macos": "tailwindcss -i ./src/styles/tailwind.input.css -o ./src/renderer/tailwind.css --minify && electron-builder --publish never --mac zip",
-    "dist:linux": "tailwindcss -i ./src/styles/tailwind.input.css -o ./src/renderer/tailwind.css --minify && electron-builder --publish never --linux AppImage deb tar.gz",
-    "dist:all": "npm run dist"
+    "dist:all": "tailwindcss -i ./src/styles/tailwind.input.css -o ./src/renderer/tailwind.css --minify && electron-builder --publish never -mwl && node -e \"const fs=require('node:fs'); const path=require('node:path'); const root=process.cwd(); const release=path.join(root,'release'); if(!fs.existsSync(release)){console.log('Release directory not found. Skipping post-build cleanup.'); process.exit(0);} const pkg=require(path.join(root,'package.json')); const version=pkg.version; const keep=new Set(['latest-linux.yml','latest-mac.yml','latest.yml','Server-Launcher-'+version+'-x86_64.AppImage','Server-Launcher-mac-'+version+'.zip','Server-Launcher-Setup-'+version+'.exe']); const archive=path.join(release,'artifacts'); if(!fs.existsSync(archive)){fs.mkdirSync(archive,{recursive:true});} const archiveName=path.basename(archive); for (const entry of fs.readdirSync(release,{withFileTypes:true})) { const name=entry.name; if(name===archiveName || keep.has(name)) continue; const src=path.join(release,name); const dest=path.join(archive,name); if(fs.existsSync(dest)){fs.rmSync(dest,{recursive:true,force:true});} fs.renameSync(src,dest); } console.log('Release directory normalized.');\""
   },
   "keywords": [
     "Minecraft",

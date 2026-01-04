@@ -30,6 +30,8 @@ const { promisify } = require('node:util');
 const { pathToFileURL } = require('node:url');
 const os = require('node:os');
 const { autoUpdater } = require('electron-updater');
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = false;
 const log = require('electron-log');
 const RPC = require('discord-rpc');
 const pidusage = require('pidusage');
@@ -79,6 +81,8 @@ let statusBufferFlushScheduled = false;
 const consoleBuffer = [];
 const CONSOLE_BUFFER_MAX = 200;
 let consoleBufferFlushScheduled = false;
+const UPDATER_EVENT_BUFFER_MAX = 15;
+const updaterEventBuffer = [];
 
 function bufferStatus(msg, pulse, key) {
     if (statusBuffer.length >= STATUS_BUFFER_MAX) {
@@ -136,6 +140,34 @@ function flushConsoleBuffer() {
     while (consoleBuffer.length) {
         const { message, type } = consoleBuffer.shift();
         safeSend(win, 'update-console', message, type);
+    }
+}
+
+function deliverUpdaterEvent(eventPayload) {
+    if (!rendererReady) return false;
+    const win = getMainWindow();
+    return safeSend(win, 'updater-event', eventPayload);
+}
+
+function emitUpdaterEvent(payload = {}) {
+    const enriched = { timestamp: Date.now(), ...payload };
+    if (deliverUpdaterEvent(enriched)) {
+        return;
+    }
+    if (updaterEventBuffer.length >= UPDATER_EVENT_BUFFER_MAX) {
+        updaterEventBuffer.shift();
+    }
+    updaterEventBuffer.push(enriched);
+}
+
+function flushUpdaterEventBuffer() {
+    if (!rendererReady || !updaterEventBuffer.length) return;
+    while (updaterEventBuffer.length) {
+        const payload = updaterEventBuffer.shift();
+        if (!deliverUpdaterEvent(payload)) {
+            updaterEventBuffer.unshift(payload);
+            break;
+        }
     }
 }
 const SOUND_SEARCH_DIRS = ['', 'sounds'];
@@ -230,8 +262,29 @@ const IDLE_TIME_MS = 5 * 60 * 1000; // 5 minutes
 let discordRpcInterval = null;
 const DISCORD_RPC_INTERVAL_ACTIVE = 15000; // 15 seconds when server is running
 const DISCORD_RPC_INTERVAL_IDLE = 60000; // 60 seconds when idle/stopped
-// Frame rates: Always 60fps when server running, 60fps (focus)/10fps (blur)/5fps (idle) when stopped
+const FPS_FOCUSED = 40; // Target when the window is active and in use
+const FPS_BLURRED_ACTIVE = 25; // Target when unfocused but still active (or server running)
+const FPS_IDLE = 3; // Target when unfocused and fully idle while the server is stopped
+// Frame rates: 40fps focused, 25fps unfocused while active, 3fps when unfocused + idle
 // ============================================
+
+function applyFrameRateForState() {
+    if (!mainWindow || mainWindow.isDestroyed() || !mainWindow.webContents) return;
+    const isFocused = mainWindow.isFocused();
+    let targetFps;
+
+    if (localIsServerRunningGlobal) {
+        targetFps = isFocused ? FPS_FOCUSED : FPS_BLURRED_ACTIVE;
+    } else if (isIdleMode) {
+        targetFps = FPS_IDLE;
+    } else {
+        targetFps = isFocused ? FPS_FOCUSED : FPS_BLURRED_ACTIVE;
+    }
+
+    try {
+        mainWindow.webContents.setFrameRate(targetFps);
+    } catch (_) {}
+}
 
 const SERVER_TYPES = {
     PAPER: 'paper',
@@ -315,6 +368,7 @@ let java11Path = null;
 let java17Path = null;
 let java21Path = null;
 let javaInstallations = {}; // Store all discovered Java installations
+let javaDiscoveryPromise = null; // Tracks async Java discovery so we can await it only when needed
 let lastPublicAddressSource = null;
 let ngrokProcess = null;
 let ngrokTargetPort = null;
@@ -1132,6 +1186,13 @@ async function downloadJavaFromAdoptium(majorVersion, onProgress) {
 
 async function selectJavaForMinecraftVersion(mcVersion, autoDownload = true) {
     try {
+        if (javaDiscoveryPromise) {
+            try {
+                await javaDiscoveryPromise;
+            } catch (err) {
+                log.warn('Java discovery did not finish before selecting a runtime:', err.message || err);
+            }
+        }
         if (!mcVersion) return javaExecutablePath;
         
         const parts = mcVersion.split('.').map(x => parseInt(x, 10));
@@ -1408,11 +1469,6 @@ function sendServerStateChange(isRunning) {
     
     // CRITICAL: Când serverul pornește, asigură performanță maximă
     if (isRunning) {
-        // Forțează frame rate maxim pentru stabilitate server
-        if (mainWindow && mainWindow.webContents) {
-            mainWindow.webContents.setFrameRate(60);
-        }
-        // Anulează idle mode dacă era activ
         if (isIdleMode) {
             isIdleMode = false;
         }
@@ -1422,6 +1478,8 @@ function sendServerStateChange(isRunning) {
     } else {
         stopNgrokTunnel();
     }
+
+    applyFrameRateForState();
 }
 
 function setDiscordActivity() {
@@ -1466,10 +1524,7 @@ function resetIdleTimer() {
             clearInterval(discordRpcInterval);
             discordRpcInterval = setInterval(setDiscordActivity, DISCORD_RPC_INTERVAL_IDLE);
         }
-        // Restabilește frame rate normal când iese din idle
-        if (mainWindow && mainWindow.webContents && !localIsServerRunningGlobal) {
-            mainWindow.webContents.setFrameRate(60);
-        }
+        applyFrameRateForState();
     }
     
     // Clear existing timeout
@@ -1493,10 +1548,7 @@ function resetIdleTimer() {
             clearInterval(discordRpcInterval);
             discordRpcInterval = setInterval(setDiscordActivity, 120000); // 2 minutes in full idle
         }
-        // Reduce frame rate când intră în idle complet (DOAR când serverul e oprit)
-        if (mainWindow && mainWindow.webContents && !localIsServerRunningGlobal) {
-            mainWindow.webContents.setFrameRate(5); // Foarte redus în idle
-        }
+        applyFrameRateForState();
         // Sugerează garbage collection când intră în idle pentru a reduce memoria
         if (global.gc) {
             try {
@@ -1560,34 +1612,52 @@ function shouldCheckForUpdates() {
     return false;
 }
 
+function getAutoUpdateUnsupportedHint() {
+    if (!app.isPackaged) {
+        return 'Auto-updates are disabled while running an unpackaged/development build.';
+    }
+    return 'Run the AppImage/installer build to enable automatic updates on this platform.';
+}
+
 // Prevent rapid duplicate logging for setup check
 let lastSetupCheckAt = 0;
 
 let autoUpdateWarningShown = false;
 let autoUpdateCheckInFlight = false;
 let updaterSilentMode = false;
+let autoUpdateDownloadInFlight = false;
+let lastAvailableUpdateInfo = null;
 
 function triggerAutoUpdateCheck(reason = 'manual', opts = {}) {
     const { silent = false } = opts;
     updaterSilentMode = !!silent;
     if (!shouldCheckForUpdates()) {
+        const hint = getAutoUpdateUnsupportedHint();
         if (!autoUpdateWarningShown) {
-            const hint = app.isPackaged
-                ? 'Run the AppImage/installer build to enable automatic updates on this platform.'
-                : 'Auto-updates are disabled while running an unpackaged/development build.';
             if (!silent) {
                 pushStatus(`Updater: ${hint}`, true, 'updater-unavailable');
             } else {
                 log.info(`Updater: Automatic updates unavailable. ${hint}`);
             }
             autoUpdateWarningShown = true;
+        } else if (!silent) {
+            pushStatus(`Updater: ${hint}`, false, 'updater-unavailable');
         }
+        emitUpdaterEvent({
+            type: 'unsupported',
+            reason: hint,
+            platform: process.platform,
+            arch: process.arch,
+            packaged: app.isPackaged
+        });
         return { supported: false, reason: 'unsupported' };
     }
     if (autoUpdateCheckInFlight) {
         if (!silent) { pushStatus('Updater: A previous update check is still in progress.', false, 'updater-in-progress'); }
+        emitUpdaterEvent({ type: 'in-progress', reason: 'already-checking' });
         return { supported: true, reason: 'in-progress' };
     }
+    emitUpdaterEvent({ type: 'checking', reason, silent: updaterSilentMode });
     autoUpdateCheckInFlight = true;
     try {
         const pending = autoUpdater.checkForUpdates();
@@ -1604,6 +1674,7 @@ function triggerAutoUpdateCheck(reason = 'manual', opts = {}) {
                 } else {
                     log.warn(`Updater: Failed to complete update check: ${error.message}`);
                 }
+                emitUpdaterEvent({ type: 'error', stage: 'check', message: error?.message || 'Unknown error' });
             });
         }
         return { supported: true, reason };
@@ -1614,6 +1685,7 @@ function triggerAutoUpdateCheck(reason = 'manual', opts = {}) {
         } else {
             log.warn(`Updater: Could not start update check: ${error.message}`);
         }
+        emitUpdaterEvent({ type: 'error', stage: 'start', message: error?.message || 'Unknown error' });
         return { supported: true, reason: 'error', error: error.message };
     }
 }
@@ -1670,11 +1742,6 @@ function showDesktopNotification(title, body, options = {}) {
         if (!notificationService) {
             return;
         }
-        
-        const settings = readLauncherSettings();
-        const enabled = settings ? settings.notificationsEnabled !== false : true;
-        notificationService.setEnabled(enabled);
-        
         notificationService.show(title, body, options);
     } catch (error) {
         // Silent error
@@ -1782,8 +1849,6 @@ function playSoundEffect(requestedType = DEFAULT_SOUND_TYPE) {
     lastPlaySoundAt = now;
     let win = null;
     try {
-        const settings = readLauncherSettings();
-        if (settings && settings.notificationsEnabled === false) return;
         const soundPath = getSoundFilePath(type);
         win = getMainWindow();
         if (!win || win.isDestroyed()) return;
@@ -2272,7 +2337,7 @@ function createWindow () {
       contextIsolation: true,
       nodeIntegration: false,
       devTools: !app.isPackaged,
-      backgroundThrottling: true // Reduce CPU când fereastra e în background
+            backgroundThrottling: false // We manually control FPS for focused/blurred/idle states
     }
   });
 
@@ -2342,18 +2407,10 @@ function createWindow () {
   mainWindow.on('unmaximize', () => safeSend(mainWindow, 'window-maximized', false));
   mainWindow.on('focus', () => {
     resetIdleTimer();
-    // Reactivează frame rate normal când fereastra primește focus
-    if (mainWindow && mainWindow.webContents) {
-      mainWindow.webContents.setFrameRate(60);
-    }
+        applyFrameRateForState();
   });
   mainWindow.on('blur', () => {
-    // CRITICAL: Reduce frame rate DOAR când serverul NU rulează
-    // Când serverul rulează, menține performanța maximă pentru stabilitate
-    if (mainWindow && mainWindow.webContents && !localIsServerRunningGlobal) {
-      mainWindow.webContents.setFrameRate(10);
-    }
-    // Dacă serverul rulează, menține 60fps pentru performanță optimă
+        applyFrameRateForState();
   });
 }
 
@@ -2384,7 +2441,8 @@ function createWindow () {
         serverPropertiesFilePath = path.join(serverFilesDir, serverPropertiesFileName);
         
         // Start Java discovery in parallel with window creation for faster boot
-        const javaDiscoveryPromise = discoverAllJavaVersions().catch(err => {
+        javaDiscoveryPromise = discoverAllJavaVersions();
+        javaDiscoveryPromise.catch(err => {
             log.error('Java discovery failed:', err);
         });
         
@@ -2401,38 +2459,32 @@ function createWindow () {
                 }
             }
         } catch (_) {}
-  refreshMinimumJavaRequirementFromConfig();
-  
-  // Wait for Java discovery to complete (started earlier in parallel)
-  try {
-    await javaDiscoveryPromise;
-  } catch (err) {
-    log.warn('Java version discovery failed:', err);
-  }
-
-  // Initialize notification service
-  notificationService = new NotificationService();
-  
-  // Set fallback callback to send in-app notifications
-  notificationService.setFallbackCallback((title, body) => {
-    const win = getMainWindow();
-    if (win && !win.isDestroyed()) {
-      safeSend(win, 'show-in-app-notification', { title, body });
-    }
-  });
-  
-  // Set sound callback
-  notificationService.setSoundCallback((soundType) => {
-    playSoundEffect(soundType);
-  });
+        refreshMinimumJavaRequirementFromConfig();
 
         // Do not create MinecraftServer folder at startup; create it during setup/configure
-    createWindow();
-    setImmediate(() => {
-        killStrayServerProcess().catch((err) => {
-            log.warn('Background stray-server check failed:', err);
+        createWindow();
+
+        // Initialize notification service after the window exists so fallbacks can target it
+        notificationService = new NotificationService();
+
+        // Set fallback callback to send in-app notifications
+        notificationService.setFallbackCallback((title, body) => {
+            const win = getMainWindow();
+            if (win && !win.isDestroyed()) {
+                safeSend(win, 'show-in-app-notification', { title, body });
+            }
         });
-    });
+
+        // Set sound callback
+        notificationService.setSoundCallback((soundType) => {
+            playSoundEffect(soundType);
+        });
+
+        setImmediate(() => {
+            killStrayServerProcess().catch((err) => {
+                log.warn('Background stray-server check failed:', err);
+            });
+        });
 
   // Set desktop file name for Linux notifications
   if (process.platform === 'linux') {
@@ -2446,11 +2498,24 @@ function createWindow () {
   }
 
         setTimeout(startDiscordRpc, 1200);
+        if (shouldCheckForUpdates()) {
+            emitUpdaterEvent({ type: 'idle', supported: true });
+        } else {
+            emitUpdaterEvent({
+                type: 'unsupported',
+                reason: getAutoUpdateUnsupportedHint(),
+                platform: process.platform,
+                arch: process.arch,
+                packaged: app.isPackaged,
+                initial: true
+            });
+        }
         setTimeout(() => triggerAutoUpdateCheck('startup', { silent: true }), 2000);
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow();});
 });
 
 autoUpdater.on('checking-for-update', () => {
+    emitUpdaterEvent({ type: 'checking', silent: updaterSilentMode });
     if (!updaterSilentMode) {
         sendConsole('Updater: Checking for updates...', 'INFO');
     } else {
@@ -2459,11 +2524,14 @@ autoUpdater.on('checking-for-update', () => {
 });
 autoUpdater.on('update-available', (info) => {
     updaterSilentMode = false; // surface progress now that we have an update
-    sendConsole(`Updater: Update available! Version: ${info.version}`, 'SUCCESS');
+    lastAvailableUpdateInfo = info;
+    sendConsole(`Updater: Update available! Version: ${info.version} (download it from Settings when ready)`, 'SUCCESS');
+    pushStatus('Updater: Update available. Open Settings → Application Updates to download it.', true, 'updater-available');
     showDesktopNotification(
         getTranslation('notificationUpdateAvailable'),
-        getTranslation('updateAvailableBody', { version: info.version })
+        getTranslation('updateManualDownloadBody', { version: info.version })
     );
+    emitUpdaterEvent({ type: 'available', version: info?.version || null, timestamp: Date.now() });
 });
 autoUpdater.on('update-not-available', (info) => {
     if (!updaterSilentMode) {
@@ -2472,6 +2540,9 @@ autoUpdater.on('update-not-available', (info) => {
         log.info('Updater: No updates (silent).');
     }
     updaterSilentMode = false;
+    lastAvailableUpdateInfo = null;
+    autoUpdateDownloadInFlight = false;
+    emitUpdaterEvent({ type: 'not-available', version: info?.version || null, timestamp: Date.now() });
 });
 autoUpdater.on('error', (err) => {
     if (!updaterSilentMode) {
@@ -2484,22 +2555,41 @@ autoUpdater.on('error', (err) => {
         log.warn(`Updater: Error during update (silent run): ${err.message}`);
     }
     updaterSilentMode = false;
+    autoUpdateDownloadInFlight = false;
+    autoUpdateCheckInFlight = false;
+    emitUpdaterEvent({ type: 'error', stage: 'runtime', message: err?.message || 'Unknown error' });
 });
-autoUpdater.on('download-progress', (p) => sendStatus(`Download speed: ${Math.round(p.bytesPerSecond / 1024)} KB/s - Downloaded ${Math.round(p.percent)}%`, true));
+autoUpdater.on('download-progress', (p) => {
+    updaterSilentMode = false;
+    autoUpdateDownloadInFlight = true;
+    sendStatus(`Download speed: ${Math.round(p.bytesPerSecond / 1024)} KB/s - Downloaded ${Math.round(p.percent)}%`, true);
+    emitUpdaterEvent({
+        type: 'progress',
+        percent: Number.isFinite(p?.percent) ? p.percent : 0,
+        bytesPerSecond: Number.isFinite(p?.bytesPerSecond) ? p.bytesPerSecond : 0,
+        transferred: Number.isFinite(p?.transferred) ? p.transferred : 0,
+        total: Number.isFinite(p?.total) ? p.total : 0
+    });
+});
 autoUpdater.on('update-downloaded', (info) => {
-  sendConsole(`Updater: Update downloaded (${info.version}). It will be installed on restart.`, 'SUCCESS');
+    updaterSilentMode = false;
+    autoUpdateDownloadInFlight = false;
+    lastAvailableUpdateInfo = null;
+    sendConsole(`Updater: Update downloaded (${info.version}). Installing now...`, 'SUCCESS');
+    pushStatus('Updater: Installing update...', true, 'updater-installing');
     showDesktopNotification(
         getTranslation('notificationUpdateReady'),
-        getTranslation('updateReadyBody', { version: info.version })
+        getTranslation('updateInstallingBody', { version: info.version })
     );
-  dialog.showMessageBox({
-    type: 'info',
-    title: 'Update Ready',
-    message: 'A new version has been downloaded. Restart the application to install the update.',
-    buttons: ['Restart Now', 'Later']
-  }).then(({ response }) => {
-    if (response === 0) autoUpdater.quitAndInstall();
-  });
+    emitUpdaterEvent({ type: 'downloaded', version: info?.version || null, timestamp: Date.now() });
+    setTimeout(() => {
+        try {
+            autoUpdater.quitAndInstall(false, true);
+        } catch (error) {
+            log.error(`Failed to install update: ${error.message}`);
+            emitUpdaterEvent({ type: 'error', stage: 'install', message: error?.message || 'Failed to install update' });
+        }
+    }, 1500);
 });
 
 app.on('before-quit', () => {
@@ -2564,6 +2654,7 @@ ipcMain.on('app-ready-to-show', () => {
     mainWindow.show();
     flushStatusBuffer();
     flushConsoleBuffer();
+    flushUpdaterEventBuffer();
 });
 
 ipcMain.handle('get-settings', () => {
@@ -2573,8 +2664,7 @@ ipcMain.handle('get-settings', () => {
         autoStartServer: settings.autoStartServer || false,
         autoStartDelay: settings.autoStartDelay || 5,
         language: settings.language || 'en',
-        theme: settings.theme || 'default',
-        notificationsEnabled: (settings.notificationsEnabled !== false)
+        theme: settings.theme || 'default'
     };
 });
 
@@ -2589,9 +2679,58 @@ ipcMain.handle('check-for-updates', async () => {
     }
 });
 
+ipcMain.handle('download-update', async () => {
+    if (!shouldCheckForUpdates()) {
+        const hint = getAutoUpdateUnsupportedHint();
+        emitUpdaterEvent({
+            type: 'unsupported',
+            reason: hint,
+            platform: process.platform,
+            arch: process.arch,
+            packaged: app.isPackaged
+        });
+        return { supported: false, reason: 'unsupported' };
+    }
+    if (!lastAvailableUpdateInfo) {
+        const message = 'No update is currently available to download.';
+        emitUpdaterEvent({ type: 'error', stage: 'download', message });
+        return { supported: true, reason: 'no-update' };
+    }
+    if (autoUpdateDownloadInFlight) {
+        emitUpdaterEvent({ type: 'in-progress', reason: 'download-in-progress' });
+        return { supported: true, reason: 'in-progress' };
+    }
+    try {
+        autoUpdateDownloadInFlight = true;
+        sendConsole('Updater: Downloading update package...', 'INFO');
+        pushStatus('Updater: Downloading update...', true, 'updater-downloading');
+        emitUpdaterEvent({ type: 'download-started', version: lastAvailableUpdateInfo?.version || null });
+        const pending = autoUpdater.downloadUpdate();
+        if (pending && typeof pending.finally === 'function') {
+            pending.finally(() => { autoUpdateDownloadInFlight = false; });
+        } else {
+            autoUpdateDownloadInFlight = false;
+        }
+        if (pending && typeof pending.catch === 'function') {
+            pending.catch((error) => {
+                sendConsole(`Updater: Download failed - ${error?.message || 'Unknown error'}`, 'ERROR');
+                pushStatus('Updater: Download failed.', false, 'updater-download-failed');
+                emitUpdaterEvent({ type: 'error', stage: 'download', message: error?.message || 'Download failed' });
+            });
+        }
+        return { supported: true, reason: 'started' };
+    } catch (error) {
+        autoUpdateDownloadInFlight = false;
+        log.warn(`Manual update download failed: ${error.message}`);
+        emitUpdaterEvent({ type: 'error', stage: 'download-start', message: error?.message || 'Unknown error' });
+        return { supported: true, reason: 'error', error: error.message };
+    }
+});
+
 ipcMain.on('set-settings', (event, settings) => {
     const currentSettings = readLauncherSettings();
     const newSettings = { ...currentSettings, ...settings };
+    delete newSettings.notificationsEnabled;
     app.setLoginItemSettings({ openAtLogin: newSettings.openAtLogin });
     
     writeJsonFile(launcherSettingsFilePath, newSettings, launcherSettingsFileName);
@@ -2639,6 +2778,10 @@ ipcMain.on('restart-app', () => {
 ipcMain.handle('get-app-version', () => version);
 ipcMain.handle('is-dev', () => !app.isPackaged);
 ipcMain.handle('get-server-config', () => readServerConfig());
+ipcMain.handle('get-system-memory', () => {
+    const totalGB = Number((os.totalmem() / (1024 * 1024 * 1024)).toFixed(1));
+    return { totalGB };
+});
 ipcMain.handle('get-server-properties', () => {
     if (!fs.existsSync(serverPropertiesFilePath)) return null;
     try {
@@ -2804,67 +2947,6 @@ ipcMain.handle('upload-plugins', async () => {
             added.push(base);
         }
         return { ok: true, added };
-    } catch (e) {
-        return { ok: false, error: e.message };
-    }
-});
-function readServerPropertiesObject() {
-    if (!fs.existsSync(serverPropertiesFilePath)) return {};
-    try {
-        const fileContent = fs.readFileSync(serverPropertiesFilePath, 'utf8');
-        const props = {};
-        fileContent.split(/\r?\n/).forEach(line => {
-            if (line.startsWith('#') || !line.includes('=')) return;
-            const [k, ...rest] = line.split('=');
-            props[k.trim()] = rest.join('=').trim();
-        });
-        return props;
-    } catch (e) {
-        return {};
-    }
-}
-
-ipcMain.handle('get-worlds-info', async () => {
-    try {
-        const props = readServerPropertiesObject();
-        const levelName = props['level-name'] || 'world';
-        const entries = fs.readdirSync(serverFilesDir, { withFileTypes: true });
-        const candidates = entries.filter(e => e.isDirectory()).map(e => e.name).filter(name => {
-            return fs.existsSync(path.join(serverFilesDir, name, 'level.dat'));
-        });
-        const exists = {
-            overworld: fs.existsSync(path.join(serverFilesDir, levelName)),
-            nether: fs.existsSync(path.join(serverFilesDir, `${levelName}_nether`)),
-            the_end: fs.existsSync(path.join(serverFilesDir, `${levelName}_the_end`))
-        };
-        return { levelName, candidates, exists };
-    } catch (e) {
-        return { levelName: 'world', candidates: [], exists: {} };
-    }
-});
-
-ipcMain.handle('set-level-name', async (_event, newName) => {
-    try {
-        if (!newName || /[\\/:*?"<>|]/.test(newName)) {
-            return { ok: false, error: 'Invalid world name.' };
-        }
-        if (!fs.existsSync(serverPropertiesFilePath)) {
-            return { ok: false, error: 'server.properties not found. Run server once.' };
-        }
-        const lines = fs.readFileSync(serverPropertiesFilePath, 'utf8').split(/\r?\n/);
-        let changed = false;
-        const updated = lines.map(line => {
-            if (line.startsWith('#') || !line.includes('=')) return line;
-            const [key] = line.split('=');
-            if (key.trim() === 'level-name') {
-                changed = true;
-                return `level-name=${newName}`;
-            }
-            return line;
-        });
-        if (!changed) updated.push(`level-name=${newName}`);
-        fs.writeFileSync(serverPropertiesFilePath, updated.join('\n'));
-        return { ok: true };
     } catch (e) {
         return { ok: false, error: e.message };
     }

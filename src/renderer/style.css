@@ -17,28 +17,6 @@ body {
     text-rendering: optimizeLegibility;
 }
 
-body.low-spec-mode *,
-body.low-spec-mode *::before,
-body.low-spec-mode *::after {
-    animation: none !important;
-    transition: none !important;
-}
-
-body.low-spec-mode .animate-fadeIn {
-    animation: none !important;
-    opacity: 1 !important;
-}
-
-body.low-spec-mode .shadow-xl,
-body.low-spec-mode .shadow-lg,
-body.low-spec-mode .shadow-md,
-body.low-spec-mode .shadow,
-body.low-spec-mode .btn-primary,
-body.low-spec-mode .btn-secondary,
-body.low-spec-mode .btn-danger,
-body.low-spec-mode .btn-success {
-    box-shadow: none !important;
-}
 
 
 /* Block text selection globally, but keep it enabled for the console and form fields */
@@ -548,6 +526,24 @@ input:checked + .switch-track .switch-thumb {
     margin-top: 0.75rem;
     border-color: #4a5568;
     overflow: visible; /* ensure inner elements are fully shown */
+}
+
+.ram-slider-container {
+    transition: max-height 0.35s ease, opacity 0.25s ease, margin-top 0.35s ease;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    margin-top: 0;
+    border: 1px solid transparent;
+    width: 100%;
+}
+
+.ram-slider-container.visible {
+    max-height: 160px;
+    opacity: 1;
+    margin-top: 0.75rem;
+    border-color: #4a5568;
+    overflow: visible;
 }
 
 /* Range slider uses theme colors so it matches selected theme */

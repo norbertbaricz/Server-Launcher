@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     onJavaInstallRequired: (callback) => ipcRenderer.on('java-install-required', (_event, ...args) => callback(...args)),
     onJavaInstallStatus: (callback) => ipcRenderer.on('java-install-status', (_event, ...args) => callback(...args)),
     onSetupFinished: (callback) => ipcRenderer.on('setup-finished', (_event, ...args) => callback(...args)),
+    onUpdaterEvent: (callback) => ipcRenderer.on('updater-event', (_event, ...args) => callback(...args)),
     onPlaySound: (callback) => ipcRenderer.on('play-sound', (_event, ...args) => callback(...args)),
 
 
@@ -23,8 +24,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getPlugins: () => ipcRenderer.invoke('get-plugins'),
     deletePlugin: (name) => ipcRenderer.invoke('delete-plugin', name),
     uploadPlugins: () => ipcRenderer.invoke('upload-plugins'),
-    getWorldsInfo: () => ipcRenderer.invoke('get-worlds-info'),
-    setLevelName: (name) => ipcRenderer.invoke('set-level-name', name),
     configureServer: (options) => ipcRenderer.send('configure-server', options),
     startServer: () => ipcRenderer.send('start-server'),
     stopServer: () => ipcRenderer.send('stop-server'),
@@ -40,14 +39,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getServerProperties: () => ipcRenderer.invoke('get-server-properties'),
     getAppPath: () => ipcRenderer.invoke('get-app-path'),
     checkInitialSetup: () => ipcRenderer.invoke('check-initial-setup'),
+    checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
     getAvailableVersions: (serverType) => ipcRenderer.invoke('get-available-versions', serverType),
     getLocalIP: () => ipcRenderer.invoke('get-local-ip'),
     getPublicIP: () => ipcRenderer.invoke('get-public-ip'),
     getIconPath: () => ipcRenderer.invoke('get-icon-path'),
     getTranslations: (lang) => ipcRenderer.invoke('get-translations', lang),
-    getAvailableLanguages: () => ipcRenderer.invoke('get-available-languages')
+    getAvailableLanguages: () => ipcRenderer.invoke('get-available-languages'),
+    downloadUpdate: () => ipcRenderer.invoke('download-update')
     ,getServerPathInfo: () => ipcRenderer.invoke('get-server-path-info')
     ,selectServerLocation: () => ipcRenderer.invoke('select-server-location')
     ,setServerPathLock: (locked) => ipcRenderer.send('set-server-path-lock', locked)
     ,getAvailableThemes: () => ipcRenderer.invoke('get-available-themes')
+    ,getSystemMemory: () => ipcRenderer.invoke('get-system-memory')
 });

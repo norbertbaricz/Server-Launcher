@@ -20,7 +20,7 @@ const SOUND_SEARCH_DIRS = ['', 'sounds'];
 const ERROR_SOUND_KEYWORDS = ['error', 'failed', 'fail', 'not found', 'crash', 'stopped unexpectedly', 'timed out', 'unavailable', 'unable'];
 const SUCCESS_SOUND_KEYWORDS = ['success', 'successfully', 'ready', 'completed', 'installed', 'configured', 'downloaded', 'server started', 'server ready', 'done'];
 
-function createSoundService({ getMainWindow, readLauncherSettings, safeSend }) {
+function createSoundService({ getMainWindow, safeSend }) {
   let lastStatusSoundSignature = null;
   let lastStatusSoundAt = 0;
   let lastPlaySoundAt = 0;
@@ -64,8 +64,6 @@ function createSoundService({ getMainWindow, readLauncherSettings, safeSend }) {
     lastPlaySoundAt = now;
     let win = null;
     try {
-      const settings = typeof readLauncherSettings === 'function' ? readLauncherSettings() : null;
-      if (settings && settings.notificationsEnabled === false) return;
       const soundPath = getSoundFilePath(type);
       win = typeof getMainWindow === 'function' ? getMainWindow() : null;
       if (!win || win.isDestroyed()) return;

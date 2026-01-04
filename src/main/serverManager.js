@@ -398,14 +398,14 @@ function setupIpcHandlers() {
             autoStartServer: settings.autoStartServer || false,
             autoStartDelay: settings.autoStartDelay || 5,
             language: settings.language || 'en',
-            theme: settings.theme || 'default',
-            notificationsEnabled: (settings.notificationsEnabled !== false)
+            theme: settings.theme || 'default'
         };
     });
 
     ipcMain.on('set-settings', (event, settings) => {
         const currentSettings = readLauncherSettings();
         const newSettings = { ...currentSettings, ...settings };
+        delete newSettings.notificationsEnabled;
         app.setLoginItemSettings({ openAtLogin: newSettings.openAtLogin });
         writeJsonFile(launcherSettingsFilePath, newSettings, launcherSettingsFileName);
 
