@@ -265,6 +265,10 @@ const DISCORD_RPC_INTERVAL_IDLE = 60000; // 60 seconds when idle/stopped
 const FPS_FOCUSED = 40; // Target when the window is active and in use
 const FPS_BLURRED_ACTIVE = 25; // Target when unfocused but still active (or server running)
 const FPS_IDLE = 3; // Target when unfocused and fully idle while the server is stopped
+const STABLE_VERSION_CACHE_TTL = 60 * 60 * 1000; // 1 hour cache for Mojang manifest
+const MOJANG_VERSION_MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json';
+let cachedStableVersionSet = null;
+let cachedStableVersionFetchedAt = 0;
 // Frame rates: 40fps focused, 25fps unfocused while active, 3fps when unfocused + idle
 // ============================================
 
@@ -349,6 +353,51 @@ function sortVersionsDesc(list) {
     return 0;
   });
   return copy;
+}
+
+async function getStableMinecraftVersionSet() {
+    const now = Date.now();
+    if (cachedStableVersionSet && (now - cachedStableVersionFetchedAt) < STABLE_VERSION_CACHE_TTL) {
+        return cachedStableVersionSet;
+    }
+    try {
+        const manifest = await fetchJson(MOJANG_VERSION_MANIFEST_URL, 'Minecraft version manifest');
+        const versions = Array.isArray(manifest?.versions) ? manifest.versions : [];
+        const releases = versions
+            .filter(entry => entry && entry.id && entry.type === 'release')
+            .map(entry => entry.id);
+        if (!releases.length) {
+            throw new Error('Manifest does not contain release entries.');
+        }
+        cachedStableVersionSet = new Set(releases);
+        cachedStableVersionFetchedAt = now;
+        return cachedStableVersionSet;
+    } catch (error) {
+        if (cachedStableVersionSet) {
+            sendConsole(`Falling back to cached stable manifest after error: ${error.message}`, 'WARN');
+            return cachedStableVersionSet;
+        }
+        throw error;
+    }
+}
+
+async function filterStableMinecraftVersions(list) {
+    const versions = Array.isArray(list) ? list.map(v => String(v).trim()).filter(Boolean) : [];
+    if (!versions.length) return [];
+    try {
+        const stableSet = await getStableMinecraftVersionSet();
+        if (!stableSet || !stableSet.size) {
+            return versions;
+        }
+        const filtered = versions.filter(v => stableSet.has(v));
+        return filtered;
+    } catch (error) {
+        if (cachedStableVersionSet) {
+            sendConsole(`Using cached stable version list after manifest error: ${error.message}`, 'WARN');
+            return versions.filter(v => cachedStableVersionSet.has(v));
+        }
+        throw error;
+    }
 }
 
 function getServerFlavorLabel(type) {
@@ -2845,16 +2894,21 @@ ipcMain.handle('get-available-versions', async (_event, serverType) => {
         if (type === SERVER_TYPES.PAPER) {
             const projectApiUrl = 'https://api.papermc.io/v2/projects/paper';
             const projectResponseData = await fetchJson(projectApiUrl, 'Paper versions');
-            const versions = projectResponseData?.versions || [];
-            if (Array.isArray(versions) && versions.length > 0) {
+            let versions = Array.isArray(projectResponseData?.versions) ? projectResponseData.versions : [];
+            versions = await filterStableMinecraftVersions(versions);
+            if (versions.length > 0) {
                 return sortVersionsDesc(versions);
             }
-            throw new Error('No versions found.');
+            throw new Error('No stable versions found.');
         } else if (type === SERVER_TYPES.FABRIC) {
             const fabricGameUrl = 'https://meta.fabricmc.net/v2/versions/game';
             const response = await fetchJson(fabricGameUrl, 'Fabric game versions');
             const stable = Array.isArray(response) ? response.filter(v => v && v.version && v.stable) : [];
-            const versions = stable.map(v => v.version);
+            let versions = stable.map(v => v.version);
+            versions = await filterStableMinecraftVersions(versions);
+            if (!versions.length) {
+                throw new Error('No stable versions found.');
+            }
             return sortVersionsDesc(versions);
         } else if (type === SERVER_TYPES.BEDROCK) {
             const platformFolder = getBedrockPlatformFolder();
