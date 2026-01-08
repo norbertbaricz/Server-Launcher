@@ -147,8 +147,7 @@
   "setupCheckOk": "설정 확인 OK.",
   "settingsSaved": "설정이 저장되었습니다.",
   "error": "오류",
-  "criticalError": "심각한 오류: {error}.
-",
+  "criticalError": "심각한 오류: {error}.",
   "launcherError": "런처 오류!",
   "eulaError": "EULA 오류.",
   "serverJarNotFound": "서버 JAR을 찾을 수 없습니다.",

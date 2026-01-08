@@ -22,6 +22,24 @@ const launcherSettingsFileName = 'launcher-settings.json';
 let serverPropertiesFilePath;
 const serverPropertiesFileName = 'server.properties';
 
+// Read server.properties into a simple object without throwing
+function readServerPropertiesObject() {
+    if (!serverPropertiesFilePath || !fs.existsSync(serverPropertiesFilePath)) return {};
+    try {
+        const props = {};
+        const lines = fs.readFileSync(serverPropertiesFilePath, 'utf8').split(/\r?\n/);
+        for (const line of lines) {
+            if (!line || line.startsWith('#') || !line.includes('=')) continue;
+            const [key, ...valueParts] = line.split('=');
+            props[key.trim()] = valueParts.join('=').trim();
+        }
+        return props;
+    } catch (error) {
+        try { log.warn(`Failed to read server.properties: ${error.message}`); } catch (_) {}
+        return {};
+    }
+}
+
 function getCleanEnvForJava() {
   const env = { ...process.env };
   delete env.LD_LIBRARY_PATH;
