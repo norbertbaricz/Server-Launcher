@@ -43,13 +43,36 @@ if (typeof find !== 'function' && find?.default) {
 const AdmZip = require('adm-zip');
 const NotificationService = require('./src/services/NotificationService');
 
+// Translation cache to avoid blocking disk reads on every lookup
+const TRANSLATION_DEFAULT_LANG = 'en';
+const TRANSLATION_CACHE_TTL_MS = 30000;
+let translationCache = null;
+let translationCacheLoadedAt = 0;
+
+function loadTranslationCache() {
+    try {
+        const now = Date.now();
+        if (translationCache && (now - translationCacheLoadedAt) < TRANSLATION_CACHE_TTL_MS) {
+            return translationCache;
+        }
+        const langPath = path.join(__dirname, 'src', 'lang', `${TRANSLATION_DEFAULT_LANG}.json`);
+        if (!fs.existsSync(langPath)) return null;
+        const translations = JSON.parse(fs.readFileSync(langPath, 'utf8'));
+        translationCache = translations;
+        translationCacheLoadedAt = now;
+        return translationCache;
+    } catch (_) {
+        translationCache = null;
+        translationCacheLoadedAt = 0;
+        return null;
+    }
+}
+
 // Helper function to get translation from en.json
 function getTranslation(key, replacements = {}) {
     try {
-        const langPath = path.join(__dirname, 'src', 'lang', 'en.json');
-        if (!fs.existsSync(langPath)) return key;
-        const translations = JSON.parse(fs.readFileSync(langPath, 'utf8'));
-        let text = translations[key] || key;
+        const translations = loadTranslationCache();
+        let text = (translations && translations[key]) || key;
         Object.keys(replacements).forEach(placeholder => {
             text = text.replace(new RegExp(`\\{${placeholder}\\}`, 'g'), replacements[placeholder]);
         });
@@ -231,6 +254,7 @@ if (process.platform === 'linux') {
     app.name = 'Server Launcher';
 }
 const DEFAULT_JAVA_SERVER_PORT = 25565;
+const PERFORMANCE_STATS_INTERVAL_MS = 2000;
 
 // Server JAR file names
 const paperJarName = 'paper.jar';
@@ -3260,7 +3284,7 @@ async function startBedrockServer(serverConfig) {
                 sendServerStateChange(false);
             }
         }
-    }, 1000);
+    }, PERFORMANCE_STATS_INTERVAL_MS);
 
     const startedRegex = /server started\b/i;
 
@@ -3854,25 +3878,10 @@ ipcMain.on('start-server', async () => {
                     sendServerStateChange(false);
                 }
             }
-        }, 1000);
+        }, PERFORMANCE_STATS_INTERVAL_MS);
 
         serverProcess.stdout.on('data', (data) => {
             const rawOutput = data.toString();
-
-            // Funcție pentru curățarea fișierelor lock/pid
-            function cleanServerLocks(serverDir) {
-                const fs = require('fs');
-                const path = require('path');
-                if (!fs.existsSync(serverDir)) return;
-                const files = fs.readdirSync(serverDir);
-                files.forEach(file => {
-                    if (file.endsWith('.lock') || file.endsWith('.pid') || file.endsWith('.tmp')) {
-                        try {
-                            fs.unlinkSync(path.join(serverDir, file));
-                        } catch (_) {}
-                    }
-                });
-            }
             const cleanOutput = stripAnsiCodes(rawOutput).trimEnd();
 
             // Detect /list output for latency probe (Java)
