@@ -513,12 +513,32 @@ function renderMemoryUsage() {
     }
 }
 
+function renderLatency() {
+    if (!serverTpsSpan) return;
+    if (typeof lastCmdLatencyMs === 'number' && !Number.isNaN(lastCmdLatencyMs)) {
+        const ms = Math.max(0, parseFloat(lastCmdLatencyMs) || 0);
+        const msText = ms >= 100 ? ms.toFixed(0) : ms.toFixed(1);
+        serverTpsSpan.textContent = formatTranslation('latencyFormat', { value: msText });
+        if (ms >= 300) {
+            serverTpsSpan.style.color = '#ef4444';
+        } else if (ms >= 150) {
+            serverTpsSpan.style.color = '#facc15';
+        } else {
+            serverTpsSpan.style.color = '#4ade80';
+        }
+        return;
+    }
+    serverTpsSpan.textContent = translate('latencyPlaceholder');
+    serverTpsSpan.style.color = '';
+}
+
 let localIsServerRunning = false;
 let currentServerConfig = {};
 let isModalAnimating = false;
 let availableMcVersionsCache = {};
 let allocatedRamCache = '-';
 let lastMemoryGB = null;
+let lastCmdLatencyMs = null;
 let autoStartIsActive = false; 
 let countdownInterval = null;
 let isDownloadingFromServer = false;
@@ -839,6 +859,10 @@ async function setLanguage(lang) {
 
         renderAutoUpdateState();
         refreshRamSliderLabels();
+        updateButtonStates(localIsServerRunning);
+        renderMemoryUsage();
+        renderLatency();
+        fetchAndDisplayIPs(localIsServerRunning).catch(() => {});
         activeLanguage = lang || activeLanguage;
 
     } catch (error) {
@@ -1905,16 +1929,8 @@ window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, tps, la
 
     // Display command latency from /list response time (higher precision)
     if (typeof cmdLatencyMs !== 'undefined' && cmdLatencyMs !== null) {
-        const ms = Math.max(0, parseFloat(cmdLatencyMs) || 0);
-        const msText = ms >= 100 ? ms.toFixed(0) : ms.toFixed(1);
-        serverTpsSpan.textContent = formatTranslation('latencyFormat', { value: msText });
-        if (ms >= 300) {
-            serverTpsSpan.style.color = '#ef4444';
-        } else if (ms >= 150) {
-            serverTpsSpan.style.color = '#facc15';
-        } else {
-            serverTpsSpan.style.color = '#4ade80';
-        }
+        lastCmdLatencyMs = Math.max(0, parseFloat(cmdLatencyMs) || 0);
+        renderLatency();
     }
 });
 
