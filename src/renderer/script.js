@@ -86,6 +86,9 @@ let availableThemes = [];
 let themeMap = {};
 let defaultTranslations = {};
 let currentTranslations = {};
+let activeLanguage = 'en';
+let pendingSettingsLanguage = null;
+let languageOnSettingsOpen = null;
 const UPDATE_PILL_BASE_CLASS = 'text-xs font-semibold px-3 py-1 rounded-full whitespace-nowrap';
 const UPDATE_BUTTON_BASE_CLASS = 'btn-secondary px-4 py-2 rounded-md font-semibold flex items-center gap-2';
 const autoUpdateState = {
@@ -266,11 +269,11 @@ function setUpdateButtonState({ disabled = false, busy = false, mode = 'check' }
     if (checkUpdatesButtonIcon) {
         let baseIcon = 'fa-sync-alt';
         switch (mode) {
-            case 'download':
-                baseIcon = 'fa-download';
-                break;
             case 'restart':
                 baseIcon = 'fa-power-off';
+                break;
+            case 'download':
+                baseIcon = 'fa-download';
                 break;
             case 'installing':
                 baseIcon = 'fa-rocket';
@@ -284,11 +287,11 @@ function setUpdateButtonState({ disabled = false, busy = false, mode = 'check' }
     if (checkUpdatesButtonText) {
         let label;
         switch (mode) {
+            case 'restart':
+                label = translate('updateRestartNowButton');
+                break;
             case 'download':
                 label = translate('downloadUpdateButton');
-                break;
-            case 'restart':
-                label = translate('javaRestartButton');
                 break;
             case 'installing':
                 label = translate('updateInstallingLabel');
@@ -353,6 +356,14 @@ function renderAutoUpdateState() {
             setUpdateButtonState({ disabled: true, busy: true, mode: 'download' });
             toggleUpdateProgress(true, autoUpdateState.percent, autoUpdateState.bytesPerSecond);
             setUpdateIcon('fa-cloud-arrow-down', true);
+            break;
+        case 'ready-to-install':
+            updateStatusLabel.textContent = translate('updateRestartReadyLabel');
+            updateStatusSubtext.textContent = translate('updateRestartReadySubtext');
+            setUpdatePill(translate('updateStateReady'), 'bg-emerald-600 text-white');
+            setUpdateButtonState({ disabled: false, busy: false, mode: 'restart' });
+            toggleUpdateProgress(false);
+            setUpdateIcon('fa-power-off');
             break;
         case 'installing':
             updateStatusLabel.textContent = translate('updateInstallingLabel');
@@ -434,6 +445,13 @@ function handleUpdaterEvent(payload = {}) {
             autoUpdateState.version = payload.version || autoUpdateState.version;
             break;
         case 'downloaded':
+            autoUpdateState.status = 'ready-to-install';
+            autoUpdateState.version = payload.version || autoUpdateState.version;
+            autoUpdateState.lastCheckedAt = payload.timestamp || Date.now();
+            autoUpdateState.percent = 100;
+            autoUpdateState.bytesPerSecond = 0;
+            break;
+        case 'installing':
             autoUpdateState.status = 'installing';
             autoUpdateState.version = payload.version || autoUpdateState.version;
             autoUpdateState.lastCheckedAt = payload.timestamp || Date.now();
@@ -821,6 +839,7 @@ async function setLanguage(lang) {
 
         renderAutoUpdateState();
         refreshRamSliderLabels();
+        activeLanguage = lang || activeLanguage;
 
     } catch (error) {
         addToConsole(`Could not apply language: ${error.message}`, 'ERROR');
@@ -1146,6 +1165,16 @@ function openSettingsView(callback) {
 }
 
 function closeSettingsView(callback) {
+    const revertLang = languageOnSettingsOpen || activeLanguage || 'en';
+    pendingSettingsLanguage = null;
+    languageOnSettingsOpen = null;
+    if (languageSettingsSelect) languageSettingsSelect.value = revertLang;
+    if (languageModalSelect) languageModalSelect.value = revertLang;
+    if (languageJavaSelect) languageJavaSelect.value = revertLang;
+    if (revertLang !== activeLanguage) {
+        activeLanguage = revertLang;
+        setLanguage(revertLang).catch(() => {});
+    }
     return settingsView.close(callback);
 }
 
@@ -1364,7 +1393,10 @@ settingsButton.addEventListener('click', async () => {
         autoStartDelayContainer.classList.remove('visible');
     }
     
-    languageSettingsSelect.value = launcherSettingsCache.language || 'en';
+    const currentLang = activeLanguage || launcherSettingsCache.language || 'en';
+    languageOnSettingsOpen = currentLang;
+    pendingSettingsLanguage = null;
+    if (languageSettingsSelect) languageSettingsSelect.value = currentLang;
     const savedTheme = ensureThemeCode(launcherSettingsCache.theme || 'skypixel');
     applyThemeClass(savedTheme);
     if (themeSelect) themeSelect.value = savedTheme;
@@ -1406,7 +1438,7 @@ saveSettingsButton.addEventListener('click', async () => {
     const selectedAutoStartDelay = parseInt(autoStartDelaySlider.value, 10);
     launcherSettingsCache.autoStartServer = autoStartEnabled;
     launcherSettingsCache.autoStartDelay = selectedAutoStartDelay;
-    const selectedLanguage = languageSettingsSelect.value;
+    const selectedLanguage = pendingSettingsLanguage || languageSettingsSelect.value;
     const prevLanguage = launcherSettingsCache.language || 'en';
     launcherSettingsCache.language = selectedLanguage;
     
@@ -1417,6 +1449,11 @@ saveSettingsButton.addEventListener('click', async () => {
     if (selectedLanguage !== prevLanguage) {
         try { await setLanguage(selectedLanguage); } catch (_) {}
     }
+    if (languageModalSelect) languageModalSelect.value = selectedLanguage;
+    if (languageJavaSelect) languageJavaSelect.value = selectedLanguage;
+    activeLanguage = selectedLanguage;
+    languageOnSettingsOpen = selectedLanguage;
+    pendingSettingsLanguage = null;
     
     const newProperties = {};
     serverPropertiesContainer.querySelectorAll('input, select').forEach(input => {
@@ -1655,6 +1692,8 @@ checkUpdatesButton?.addEventListener('click', async () => {
                 addToConsole(`Update download could not start: ${responseReason}`, 'WARN');
                 if (responseReason === 'in-progress' || responseReason === 'download-in-progress') {
                     autoUpdateState.status = 'downloading';
+                } else if (responseReason === 'already-downloaded') {
+                    autoUpdateState.status = 'ready-to-install';
                 } else if (responseReason === 'no-update') {
                     autoUpdateState.status = 'up-to-date';
                 } else if (responseReason === 'unsupported') {
@@ -1664,6 +1703,30 @@ checkUpdatesButton?.addEventListener('click', async () => {
                     autoUpdateState.errorMessage = response?.error || responseReason;
                 } else {
                     autoUpdateState.status = 'available';
+                }
+                renderAutoUpdateState();
+            }
+            return;
+        }
+        if (autoUpdateState.status === 'ready-to-install') {
+            setUpdateButtonState({ disabled: true, busy: true, mode: 'installing' });
+            autoUpdateState.status = 'installing';
+            renderAutoUpdateState();
+            const response = await window.electronAPI.installUpdate();
+            const responseReason = response?.reason;
+            if (responseReason && responseReason !== 'started') {
+                addToConsole(`Update restart could not start: ${responseReason}`, 'WARN');
+                if (responseReason === 'download-in-progress') {
+                    autoUpdateState.status = 'downloading';
+                } else if (responseReason === 'not-downloaded') {
+                    autoUpdateState.status = 'available';
+                } else if (responseReason === 'unsupported') {
+                    autoUpdateState.status = 'unsupported';
+                } else if (responseReason === 'error') {
+                    autoUpdateState.status = 'error';
+                    autoUpdateState.errorMessage = response?.error || responseReason;
+                } else {
+                    autoUpdateState.status = 'ready-to-install';
                 }
                 renderAutoUpdateState();
             }
@@ -1740,9 +1803,9 @@ themeJavaSelect.addEventListener('change', (event) => {
 
 languageSettingsSelect.addEventListener('change', (event) => {
     const newLang = event.target.value;
-    // Mirror selection only; do not apply or persist until Save & Apply
-    if (languageModalSelect) languageModalSelect.value = newLang;
-    if (languageJavaSelect) languageJavaSelect.value = newLang;
+    // Apply as preview only, persist only on Save & Apply
+    pendingSettingsLanguage = newLang;
+    setLanguage(newLang).catch(() => {});
 });
 
 window.electronAPI.onWindowMaximized((isMaximized) => {
@@ -2023,6 +2086,8 @@ async function applyPreferencesStartupStage(state) {
     if (languageSettingsSelect) languageSettingsSelect.value = savedLang;
     if (languageJavaSelect) languageJavaSelect.value = savedLang;
     await setLanguage(savedLang);
+    activeLanguage = savedLang || activeLanguage;
+    pendingSettingsLanguage = null;
 
     const appName = translate('appTitle');
     const versionValue = bootstrap.version || '?.?.?';

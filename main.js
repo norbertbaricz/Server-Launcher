@@ -663,6 +663,10 @@ const ansiConverter = new AnsiToHtml({
 
 autoUpdater.logger = log;
 autoUpdater.logger.transports.file.level = 'info';
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = false;
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = false;
 
 const clientId = '1397585400553541682';
 let rpc;
@@ -1718,6 +1722,8 @@ let autoUpdateCheckInFlight = false;
 let updaterSilentMode = false;
 let autoUpdateDownloadInFlight = false;
 let lastAvailableUpdateInfo = null;
+let updateReadyToInstall = false;
+let updateReadyInfo = null;
 
 function triggerAutoUpdateCheck(reason = 'manual', opts = {}) {
     const { silent = false } = opts;
@@ -2616,6 +2622,8 @@ autoUpdater.on('checking-for-update', () => {
 autoUpdater.on('update-available', (info) => {
     updaterSilentMode = false; // surface progress now that we have an update
     lastAvailableUpdateInfo = info;
+    updateReadyToInstall = false;
+    updateReadyInfo = null;
     sendConsole(`Updater: Update available! Version: ${info.version} (download it from Settings when ready)`, 'SUCCESS');
     pushStatus('Updater: Update available. Open Settings → Application Updates to download it.', true, 'updater-available');
     showDesktopNotification(
@@ -2632,6 +2640,8 @@ autoUpdater.on('update-not-available', (info) => {
     }
     updaterSilentMode = false;
     lastAvailableUpdateInfo = null;
+    updateReadyToInstall = false;
+    updateReadyInfo = null;
     autoUpdateDownloadInFlight = false;
     emitUpdaterEvent({ type: 'not-available', version: info?.version || null, timestamp: Date.now() });
 });
@@ -2666,21 +2676,15 @@ autoUpdater.on('update-downloaded', (info) => {
     updaterSilentMode = false;
     autoUpdateDownloadInFlight = false;
     lastAvailableUpdateInfo = null;
-    sendConsole(`Updater: Update downloaded (${info.version}). Installing now...`, 'SUCCESS');
-    pushStatus('Updater: Installing update...', true, 'updater-installing');
+    updateReadyToInstall = true;
+    updateReadyInfo = info;
+    sendConsole(`Updater: Update downloaded (${info.version}). Ready to restart.`, 'SUCCESS');
+    pushStatus('Updater: Update downloaded. Restart to install.', true, 'updater-ready');
     showDesktopNotification(
         getTranslation('notificationUpdateReady'),
-        getTranslation('updateInstallingBody', { version: info.version })
+        getTranslation('updateReadyBody', { version: info.version })
     );
     emitUpdaterEvent({ type: 'downloaded', version: info?.version || null, timestamp: Date.now() });
-    setTimeout(() => {
-        try {
-            autoUpdater.quitAndInstall(false, true);
-        } catch (error) {
-            log.error(`Failed to install update: ${error.message}`);
-            emitUpdaterEvent({ type: 'error', stage: 'install', message: error?.message || 'Failed to install update' });
-        }
-    }, 1500);
 });
 
 app.on('before-quit', () => {
@@ -2759,6 +2763,44 @@ ipcMain.handle('get-settings', () => {
     };
 });
 
+ipcMain.on('set-settings', (event, settings) => {
+    const currentSettings = readLauncherSettings();
+    const newSettings = { ...currentSettings, ...settings };
+    delete newSettings.notificationsEnabled;
+    app.setLoginItemSettings({ openAtLogin: !!newSettings.openAtLogin });
+    writeJsonFile(launcherSettingsFilePath, newSettings, launcherSettingsFileName);
+
+    if (process.platform === 'linux') {
+        try {
+            const homeDir = os.homedir();
+            const autostartDir = path.join(homeDir, '.config', 'autostart');
+            const desktopFilePath = path.join(autostartDir, 'server-launcher.desktop');
+            if (!fs.existsSync(autostartDir)) {
+                fs.mkdirSync(autostartDir, { recursive: true });
+            }
+            if (newSettings.openAtLogin) {
+                const execPath = process.execPath;
+                const name = 'Server Launcher';
+                const desktopContent = [
+                    '[Desktop Entry]',
+                    'Type=Application',
+                    `Name=${name}`,
+                    `Exec="${execPath}"${app.isPackaged ? '' : ' .'}`,
+                    'X-GNOME-Autostart-enabled=true',
+                    'NoDisplay=false',
+                    'Terminal=false',
+                    `Comment=${name}`
+                ].join('\n');
+                fs.writeFileSync(desktopFilePath, desktopContent, 'utf8');
+            } else if (fs.existsSync(desktopFilePath)) {
+                fs.unlinkSync(desktopFilePath);
+            }
+        } catch (e) {
+            log.warn('Failed to manage Linux autostart entry:', e);
+        }
+    }
+});
+
 // Manual update trigger from renderer
 ipcMain.handle('check-for-updates', async () => {
     try {
@@ -2781,6 +2823,9 @@ ipcMain.handle('download-update', async () => {
             packaged: app.isPackaged
         });
         return { supported: false, reason: 'unsupported' };
+    }
+    if (updateReadyToInstall) {
+        return { supported: true, reason: 'already-downloaded' };
     }
     if (!lastAvailableUpdateInfo) {
         const message = 'No update is currently available to download.';
@@ -2818,42 +2863,50 @@ ipcMain.handle('download-update', async () => {
     }
 });
 
-ipcMain.on('set-settings', (event, settings) => {
-    const currentSettings = readLauncherSettings();
-    const newSettings = { ...currentSettings, ...settings };
-    delete newSettings.notificationsEnabled;
-    app.setLoginItemSettings({ openAtLogin: newSettings.openAtLogin });
-    
-    writeJsonFile(launcherSettingsFilePath, newSettings, launcherSettingsFileName);
-
-    if (process.platform === 'linux') {
-        try {
-            const homeDir = os.homedir();
-            const autostartDir = path.join(homeDir, '.config', 'autostart');
-            const desktopFilePath = path.join(autostartDir, 'server-launcher.desktop');
-            if (!fs.existsSync(autostartDir)) {
-                fs.mkdirSync(autostartDir, { recursive: true });
+ipcMain.handle('install-update', async () => {
+    if (!shouldCheckForUpdates()) {
+        const hint = getAutoUpdateUnsupportedHint();
+        emitUpdaterEvent({
+            type: 'unsupported',
+            reason: hint,
+            platform: process.platform,
+            arch: process.arch,
+            packaged: app.isPackaged
+        });
+        return { supported: false, reason: 'unsupported' };
+    }
+    if (autoUpdateDownloadInFlight) {
+        emitUpdaterEvent({ type: 'in-progress', reason: 'download-in-progress' });
+        return { supported: true, reason: 'download-in-progress' };
+    }
+    if (!updateReadyToInstall || !updateReadyInfo) {
+        return { supported: true, reason: 'not-downloaded' };
+    }
+    try {
+        const version = updateReadyInfo?.version || null;
+        updateReadyToInstall = false;
+        updateReadyInfo = null;
+        pushStatus('Updater: Installing update...', true, 'updater-installing');
+        emitUpdaterEvent({ type: 'installing', version, timestamp: Date.now() });
+        showDesktopNotification(
+            getTranslation('notificationUpdateReady'),
+            getTranslation('updateInstallingBody', { version: version || '?' })
+        );
+        setTimeout(() => {
+            try {
+                autoUpdater.quitAndInstall(false, true);
+            } catch (error) {
+                log.error(`Failed to install update: ${error.message}`);
+                updateReadyToInstall = true;
+                updateReadyInfo = updateReadyInfo || { version };
+                emitUpdaterEvent({ type: 'error', stage: 'install', message: error?.message || 'Failed to install update' });
             }
-            if (newSettings.openAtLogin) {
-                const execPath = app.isPackaged ? process.execPath : process.execPath;
-                const name = 'Server Launcher';
-                const desktopContent = [
-                    '[Desktop Entry]',
-                    'Type=Application',
-                    `Name=${name}`,
-                    `Exec="${execPath}"${app.isPackaged ? '' : ' .'}`,
-                    'X-GNOME-Autostart-enabled=true',
-                    'NoDisplay=false',
-                    'Terminal=false',
-                    `Comment=${name}`
-                ].join('\n');
-                fs.writeFileSync(desktopFilePath, desktopContent, 'utf8');
-            } else if (fs.existsSync(desktopFilePath)) {
-                fs.unlinkSync(desktopFilePath);
-            }
-        } catch (e) {
-            log.warn('Failed to manage Linux autostart entry:', e);
-        }
+        }, 800);
+        return { supported: true, reason: 'started' };
+    } catch (error) {
+        log.warn(`Manual update install failed: ${error.message}`);
+        emitUpdaterEvent({ type: 'error', stage: 'install-start', message: error?.message || 'Unknown error' });
+        return { supported: true, reason: 'error', error: error.message };
     }
 });
 

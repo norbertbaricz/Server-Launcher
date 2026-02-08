@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getTranslations: (lang) => ipcRenderer.invoke('get-translations', lang),
     getAvailableLanguages: () => ipcRenderer.invoke('get-available-languages'),
     downloadUpdate: () => ipcRenderer.invoke('download-update')
+    ,installUpdate: () => ipcRenderer.invoke('install-update')
     ,getServerPathInfo: () => ipcRenderer.invoke('get-server-path-info')
     ,selectServerLocation: () => ipcRenderer.invoke('select-server-location')
     ,setServerPathLock: (locked) => ipcRenderer.send('set-server-path-lock', locked)
