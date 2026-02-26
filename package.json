@@ -19,20 +19,20 @@
   "license": "ISC",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "electron": "^40.4.0",
-    "electron-builder": "^26.7.0",
+    "electron": "^40.6.1",
+    "electron-builder": "^26.8.1",
+    "eslint": "^10.0.2",
     "globals": "^17.3.0",
-    "tailwindcss": "^4.1.18",
-    "eslint": "^10.0.0"
+    "tailwindcss": "^4.2.1"
   },
   "dependencies": {
     "adm-zip": "^0.5.16",
     "ansi-to-html": "^0.7.2",
     "discord-rpc": "^4.0.1",
     "electron-log": "^5.4.3",
-    "electron-updater": "^6.7.3",
-    "pidusage": "^4.0.1",
-    "find-process": "^2.0.0"
+    "electron-updater": "^6.8.3",
+    "find-process": "^2.0.0",
+    "pidusage": "^4.0.1"
   },
   "build": {
     "asar": true,
@@ -84,7 +84,10 @@
         "to": "sounds/success.mp3"
       }
     ],
-    "directories": { "output": "release", "buildResources": "src/build" },
+    "directories": {
+      "output": "release",
+      "buildResources": "src/build"
+    },
     "files": [
       "**/*",
       "!node_modules/**/{CHANGELOG.md,README.md,README,readme.md,readme}",
