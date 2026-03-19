@@ -1,7 +1,10 @@
 const { app, BrowserWindow, ipcMain, shell, dialog, Notification, session } = require('electron');
 
 // Performance optimizations
-app.commandLine.appendSwitch('disable-http-cache');
+if (!app.isPackaged) {
+    // Keep cache disabled only in development to avoid stale assets while coding.
+    app.commandLine.appendSwitch('disable-http-cache');
+}
 app.commandLine.appendSwitch('disable-renderer-backgrounding');
 app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
@@ -670,6 +673,7 @@ autoUpdater.autoInstallOnAppQuit = false;
 
 const clientId = '1397585400553541682';
 let rpc;
+let rpcReady = false;
 let rpcStartTime;
 let startupSoundPlayed = false;
 let lastStatusSoundSignature = null;
@@ -727,22 +731,22 @@ let listProbeSentAtNs = 0n;
 let lastManualListAt = 0;
 let listProbeTimeout = null;
 
-function setDiscordActivity() {
-    try {
-        if (!rpc) return;
-        const details = localIsServerRunningGlobal ? 'Server running' : 'Launcher idle';
-        rpc.setActivity({
-            details,
-            startTimestamp: rpcStartTime || new Date(),
-            instance: false
-        }).catch(() => {});
-    } catch (_) { /* ignore */ }
+function isDiscordRpcTransientError(error) {
+    const msg = String(error?.message || error || '').toLowerCase();
+    return msg.includes("reading 'write'") ||
+        msg.includes('could not connect') ||
+        msg.includes('transport') ||
+        msg.includes('socket') ||
+        msg.includes('ipc') ||
+        msg.includes('pipe');
 }
 
 function startDiscordRpc() {
     if (rpc) return;
+    rpcReady = false;
     rpc = new RPC.Client({ transport: 'ipc' });
     rpc.on('ready', () => {
+        rpcReady = true;
         sendConsole('Discord Rich Presence is active.', 'INFO');
         rpcStartTime = new Date();
         setDiscordActivity();
@@ -750,8 +754,20 @@ function startDiscordRpc() {
         if (discordRpcInterval) clearInterval(discordRpcInterval);
         discordRpcInterval = setInterval(setDiscordActivity, DISCORD_RPC_INTERVAL_IDLE);
     });
-    rpc.login({ clientId }).catch(() => {
-        // Intenționat ignorat pentru a nu bloca pornirea
+    rpc.on('disconnected', () => {
+        rpcReady = false;
+    });
+    rpc.on('error', (error) => {
+        rpcReady = false;
+        if (!isDiscordRpcTransientError(error)) {
+            log.warn(`Discord RPC internal error: ${error?.message || error}`);
+        }
+    });
+    rpc.login({ clientId }).catch((error) => {
+        rpcReady = false;
+        if (!isDiscordRpcTransientError(error)) {
+            log.warn(`Discord RPC login failed: ${error?.message || error}`);
+        }
     });
 }
 
@@ -877,6 +893,23 @@ async function checkJava() {
 
     log.info(`Checking for Java >= ${MINIMUM_JAVA_VERSION}...`);
 
+    // Reuse background discovery results first to avoid repeated expensive probes.
+    if (javaDiscoveryPromise) {
+        try {
+            await javaDiscoveryPromise;
+        } catch (_) {}
+    }
+
+    const discoveredCandidates = [javaExecutablePath, java21Path, java17Path, java11Path, java8Path]
+        .filter((value, index, self) => value && self.indexOf(value) === index);
+    for (const candidate of discoveredCandidates) {
+        if (await verifyJavaVersion(candidate)) {
+            log.info(`Java >= ${MINIMUM_JAVA_VERSION} verified at: ${candidate}`);
+            javaExecutablePath = candidate;
+            return true;
+        }
+    }
+
     const registryPath = await checkWindowsRegistry();
     if (registryPath) {
         log.info(`Java >= ${MINIMUM_JAVA_VERSION} verified at: ${registryPath}`);
@@ -949,31 +982,28 @@ async function discoverAllJavaVersions() {
         return false;
     };
     
-    const checkAndStore = async (path, majorVersion) => {
-        const version = await detectJavaVersion(path);
-        if (version === majorVersion) {
-            const hasJDK = await isJDK(path);
-            const label = hasJDK ? 'JDK' : 'JRE';
-            log.info(`Discovered Java ${majorVersion} (${label}) at: ${path}`);
-            
-            // Store in global installations object
-            if (!javaInstallations[majorVersion]) {
-                javaInstallations[majorVersion] = { path, isJDK: hasJDK };
-            }
-            
-            // Prioritize JDK over JRE
-            if (majorVersion === 8) {
-                if (!java8Path || hasJDK) java8Path = path;
-            } else if (majorVersion === 11) {
-                if (!java11Path || hasJDK) java11Path = path;
-            } else if (majorVersion === 17) {
-                if (!java17Path || hasJDK) java17Path = path;
-            } else if (majorVersion === 21) {
-                if (!java21Path || hasJDK) java21Path = path;
-            }
-            return true;
+    const storeDetectedJava = async (javaPath, detectedVersion) => {
+        if (![8, 11, 17, 21].includes(detectedVersion)) return false;
+
+        const hasJDK = await isJDK(javaPath);
+        const label = hasJDK ? 'JDK' : 'JRE';
+        log.info(`Discovered Java ${detectedVersion} (${label}) at: ${javaPath}`);
+
+        if (!javaInstallations[detectedVersion]) {
+            javaInstallations[detectedVersion] = { path: javaPath, isJDK: hasJDK };
         }
-        return false;
+
+        if (detectedVersion === 8) {
+            if (!java8Path || hasJDK) java8Path = javaPath;
+        } else if (detectedVersion === 11) {
+            if (!java11Path || hasJDK) java11Path = javaPath;
+        } else if (detectedVersion === 17) {
+            if (!java17Path || hasJDK) java17Path = javaPath;
+        } else if (detectedVersion === 21) {
+            if (!java21Path || hasJDK) java21Path = javaPath;
+        }
+
+        return true;
     };
     
     // Check system java/javac first (prioritize system JDK)
@@ -1019,10 +1049,10 @@ async function discoverAllJavaVersions() {
                     
                     const javaPath = path.join(baseDir, dir, 'bin', 'java');
                     if (fs.existsSync(javaPath)) {
-                        await checkAndStore(javaPath, 8);
-                        await checkAndStore(javaPath, 11);
-                        await checkAndStore(javaPath, 17);
-                        await checkAndStore(javaPath, 21);
+                        const detectedVersion = await detectJavaVersion(javaPath);
+                        if (detectedVersion) {
+                            await storeDetectedJava(javaPath, detectedVersion);
+                        }
                     }
                 }
             } catch (_) {}
@@ -1048,10 +1078,10 @@ async function discoverAllJavaVersions() {
                         if (match && match[1]) {
                             const javaExe = path.join(match[1].trim(), 'bin', 'java.exe');
                             if (fs.existsSync(javaExe)) {
-                                await checkAndStore(javaExe, 8);
-                                await checkAndStore(javaExe, 11);
-                                await checkAndStore(javaExe, 17);
-                                await checkAndStore(javaExe, 21);
+                                const detectedVersion = await detectJavaVersion(javaExe);
+                                if (detectedVersion) {
+                                    await storeDetectedJava(javaExe, detectedVersion);
+                                }
                             }
                         }
                     } catch (_) {}
@@ -1076,10 +1106,10 @@ async function discoverAllJavaVersions() {
                 for (const dir of sortedDirs) {
                     const javaPath = path.join(jvmDir, dir, 'Contents', 'Home', 'bin', 'java');
                     if (fs.existsSync(javaPath)) {
-                        await checkAndStore(javaPath, 8);
-                        await checkAndStore(javaPath, 11);
-                        await checkAndStore(javaPath, 17);
-                        await checkAndStore(javaPath, 21);
+                        const detectedVersion = await detectJavaVersion(javaPath);
+                        if (detectedVersion) {
+                            await storeDetectedJava(javaPath, detectedVersion);
+                        }
                     }
                 }
             } catch (_) {}
@@ -1578,7 +1608,7 @@ function sendServerStateChange(isRunning) {
 }
 
 function setDiscordActivity() {
-    if (!rpc || !mainWindow) {
+    if (!rpc || !rpcReady || !mainWindow) {
         return;
     }
     
@@ -1602,9 +1632,11 @@ function setDiscordActivity() {
         instance: false,
     };
     rpc.setActivity(activity).catch(err => {
-        if (!err.message.includes('Could not connect')) {
-            sendConsole(`Discord RPC Error: ${err.message}`, 'ERROR');
+        if (isDiscordRpcTransientError(err)) {
+            rpcReady = false;
+            return;
         }
+        sendConsole(`Discord RPC Error: ${err.message}`, 'ERROR');
     });
 }
 
@@ -2696,6 +2728,7 @@ app.on('before-quit', () => {
         clearInterval(discordRpcInterval);
         discordRpcInterval = null;
     }
+    rpcReady = false;
     stopNgrokTunnel();
 });
 
@@ -2727,6 +2760,8 @@ app.on('window-all-closed', () => {
         try {
             rpc.destroy().catch(() => {});
         } catch (_) {}
+        rpcReady = false;
+        rpc = null;
     }
     if (process.platform !== 'darwin') app.quit();
 });

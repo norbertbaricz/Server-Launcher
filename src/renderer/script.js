@@ -90,7 +90,7 @@ let activeLanguage = 'en';
 let pendingSettingsLanguage = null;
 let languageOnSettingsOpen = null;
 const UPDATE_PILL_BASE_CLASS = 'text-xs font-semibold px-3 py-1 rounded-full whitespace-nowrap';
-const UPDATE_BUTTON_BASE_CLASS = 'btn-secondary px-4 py-2 rounded-md font-semibold flex items-center gap-2';
+const UPDATE_BUTTON_BASE_CLASS = 'btn-secondary rounded-md font-semibold flex items-center justify-center icon-only-action-btn';
 const autoUpdateState = {
     status: 'idle',
     version: null,
@@ -133,7 +133,7 @@ async function ensureDefaultTranslations() {
             defaultTranslations = base;
         }
     } catch (error) {
-        addToConsole(`Could not load default translations: ${error.message}`, 'DEBUG');
+        addToConsole(formatTranslation('debugLoadDefaultTranslationsFailed', { error: error.message }), 'DEBUG');
     }
     return defaultTranslations;
 }
@@ -176,10 +176,19 @@ const maximizeBtnIcon = maximizeBtn.querySelector('i');
 
 const DEFAULT_MAX_CONSOLE_LINES = 1000;
 const DEFAULT_LINES_PER_FLUSH = 400;
+const CONSOLE_STICK_TO_BOTTOM_THRESHOLD_PX = 32;
 let MAX_CONSOLE_LINES = DEFAULT_MAX_CONSOLE_LINES;
 let LINES_PER_FLUSH = DEFAULT_LINES_PER_FLUSH;
 const pendingConsoleLines = [];
 let consoleFlushScheduled = false;
+let serverPropertyCards = [];
+let filterSearchDebounceTimer = null;
+
+function isConsoleNearBottom() {
+    if (!consoleOutput) return true;
+    const distanceToBottom = consoleOutput.scrollHeight - (consoleOutput.scrollTop + consoleOutput.clientHeight);
+    return distanceToBottom <= CONSOLE_STICK_TO_BOTTOM_THRESHOLD_PX;
+}
 
 const MIN_RAM_GB = 2;
 const RAM_STEP_GB = 0.25;
@@ -195,6 +204,8 @@ function scheduleConsoleFlush() {
 function flushConsoleLines() {
     consoleFlushScheduled = false;
     if (!pendingConsoleLines.length || !consoleOutput) return;
+
+    const shouldStickToBottom = isConsoleNearBottom();
 
     const fragment = document.createDocumentFragment();
     let processed = 0;
@@ -213,7 +224,9 @@ function flushConsoleLines() {
         consoleOutput.removeChild(consoleOutput.firstElementChild);
     }
 
-    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    if (shouldStickToBottom) {
+        consoleOutput.scrollTop = consoleOutput.scrollHeight;
+    }
 
     if (pendingConsoleLines.length) {
         scheduleConsoleFlush();
@@ -300,6 +313,8 @@ function setUpdateButtonState({ disabled = false, busy = false, mode = 'check' }
                 label = translate('checkUpdatesButton');
         }
         checkUpdatesButtonText.textContent = label;
+        checkUpdatesButton.setAttribute('aria-label', label);
+        checkUpdatesButton.title = label;
     }
 }
 
@@ -760,7 +775,8 @@ function updatePluginsButtonAppearance(serverType) {
         uploadPluginButton.disabled = false;
         uploadPluginButton.classList.remove('btn-disabled');
         const uploadLabel = translate('uploadButton');
-        uploadPluginButton.innerHTML = `<i class="fas fa-upload mr-1"></i>${uploadLabel}`;
+        uploadPluginButton.innerHTML = `<i class="fas fa-upload text-base"></i><span class="sr-only" data-key="uploadButton">${uploadLabel}</span>`;
+        uploadPluginButton.setAttribute('aria-label', uploadLabel);
         uploadPluginButton.title = uploadLabel;
     }
     if (openPluginsFolderButton) {
@@ -866,7 +882,7 @@ async function setLanguage(lang) {
         activeLanguage = lang || activeLanguage;
 
     } catch (error) {
-        addToConsole(`Could not apply language: ${error.message}`, 'ERROR');
+        addToConsole(formatTranslation('errorApplyLanguageFailed', { error: error.message }), 'ERROR');
     }
 }
 
@@ -875,7 +891,7 @@ async function populateLanguageSelects() {
     try {
         languages = await window.electronAPI.getAvailableLanguages();
     } catch (error) {
-        addToConsole(`Could not fetch languages: ${error.message}`, 'DEBUG');
+        addToConsole(formatTranslation('debugFetchLanguagesFailed', { error: error.message }), 'DEBUG');
     }
     if (!Array.isArray(languages) || !languages.length) {
         languages = [{ code: 'en', name: 'English' }];
@@ -886,7 +902,7 @@ async function populateLanguageSelects() {
         option.value = lang.code;
         let langName = lang.name;
         if (lang.code === 'en') {
-            langName += ' (Default)';
+            langName += ` ${translate('defaultLanguageSuffix')}`;
         }
         option.textContent = langName;
         return option;
@@ -1003,12 +1019,16 @@ async function handleCopyIp(targetEl, button, labelKey) {
     }
 }
 
-function getStatusColor(text) {
-    const lowerText = text.toLowerCase();
-    if (lowerText.includes("running") || lowerText.includes("rulează") || lowerText.includes("läuft")) return '#22c55e';
-    if (lowerText.includes("failed") || lowerText.includes("error") || lowerText.includes("eșuat") || lowerText.includes("fehler")) return '#ef4444';
-    if (lowerText.includes("successfully") || lowerText.includes("saved") || lowerText.includes("ready") || lowerText.includes("succes") || lowerText.includes("pregătit") || lowerText.includes("bereit")) return '#4ade80';
-    if (lowerText.includes("stopped") || lowerText.includes("initialized") || lowerText.includes("cancelled") || lowerText.includes("oprit") || lowerText.includes("inițializat") || lowerText.includes("anulat") || lowerText.includes("gestoppt")) return '#9ca3af';
+function getStatusColor(statusKey = '') {
+    const key = String(statusKey || '').toLowerCase();
+    const greenKeys = new Set(['serverrunning', 'serverready', 'launcherinitialized']);
+    const redKeys = new Set(['error', 'criticalerror', 'serverstartfailed', 'downloadfailed']);
+    const successKeys = new Set(['configsaved', 'settingssaved', 'setupcheckok', 'updaterready']);
+    const neutralKeys = new Set(['serverstopped', 'servernotrunning', 'autostartcancelled', 'initializing']);
+    if (greenKeys.has(key)) return '#22c55e';
+    if (redKeys.has(key)) return '#ef4444';
+    if (successKeys.has(key)) return '#4ade80';
+    if (neutralKeys.has(key)) return '#9ca3af';
     return 'var(--color-primary)';
 }
 
@@ -1039,7 +1059,7 @@ function setStatus(fallbackText, pulse = false, translationKey = null) {
     statusMessageSpan.dataset.key = key || '';
     
     const pulseTarget = statusBarContent;
-    const statusColor = getStatusColor(statusMessageSpan.textContent);
+    const statusColor = getStatusColor(key);
     
     pulseTarget.classList.toggle('status-bar-pulse', pulse);
     statusMessageSpan.style.color = pulse ? 'var(--color-primary)' : statusColor;
@@ -1050,7 +1070,7 @@ function showDownloadLoading() {
     mcVersionModalSelect.disabled = true;
     ramAllocationModalSelect.disabled = true;
     downloadModalButtonIcon.className = 'fas fa-spinner spinner text-sm flex-shrink-0';
-    downloadModalButtonText.textContent = currentTranslations['downloadingButton'] || 'Downloading...';
+    downloadModalButtonText.textContent = translate('downloadingButton');
 }
 
 function hideDownloadLoading() {
@@ -1058,7 +1078,7 @@ function hideDownloadLoading() {
     mcVersionModalSelect.disabled = false;
     ramAllocationModalSelect.disabled = false;
     downloadModalButtonIcon.className = 'fas fa-download text-sm flex-shrink-0';
-    downloadModalButtonText.textContent = currentTranslations['downloadButton'] || 'Download Server';
+    downloadModalButtonText.textContent = translate('downloadButton');
 }
 
 function updateButtonStates(isRunning) {
@@ -1121,11 +1141,11 @@ function updateButtonStates(isRunning) {
 async function populateMcVersionSelect(selectElement, currentVersion, serverType) {
     selectElement.disabled = true;
     if (!availableMcVersionsCache[serverType] || availableMcVersionsCache[serverType].length === 0) {
-        selectElement.innerHTML = `<option value="" disabled>${currentTranslations['loadingVersions'] || 'Loading versions...'}</option>`;
+        selectElement.innerHTML = `<option value="" disabled>${translate('loadingVersions')}</option>`;
         try {
             availableMcVersionsCache[serverType] = await window.electronAPI.getAvailableVersions(serverType);
         } catch (error) {
-            selectElement.innerHTML = `<option value="" disabled selected>${currentTranslations['errorLoadingVersions'] || 'Error loading versions'}</option>`;
+            selectElement.innerHTML = `<option value="" disabled selected>${translate('errorLoadingVersions')}</option>`;
             return;
         }
     }
@@ -1136,12 +1156,12 @@ async function populateMcVersionSelect(selectElement, currentVersion, serverType
         versions.forEach((version, index) => {
             const option = document.createElement('option');
             option.value = version;
-            option.textContent = version + (index === 0 ? ` (${currentTranslations['latestVersion'] || 'Latest'})` : '');
+            option.textContent = version + (index === 0 ? ` (${translate('latestVersion')})` : '');
             selectElement.appendChild(option);
         });
         selectElement.value = (currentVersion && versions.includes(currentVersion)) ? currentVersion : versions[0];
     } else {
-        selectElement.innerHTML = `<option value="" disabled selected>${currentTranslations['noVersionsFound'] || 'No versions found'}</option>`;
+        selectElement.innerHTML = `<option value="" disabled selected>${translate('noVersionsFound')}</option>`;
     }
     selectElement.disabled = false;
 }
@@ -1225,8 +1245,8 @@ function closeSetupView(callback) {
 async function refreshUISetupState() {
     const { needsSetup, config, error } = await window.electronAPI.checkInitialSetup();
     if (error) {
-        addToConsole(`Critical Error: ${error}.`, "ERROR");
-        setStatus("Launcher Error!", false, 'error');
+        addToConsole(formatTranslation('criticalError', { error }), 'ERROR');
+        setStatus(translate('launcherError'), false, 'error');
         updateButtonStates(localIsServerRunning);
         return;
     }
@@ -1269,12 +1289,13 @@ async function refreshUISetupState() {
 }
 
 async function populateServerProperties() {
-    serverPropertiesContainer.innerHTML = `<p class="text-gray-400 text-center" data-key="serverPropsLoading">${currentTranslations['serverPropsLoading'] || 'Loading properties...'}</p>`;
+    serverPropertiesContainer.innerHTML = `<p class="text-gray-400 text-center" data-key="serverPropsLoading">${translate('serverPropsLoading')}</p>`;
     const properties = await window.electronAPI.getServerProperties();
     serverPropertiesContainer.innerHTML = '';
+    serverPropertyCards = [];
 
     if (!properties || Object.keys(properties).length === 0) {
-        serverPropertiesContainer.innerHTML = `<p class="text-gray-400 text-center" data-key="serverPropsUnavailable">${currentTranslations['serverPropsUnavailable'] || 'Could not load server.properties. Run the server once to generate it.'}</p>`;
+        serverPropertiesContainer.innerHTML = `<p class="text-gray-400 text-center" data-key="serverPropsUnavailable">${translate('serverPropsUnavailable')}</p>`;
         return;
     }
 
@@ -1296,9 +1317,12 @@ async function populateServerProperties() {
     
     const sortedProperties = [...toggleProps, ...textProps];
 
+    const fragment = document.createDocumentFragment();
+
     for (const { key, value } of sortedProperties) {
         const propCard = document.createElement('div');
         propCard.className = 'bg-gray-700 rounded-md p-3';
+        propCard.dataset.searchKey = key.replace(/-/g, ' ').toLowerCase();
 
         const label = document.createElement('label');
         label.textContent = key.replace(/-/g, ' ');
@@ -1335,7 +1359,8 @@ async function populateServerProperties() {
             propDiv.appendChild(label);
             propDiv.appendChild(wrapper);
             propCard.appendChild(propDiv);
-            serverPropertiesContainer.appendChild(propCard);
+            fragment.appendChild(propCard);
+            serverPropertyCards.push(propCard);
             continue;
         }
 
@@ -1348,8 +1373,11 @@ async function populateServerProperties() {
         
         propCard.appendChild(label);
         propCard.appendChild(input);
-        serverPropertiesContainer.appendChild(propCard);
+        fragment.appendChild(propCard);
+        serverPropertyCards.push(propCard);
     }
+
+    serverPropertiesContainer.appendChild(fragment);
 
     filterServerPropertiesCards(serverPropertiesSearch?.value || '');
 }
@@ -1357,19 +1385,23 @@ async function populateServerProperties() {
 function filterServerPropertiesCards(term = '') {
     if (!serverPropertiesContainer) return;
     const searchTerm = String(term || '').toLowerCase();
-    const propCards = serverPropertiesContainer.querySelectorAll('.bg-gray-700');
-    propCards.forEach(card => {
-        const label = card.querySelector('label');
-        if (!label) return;
-        const propName = label.textContent.toLowerCase();
+    for (const card of serverPropertyCards) {
+        const propName = card.dataset.searchKey || '';
         card.style.display = (!searchTerm || propName.includes(searchTerm)) ? '' : 'none';
-    });
+    }
 }
 
 // Server properties search functionality
 if (serverPropertiesSearch) {
     serverPropertiesSearch.addEventListener('input', (e) => {
-        filterServerPropertiesCards(e.target.value);
+        if (filterSearchDebounceTimer) {
+            clearTimeout(filterSearchDebounceTimer);
+        }
+        const term = e.target.value;
+        filterSearchDebounceTimer = setTimeout(() => {
+            filterServerPropertiesCards(term);
+            filterSearchDebounceTimer = null;
+        }, 80);
     });
 }
 
@@ -1432,7 +1464,7 @@ settingsButton.addEventListener('click', async () => {
         const info = await window.electronAPI.getServerPathInfo();
         if (serverPathDisplay) serverPathDisplay.value = info.path || '';
         updateServerPathLockState(info.locked);
-    } catch (e) { addToConsole(`Failed to load server path info: ${e.message}`, 'ERROR'); }
+    } catch (e) { addToConsole(formatTranslation('errorLoadServerPathInfoFailed', { error: e.message }), 'ERROR'); }
     populateServerTypeSelect(serverTypeSettingsSelect, currentType);
     serverTypeSettingsSelect.onchange = async () => {
         const selectedType = normalizeUiServerType(serverTypeSettingsSelect.value);
@@ -1524,14 +1556,14 @@ saveSettingsButton.addEventListener('click', async () => {
         if (shouldDeferAutoStart) {
             if (countdownWasActive) {
                 cancelAutoStartCountdown('autoStartCancelled');
-                addToConsole('Auto-start countdown cancelled while new server files download.', 'INFO');
+                addToConsole(translate('autoStartCancelledWhileDownloading'), 'INFO');
             }
             if (countdownNeedsRestart || countdownWasActive) {
                 queueAutoStartRequest(
                     selectedAutoStartDelay,
                     'initial',
-                    'Auto-start countdown queued until server setup completes.',
-                    'Server download complete. Restarting auto-start countdown.'
+                    translate('autoStartQueuedUntilSetupComplete'),
+                    translate('autoStartRestartAfterDownload')
                 );
             }
         } else if (!localIsServerRunning && !isStarting && !isStopping) {
@@ -1540,19 +1572,19 @@ saveSettingsButton.addEventListener('click', async () => {
                     cancelAutoStartCountdown();
                 }
                 if (beginAutoStartCountdown(selectedAutoStartDelay, 'initial')) {
-                    addToConsole(`Auto-start countdown scheduled in ${selectedAutoStartDelay}s.`, 'INFO');
+                    addToConsole(formatTranslation('autoStartScheduled', { delay: selectedAutoStartDelay }), 'INFO');
                 }
             }
         } else if (!prevAutoStartEnabled || delayChanged) {
-            addToConsole('Auto-start enabled and will trigger after the current session ends.', 'INFO');
+            addToConsole(translate('autoStartEnabledNextSession'), 'INFO');
         }
     } else if (prevAutoStartEnabled || autoStartIsActive) {
         if (cancelAutoStartCountdown('autoStartCancelled')) {
-            addToConsole('Auto-start countdown stopped via Settings.', 'INFO');
+            addToConsole(translate('autoStartStoppedViaSettings'), 'INFO');
         }
     }
     
-    addToConsole(requiresReconfigure ? "Settings saved and applied (reconfigured)." : "Settings saved.", "SUCCESS");
+    addToConsole(requiresReconfigure ? translate('settingsSavedReconfigured') : translate('settingsSaved'), 'SUCCESS');
     closeSettingsView();
 });
 
@@ -1561,22 +1593,26 @@ function updateServerPathLockState(locked) {
     lockServerPathButton.dataset.locked = locked ? 'true' : 'false';
     if (locked) {
         lockServerPathIcon.className = 'fas fa-lock';
-        lockServerPathText.textContent = currentTranslations['unlockPathButton'] || 'Unlock';
+        const unlockLabel = translate('unlockPathButton');
+        lockServerPathText.textContent = unlockLabel;
         if (chooseServerPathButton) {
             const runtimeLocked = (localIsServerRunning || isStarting) || locked;
             chooseServerPathButton.disabled = runtimeLocked;
             chooseServerPathButton.classList.toggle('btn-disabled', runtimeLocked);
         }
-        lockServerPathButton.title = currentTranslations['unlockPathButton'] || 'Unlock';
+        lockServerPathButton.setAttribute('aria-label', unlockLabel);
+        lockServerPathButton.title = unlockLabel;
     } else {
         lockServerPathIcon.className = 'fas fa-lock-open';
-        lockServerPathText.textContent = currentTranslations['lockPathButton'] || 'Lock';
+        const lockLabel = translate('lockPathButton');
+        lockServerPathText.textContent = lockLabel;
         if (chooseServerPathButton) {
             const runtimeLocked = (localIsServerRunning || isStarting) || locked;
             chooseServerPathButton.disabled = runtimeLocked;
             chooseServerPathButton.classList.toggle('btn-disabled', runtimeLocked);
         }
-        lockServerPathButton.title = currentTranslations['lockPathButton'] || 'Lock';
+        lockServerPathButton.setAttribute('aria-label', lockLabel);
+        lockServerPathButton.title = lockLabel;
     }
     // Ensure the lock toggle itself respects runtime state
     lockServerPathButton.disabled = (localIsServerRunning || isStarting);
@@ -1631,11 +1667,11 @@ chooseServerPathButton?.addEventListener('click', async () => {
     if (chooseServerPathButton.disabled || lockServerPathButton?.dataset.locked === 'true') return;
     const res = await window.electronAPI.selectServerLocation();
     if (!res.ok) {
-        if (!res.cancelled) addToConsole(`Could not change path: ${res.error}`, 'ERROR');
+        if (!res.cancelled) addToConsole(formatTranslation('errorChangePathFailed', { error: res.error }), 'ERROR');
         return;
     }
     serverPathDisplay.value = res.path;
-    addToConsole(`Server path changed to ${res.path}`, 'SUCCESS');
+    addToConsole(formatTranslation('pathChanged', { path: res.path }), 'SUCCESS');
 });
 
 lockServerPathButton?.addEventListener('click', async () => {
@@ -1643,7 +1679,7 @@ lockServerPathButton?.addEventListener('click', async () => {
     const newLocked = !currentlyLocked;
     window.electronAPI.setServerPathLock(newLocked);
     updateServerPathLockState(newLocked);
-    addToConsole(newLocked ? 'Server path locked.' : 'Server path unlocked.', 'INFO');
+    addToConsole(newLocked ? translate('pathLocked') : translate('pathUnlocked'), 'INFO');
 });
 
 copyLocalIpButton?.addEventListener('click', () => handleCopyIp(localIpAddressSpan, copyLocalIpButton, 'localIpLabel'));
@@ -1713,7 +1749,7 @@ checkUpdatesButton?.addEventListener('click', async () => {
             const response = await window.electronAPI.downloadUpdate();
             const responseReason = response?.reason;
             if (responseReason && responseReason !== 'started') {
-                addToConsole(`Update download could not start: ${responseReason}`, 'WARN');
+                addToConsole(formatTranslation('updateDownloadCouldNotStart', { reason: responseReason }), 'WARN');
                 if (responseReason === 'in-progress' || responseReason === 'download-in-progress') {
                     autoUpdateState.status = 'downloading';
                 } else if (responseReason === 'already-downloaded') {
@@ -1739,7 +1775,7 @@ checkUpdatesButton?.addEventListener('click', async () => {
             const response = await window.electronAPI.installUpdate();
             const responseReason = response?.reason;
             if (responseReason && responseReason !== 'started') {
-                addToConsole(`Update restart could not start: ${responseReason}`, 'WARN');
+                addToConsole(formatTranslation('updateRestartCouldNotStart', { reason: responseReason }), 'WARN');
                 if (responseReason === 'download-in-progress') {
                     autoUpdateState.status = 'downloading';
                 } else if (responseReason === 'not-downloaded') {
@@ -1762,7 +1798,7 @@ checkUpdatesButton?.addEventListener('click', async () => {
         setUpdateButtonState({ disabled: true, busy: true, mode: 'check' });
         await window.electronAPI.checkForUpdates();
     } catch (error) {
-        addToConsole(`Manual update action failed: ${error.message}`, 'ERROR');
+        addToConsole(formatTranslation('manualUpdateActionFailed', { error: error.message }), 'ERROR');
         autoUpdateState.status = 'error';
         autoUpdateState.errorMessage = error.message;
         renderAutoUpdateState();
@@ -1864,7 +1900,7 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
             countdownInterval = null;
         }
         pendingAutoStartRequest = null;
-        setStatus(currentTranslations['serverRunning'] || 'Server is running.', false, 'serverRunning');
+        setStatus(translate('serverRunning'), false, 'serverRunning');
         await fetchAndDisplayIPs(true);
         
         localIpWidget.classList.add('animate-green-attention');
@@ -1936,7 +1972,7 @@ window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, tps, la
 
 window.electronAPI.onRequestStatusCheckForFail(() => {
     if (statusMessageSpan.textContent.toLowerCase().includes('starting')) {
-        setStatus('Server failed to stay running.', false, 'serverStartFailed');
+        setStatus(translate('serverStartFailed'), false, 'serverStartFailed');
     }
 });
 
@@ -1949,14 +1985,15 @@ async function fetchAndDisplayIPs(showPort = true) {
                 port = `:${properties['server-port']}`;
             }
         } catch (error) {
-            addToConsole(`Could not fetch server port: ${error.message}`, 'DEBUG');
+            addToConsole(formatTranslation('debugFetchServerPortFailed', { error: error.message }), 'DEBUG');
         }
     }
     try {
         const localIP = await window.electronAPI.getLocalIP() || '-';
-        const safeLocal = (localIP !== '-' && localIP !== 'Error') ? localIP : 'localhost';
+        const errorMarker = translate('errorLabel');
+        const safeLocal = (localIP !== '-' && localIP !== errorMarker) ? localIP : translate('localhostLabel');
         localIpAddressSpan.textContent = showPort ? `${safeLocal}${port}` : safeLocal;
-    } catch (error) { localIpAddressSpan.textContent = showPort ? `localhost${port}` : 'localhost'; }
+    } catch (error) { localIpAddressSpan.textContent = showPort ? `${translate('localhostLabel')}${port}` : translate('localhostLabel'); }
     try {
         const publicIpResponse = await window.electronAPI.getPublicIP();
         let publicIP = publicIpResponse;
@@ -1968,13 +2005,14 @@ async function fetchAndDisplayIPs(showPort = true) {
             source = publicIpResponse.source || null;
         }
         publicIP = publicIP || '-';
-        if (source === 'offline' || publicIP === '-' || publicIP === 'Error') {
-            publicIP = 'Offline';
+        const errorMarker = translate('errorLabel');
+        if (source === 'offline' || publicIP === '-' || publicIP === errorMarker) {
+            publicIP = translate('offlineLabel');
             appendServerPort = false;
         }
-        const shouldAppendPort = appendServerPort && publicIP !== 'Offline' && publicIP !== 'Error';
+        const shouldAppendPort = appendServerPort && publicIP !== translate('offlineLabel') && publicIP !== errorMarker;
         publicIpAddressSpan.textContent = shouldAppendPort ? `${publicIP}${port}` : publicIP;
-    } catch (error) { publicIpAddressSpan.textContent = 'Offline'; }
+    } catch (error) { publicIpAddressSpan.textContent = translate('offlineLabel'); }
 }
 
 async function detectSystemMemoryGb() {
@@ -1983,7 +2021,7 @@ async function detectSystemMemoryGb() {
         const total = Number(info?.totalGB);
         if (Number.isFinite(total) && total > 0) return total;
     } catch (error) {
-        addToConsole(`Could not read system memory: ${error.message}`, 'DEBUG');
+        addToConsole(formatTranslation('debugReadSystemMemoryFailed', { error: error.message }), 'DEBUG');
     }
     const navMem = Number(navigator?.deviceMemory);
     if (Number.isFinite(navMem) && navMem > 0) return navMem;
@@ -2105,11 +2143,9 @@ async function applyPreferencesStartupStage(state) {
     activeLanguage = savedLang || activeLanguage;
     pendingSettingsLanguage = null;
 
-    const appName = translate('appTitle');
     const versionValue = bootstrap.version || '?.?.?';
-    const versionText = formatTranslation('appVersionDisplay', { app: appName, version: versionValue }) || `${appName} v${versionValue}`;
-    const devSuffix = bootstrap.isDev ? translate('appVersionDevSuffix') : '';
-    const titleText = `${versionText}${devSuffix}`;
+    // App title must stay hardcoded and non-translatable.
+    const titleText = `Server Launcher v${versionValue}${bootstrap.isDev ? ' - Development Version' : ''}`;
     document.title = titleText;
     const titleEl = document.getElementById('app-title-version');
     if (titleEl) {
@@ -2125,7 +2161,7 @@ async function finalizeStartupStage() {
     try {
         await fetchAndDisplayIPs(true);
     } catch (error) {
-        addToConsole(`Could not refresh IP information during startup: ${error.message}`, 'DEBUG');
+        addToConsole(formatTranslation('debugRefreshIpStartupFailed', { error: error.message }), 'DEBUG');
     }
 }
 
@@ -2141,7 +2177,7 @@ async function runStartupStages(state) {
             recordStartupDiagnostic(stage.key, 'success', performance.now() - startedAt);
         } catch (error) {
             recordStartupDiagnostic(stage.key, 'error', performance.now() - startedAt, error);
-            addToConsole(`Startup stage "${stage.key}" failed: ${error.message}`, 'WARN');
+            addToConsole(formatTranslation('startupStageFailed', { stage: stage.key, error: error.message }), 'WARN');
         }
     }
 }
@@ -2149,7 +2185,7 @@ async function runStartupStages(state) {
 function formatStartupStageMessage(stage, index, total) {
     const base = (stage.labelKey && currentTranslations[stage.labelKey])
         ? currentTranslations[stage.labelKey]
-        : stage.fallback || 'Loading...';
+        : stage.fallback || translate('loadingGeneric');
     if (total <= 1) {
         return base;
     }
@@ -2170,7 +2206,7 @@ function completeInitialLoading() {
     setTimeout(() => {
         loadingScreenActive = false;
         if (!localIsServerRunning) {
-            setStatus(currentTranslations['launcherInitialized'] || 'Launcher initialized.', false, 'launcherInitialized');
+            setStatus(translate('launcherInitialized'), false, 'launcherInitialized');
         }
         window.electronAPI.appReadyToShow();
     }, 550);
@@ -2180,17 +2216,17 @@ async function initializeApp() {
     const startupState = {};
     try {
         loadingView.show();
-        setLoadingText(currentTranslations['loadingLauncher'] || 'Loading Launcher...', 'loadingLauncher');
+        setLoadingText(translate('loadingLauncher'), 'loadingLauncher');
         await runStartupStages(startupState);
         setLoadingText(
-            currentTranslations['launcherInitialized'] || 'Launcher initialized.',
+            translate('launcherInitialized'),
             'launcherInitialized',
             { preferFallback: true }
         );
     } catch (error) {
         recordStartupDiagnostic('initializeApp', 'error', 0, error);
-        addToConsole(`Initialization failed: ${error.message}`, 'ERROR');
-        setStatus('Initialization Error!', false, 'error');
+        addToConsole(formatTranslation('initializationFailed', { error: error.message }), 'ERROR');
+        setStatus(translate('initializationErrorTitle'), false, 'error');
     } finally {
         completeInitialLoading();
     }
@@ -2281,7 +2317,7 @@ function cancelAutoStartCountdown(reasonKey = null) {
     pendingAutoStartRequest = null;
     statusBarContent.classList.remove('status-bar-pulse');
     if ((wasActive || hadPending) && reasonKey) {
-        const fallback = currentTranslations[reasonKey] || 'Auto-start cancelled.';
+        const fallback = translate(reasonKey, translate('autoStartCancelled'));
         setStatus(fallback, false, reasonKey);
     }
     if (wasActive || hadPending) {
@@ -2292,15 +2328,15 @@ function cancelAutoStartCountdown(reasonKey = null) {
 
 function beginAutoStartCountdown(delay, type = 'initial') {
     if (localIsServerRunning) {
-        addToConsole('Auto-start countdown waiting for server to stop (server currently running).', 'INFO');
+        addToConsole(translate('autoStartWaitingServerStop'), 'INFO');
         return false;
     }
     if (isStarting) {
-        addToConsole('Auto-start countdown skipped because the server is already starting.', 'INFO');
+        addToConsole(translate('autoStartSkippedAlreadyStarting'), 'INFO');
         return false;
     }
     if (isStopping) {
-        addToConsole('Auto-start countdown delayed until the server fully stops.', 'INFO');
+        addToConsole(translate('autoStartDelayedUntilStopped'), 'INFO');
         return false;
     }
     autoStartIsActive = true;
@@ -2308,10 +2344,10 @@ function beginAutoStartCountdown(delay, type = 'initial') {
     const messageKey = type === 'initial' ? 'autoStartingServer' : 'autoRestartingServer';
     startCountdown(delay, messageKey, () => {
         if (autoStartIsActive && !localIsServerRunning) {
-            addToConsole('Countdown finished, starting server.', 'INFO');
+            addToConsole(translate('countdownFinished'), 'INFO');
             window.electronAPI.startServer();
         } else {
-            addToConsole('Countdown finished, but auto-start was cancelled or server is already running.', 'WARN');
+            addToConsole(translate('countdownFinishedCancelledOrRunning'), 'WARN');
             autoStartIsActive = false;
             updateButtonStates(localIsServerRunning);
         }
@@ -2347,19 +2383,19 @@ function tryProcessPendingAutoStart() {
 }
 
 window.electronAPI.onStartCountdown((type, delay) => {
-    addToConsole(`Received 'start-countdown' event. Type: ${type}, Delay: ${delay}`, 'INFO');
+    addToConsole(formatTranslation('startCountdownEventReceived', { type, delay }), 'INFO');
     if (!beginAutoStartCountdown(delay, type)) {
         queueAutoStartRequest(
             delay,
             type,
-            'Auto-start countdown queued until the server is fully stopped.',
-            'Server stopped. Resuming queued auto-start countdown.'
+            translate('autoStartQueuedUntilStopped'),
+            translate('autoStartResumingQueued')
         );
     }
 });
 
 window.electronAPI.onJavaInstallRequired(() => {
-    javaInstallMessage.textContent = currentTranslations['javaModalDescription'] || 'Java is not detected on your system. It is required to run the server.';
+    javaInstallMessage.textContent = translate('javaModalDescription');
     javaInstallButton.classList.remove('hidden');
     javaInstallButton.disabled = false;
     javaInstallButton.classList.remove('btn-disabled');
@@ -2386,6 +2422,13 @@ javaRestartButton.addEventListener('click', () => {
 window.electronAPI.onJavaInstallStatus((status, progress) => {
     javaInstallMessage.textContent = status;
     const lowerStatus = status.toLowerCase();
+    const downloadingMarker = translate('downloading').toLowerCase();
+    const installerLaunchedMarker = translate('javaInstallerLaunchedMarker').toLowerCase();
+    const errorMarkers = [
+        translate('error').toLowerCase(),
+        translate('downloadFailed').toLowerCase(),
+        translate('timeoutLabel').toLowerCase()
+    ];
 
     javaInstallButton.classList.add('hidden');
     javaRestartButton.classList.add('hidden');
@@ -2396,14 +2439,14 @@ window.electronAPI.onJavaInstallStatus((status, progress) => {
         existingSpinner.remove();
     }
 
-    if (lowerStatus.includes('downloading')) {
+    if (lowerStatus.includes(downloadingMarker)) {
         javaInstallProgressBarContainer.classList.remove('hidden');
         javaInstallProgressBar.style.width = `${progress || 0}%`;
-    } else if (lowerStatus.includes('installer has been launched')) {
+    } else if (lowerStatus.includes(installerLaunchedMarker)) {
         const spinner = document.createElement('i');
         spinner.className = 'fas fa-spinner fa-spin text-2xl accent-text mt-4';
         if (javaPage) javaPage.appendChild(spinner);
-    } else if (lowerStatus.includes('error') || lowerStatus.includes('failed') || lowerStatus.includes('timed out')) {
+    } else if (errorMarkers.some(marker => marker && lowerStatus.includes(marker))) {
         javaInstallButton.classList.remove('hidden');
         javaInstallButton.disabled = false;
         javaInstallButton.classList.remove('btn-disabled');
@@ -2500,11 +2543,11 @@ async function refreshPluginsList() {
         if (!plugins || plugins.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'text-gray-400 text-sm text-center py-4 font-medium';
-            empty.textContent = isModded ? (currentTranslations['noModsFound'] || 'No mods found.') : (currentTranslations['noPluginsFound'] || 'No plugins found.');
+            empty.textContent = isModded ? translate('noModsFound') : translate('noPluginsFound');
             pluginsList.appendChild(empty);
             return;
         }
-        const deleteLabel = currentTranslations['deleteButton'] || 'Delete';
+        const deleteLabel = translate('deleteButton');
         plugins.forEach(p => {
             const row = document.createElement('div');
             row.className = 'addon-list-row flex items-center gap-3 rounded-xl px-3 py-3 transition-colors shadow-sm';
@@ -2531,14 +2574,14 @@ async function refreshPluginsList() {
             delBtn.innerHTML = `<i class="fas fa-trash"></i><span>${deleteLabel}</span>`;
             delBtn.addEventListener('click', async () => {
                 if (localIsServerRunning) {
-                    addToConsole(isModded ? (currentTranslations['stopBeforeDeletingMods'] || 'Stop the server before deleting mods.') : (currentTranslations['stopBeforeDeletingPlugins'] || 'Stop the server before deleting plugins.'), 'WARN');
+                    addToConsole(isModded ? translate('stopBeforeDeletingMods') : translate('stopBeforeDeletingPlugins'), 'WARN');
                     return;
                 }
                 const res = await window.electronAPI.deletePlugin(p.name);
-                if (!res.ok) addToConsole(`Delete failed: ${res.error}`, 'ERROR');
+                if (!res.ok) addToConsole(formatTranslation('deleteFailed', { error: res.error }), 'ERROR');
                 else {
                     const label = getAddonLabel(currentServerConfig?.serverType).slice(0, -1).toLowerCase();
-                    addToConsole(`Deleted ${label} ${p.name}`, 'SUCCESS');
+                    addToConsole(formatTranslation('addonDeleted', { label, name: p.name }), 'SUCCESS');
                 }
                 await refreshPluginsList();
             });
@@ -2549,7 +2592,7 @@ async function refreshPluginsList() {
             pluginsList.appendChild(row);
         });
     } catch (e) {
-        addToConsole(`Failed to load plugins: ${e.message}`, 'ERROR');
+        addToConsole(formatTranslation('failedToLoadPlugins', { error: e.message }), 'ERROR');
     }
 }
 
@@ -2558,25 +2601,25 @@ uploadPluginButton?.addEventListener('click', async () => {
     const isModded = currentServerConfig?.serverType === 'fabric';
     if (localIsServerRunning) {
         const warnMsg = isModded
-            ? (currentTranslations['stopBeforeUploadingMods'] || 'Stop the server before uploading mods.')
-            : (currentTranslations['stopBeforeUploadingPlugins'] || 'Stop the server before uploading plugins.');
+            ? translate('stopBeforeUploadingMods')
+            : translate('stopBeforeUploadingPlugins');
         addToConsole(warnMsg, 'WARN');
         return;
     }
 
     try {
-        loadingView.show(currentTranslations['uploadingLabel'] || 'Uploading...');
+        loadingView.show(translate('uploadingLabel'));
         const res = await window.electronAPI.uploadPlugins();
         if (!res.ok) {
-            addToConsole(`Upload failed: ${res.error}`, 'ERROR');
+            addToConsole(formatTranslation('uploadFailed', { error: res.error }), 'ERROR');
         } else if (res.added?.length) {
             const label = getAddonLabel(currentServerConfig?.serverType).slice(0, -1).toLowerCase();
-            addToConsole(`Uploaded ${label}: ${res.added.join(', ')}`, 'SUCCESS');
+            addToConsole(formatTranslation('addonUploaded', { label, items: res.added.join(', ') }), 'SUCCESS');
         }
         await refreshPluginsList();
         await populateServerProperties();
     } catch (error) {
-        addToConsole(`Upload failed: ${error.message}`, 'ERROR');
+        addToConsole(formatTranslation('uploadFailed', { error: error.message }), 'ERROR');
     } finally {
         loadingView.hide();
         setTimeout(() => {

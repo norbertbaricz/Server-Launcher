@@ -315,6 +315,24 @@ h1, h2, h3, h4, h5, h6 {
     background-color: var(--color-primary);
     color: white;
 }
+
+.icon-only-action-btn {
+    width: 2.75rem;
+    min-width: 2.75rem;
+    flex: 0 0 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    align-self: center;
+}
+
+.icon-only-action-btn .fas {
+    margin: 0;
+}
+
+.icon-only-action-btn span[data-key] {
+    display: none;
+}
+
 .btn-primary:hover:not(.btn-disabled) {
     background-color: var(--color-primary-hover);
 }

@@ -19,10 +19,10 @@
   "license": "ISC",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "electron": "^40.6.1",
+    "electron": "^40.8.3",
     "electron-builder": "^26.8.1",
-    "eslint": "^10.0.2",
-    "globals": "^17.3.0",
+    "eslint": "^10.0.3",
+    "globals": "^17.4.0",
     "tailwindcss": "^4.2.1"
   },
   "dependencies": {
@@ -31,7 +31,7 @@
     "discord-rpc": "^4.0.1",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.8.3",
-    "find-process": "^2.0.0",
+    "find-process": "^2.1.1",
     "pidusage": "^4.0.1"
   },
   "build": {
