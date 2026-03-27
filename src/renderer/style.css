@@ -1,6 +1,10 @@
 :root {
     --font-base: 'Manrope', 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
     --font-display: 'Space Grotesk', 'Manrope', 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --color-primary: #8b9099;
+    --color-primary-hover: #a1a6af;
+    --color-primary-rgb: 139, 144, 153;
+    --color-accent: #b5bac2;
 }
 
 body {
@@ -42,17 +46,20 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .ip-widget {
-    border: 1px solid transparent; /* no visible border by default */
-    background-color: #1f2937; /* match card background (gray-800) */
-    box-shadow: none; /* remove constant glow/shadow but allow animation to override */
-    transition: box-shadow 0.25s ease, border-color 0.25s ease, background-color 0.25s ease;
-    overflow: visible; /* let glow extend beyond card bounds */
+    border: 1px solid transparent;
+    background-color: #374151;
+    transition: background-color 0.25s ease;
+    overflow: visible;
+}
+
+#command-input:focus {
+    outline: none;
+    box-shadow: none;
+    border-color: #4b5563;
 }
 
 #ip-info-bar {
-    overflow: visible; /* prevent glow clipping on grid container */
-    padding-left: 1rem; /* extra breathing room for glow */
-    padding-right: 1rem;
+    overflow: visible;
 }
 
 .ip-copy-btn {
@@ -141,6 +148,11 @@ h1, h2, h3, h4, h5, h6 {
     width: 40%;
     background: linear-gradient(90deg, rgba(var(--color-primary-rgb),0.15), rgba(var(--color-primary-rgb),0.6), rgba(var(--color-primary-rgb),0.15));
     animation: loadingIndeterminate 1.2s ease-in-out infinite;
+}
+
+#java-install-progress-bar,
+#update-progress-bar {
+    background-color: var(--color-primary);
 }
 @keyframes loadingIndeterminate {
     0% { transform: translateX(-100%); }
@@ -268,25 +280,6 @@ h1, h2, h3, h4, h5, h6 {
     to { opacity: 0; transform: translateY(6px); }
 }
 
-@keyframes statusBarPulseBlue {
-    0%, 100% { box-shadow: 0 0 7px rgba(var(--color-primary-rgb), 0.25), inset 0 0 4px rgba(var(--color-primary-rgb), 0.15); }
-    50% { box-shadow: 0 0 14px rgba(var(--color-primary-rgb), 0.6), inset 0 0 8px rgba(var(--color-primary-rgb), 0.4); }
-}
-#status-bar-content.status-bar-pulse {
-    animation: statusBarPulseBlue 2.2s infinite ease-in-out;
-}
-
-@keyframes primaryAttentionPulse {
-    0%, 100% { box-shadow: 0 0 0 rgba(var(--color-primary-rgb), 0); }
-    50% { box-shadow: 0 0 18px rgba(var(--color-primary-rgb), 0.5); }
-}
-#local-ip-widget.animate-green-attention,
-#public-ip-widget.animate-green-attention,
-#server-version-widget.animate-green-attention {
-    animation: primaryAttentionPulse 1.6s ease-in-out 3;
-    border-color: transparent;
-    will-change: box-shadow;
-}
 
 .btn-primary, .btn-secondary, .btn-danger, #start-button {
     transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out, box-shadow 0.2s ease, border-color 0.2s ease-in-out;
@@ -564,7 +557,7 @@ input:checked + .switch-track .switch-thumb {
     overflow: visible;
 }
 
-/* Range slider uses theme colors so it matches selected theme */
+/* Range slider uses primary colors for visual consistency */
 #auto-start-delay-slider,
 input[type="range"].themed-slider {
     -webkit-appearance: none;
@@ -628,7 +621,7 @@ select:disabled {
     opacity: 0.5;
 }
 
-/* Lock button colors: red when locked, theme-primary when unlocked */
+/* Lock button colors: red when locked, primary when unlocked */
 #lock-server-path-button[data-locked="true"] {
     background-color: #ef4444 !important; /* red for locked */
     color: white !important;
@@ -645,84 +638,6 @@ select:disabled {
     background-color: var(--color-primary-hover) !important;
 }
 
-/* (Removed custom select styles; using native selects) */
-:root {
-    --color-primary: #3b82f6; /* blue-500 */
-    --color-primary-hover: #2563eb; /* blue-600 */
-    --color-primary-rgb: 59, 130, 246; /* for rgba */
-    --color-accent: #60a5fa; /* blue-400 */
-}
-
-/* Themes */
-.theme-nord {
-    --color-primary: #81a1c1;
-    --color-primary-hover: #5e81ac;
-    --color-primary-rgb: 129, 161, 193;
-    --color-accent: #a3be8c;
-}
-.theme-aurora {
-    --color-primary: #2dd4bf;
-    --color-primary-hover: #14b8a6;
-    --color-primary-rgb: 45, 212, 191;
-    --color-accent: #a78bfa;
-}
-.theme-midnight {
-    --color-primary: #6366f1;
-    --color-primary-hover: #4f46e5;
-    --color-primary-rgb: 99, 102, 241;
-    --color-accent: #14b8a6;
-}
-
-/* Additional themes */
-.theme-skypixel { /* same as default blue */
-    --color-primary: #3b82f6;
-    --color-primary-hover: #2563eb;
-    --color-primary-rgb: 59, 130, 246;
-    --color-accent: #60a5fa;
-}
-
-.theme-emerald {
-    --color-primary: #22c55e; /* emerald-500 */
-    --color-primary-hover: #16a34a; /* emerald-600 */
-    --color-primary-rgb: 34, 197, 94;
-    --color-accent: #34d399; /* emerald-400 */
-}
-
-.theme-sunset {
-    --color-primary: #f97316; /* orange-500 */
-    --color-primary-hover: #ea580c; /* orange-600 */
-    --color-primary-rgb: 249, 115, 22;
-    --color-accent: #fb7185; /* rose-400 */
-}
-
-.theme-crimson {
-    --color-primary: #ef4444; /* red-500 */
-    --color-primary-hover: #dc2626; /* red-600 */
-    --color-primary-rgb: 239, 68, 68;
-    --color-accent: #fca5a5; /* red-300 */
-}
-
-.theme-ocean {
-    --color-primary: #0ea5e9; /* sky-500 */
-    --color-primary-hover: #0284c7; /* sky-600 */
-    --color-primary-rgb: 14, 165, 233;
-    --color-accent: #22d3ee; /* cyan-400 */
-}
-
-.theme-grape {
-    --color-primary: #8b5cf6; /* violet-500 */
-    --color-primary-hover: #7c3aed; /* violet-600 */
-    --color-primary-rgb: 139, 92, 246;
-    --color-accent: #d8b4fe; /* violet-300 */
-}
-
-.theme-neon {
-    --color-primary: #a3e635;
-    --color-primary-hover: #84cc16;
-    --color-primary-rgb: 163, 230, 53;
-    --color-accent: #22d3ee;
-}
-
 .accent-text { color: var(--color-accent) !important; }
 
 .setup-tip-card {
@@ -736,37 +651,3 @@ select:disabled {
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
-.theme-forest {
-    --color-primary: #166534;
-    --color-primary-hover: #15803d;
-    --color-primary-rgb: 22, 101, 52;
-    --color-accent: #8B4513;
-}
-
-.theme-fire {
-    --color-primary: #f97316;
-    --color-primary-hover: #ea580c;
-    --color-primary-rgb: 249, 115, 22;
-    --color-accent: #DC143C;
-}
-
-.theme-amethyst {
-    --color-primary: #7e22ce;
-    --color-primary-hover: #9333ea;
-    --color-primary-rgb: 126, 34, 206;
-    --color-accent: #8A2BE2;
-}
-
-.theme-coffee {
-    --color-primary: #6F4E37;
-    --color-primary-hover: #A0522D;
-    --color-primary-rgb: 111, 78, 55;
-    --color-accent: #F5F5DC;
-}
-
-.theme-starry {
-    --color-primary: #000080;
-    --color-primary-hover: #191970;
-    --color-primary-rgb: 0, 0, 128;
-    --color-accent: #FFD700;
-}

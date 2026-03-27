@@ -27,7 +27,6 @@ const pluginsFolderIcon = document.getElementById('plugins-folder-icon');
 const settingsButton = document.getElementById('settings-button');
 
 const statusAndOpenFolderArea = document.getElementById('status-and-open-folder-area');
-const statusBarContent = document.getElementById('status-bar-content');
 const setupActivePlaceholderTop = document.getElementById('setup-active-placeholder-top');
 
 const setupPage = document.getElementById('setup-page');
@@ -38,7 +37,6 @@ const ramAutoModalToggle = document.getElementById('ram-auto-modal-toggle');
 const ramAllocationModalWrapper = document.getElementById('ram-allocation-modal-wrapper');
 const languageModalSelect = document.getElementById('language-modal-select');
 const languageJavaSelect = document.getElementById('language-java-select');
-const themeJavaSelect = document.getElementById('theme-java-select');
 const downloadModalButton = document.getElementById('download-button-modal');
 const downloadModalButtonIcon = downloadModalButton.querySelector('i');
 const downloadModalButtonText = document.getElementById('download-button-text');
@@ -54,7 +52,6 @@ const ramAllocationSettingsWrapper = document.getElementById('ram-allocation-set
 const ramAllocationModalValue = document.getElementById('ram-allocation-modal-value');
 const ramAllocationSettingsValue = document.getElementById('ram-allocation-settings-value');
 const languageSettingsSelect = document.getElementById('language-settings-select');
-const themeSelect = document.getElementById('theme-select');
 const serverTypeSettingsSelect = document.getElementById('server-type-settings');
 const startWithSystemCheckbox = document.getElementById('start-with-system-checkbox');
 const saveSettingsButton = document.getElementById('save-settings-button');
@@ -82,8 +79,6 @@ const updateProgressBar = document.getElementById('update-progress-bar');
 const updateProgressSpeed = document.getElementById('update-progress-speed');
 const updateProgressPercent = document.getElementById('update-progress-percent');
 
-let availableThemes = [];
-let themeMap = {};
 let defaultTranslations = {};
 let currentTranslations = {};
 let activeLanguage = 'en';
@@ -343,7 +338,7 @@ function renderAutoUpdateState() {
                 ? translate('updaterInProgress')
                 : translate('updaterChecking');
             renderUpdateLastChecked(autoUpdateState.lastCheckedAt);
-            setUpdatePill(translate('updateStateChecking'), 'bg-blue-600 text-white');
+            setUpdatePill(translate('updateStateChecking'), 'bg-gray-700 text-gray-100');
             setUpdateButtonState({ disabled: true, busy: true });
             toggleUpdateProgress(false);
             setUpdateIcon('fa-spinner', true);
@@ -367,7 +362,7 @@ function renderAutoUpdateState() {
         case 'downloading':
             updateStatusLabel.textContent = formatTranslation('updaterDownloading', { version: autoUpdateState.version || '?' });
             updateStatusSubtext.textContent = `${Math.round(autoUpdateState.percent)}% — ${formatDownloadSpeed(autoUpdateState.bytesPerSecond)}`;
-            setUpdatePill(translate('updateStateDownloading'), 'bg-blue-600 text-white');
+            setUpdatePill(translate('updateStateDownloading'), 'bg-gray-600 text-gray-100');
             setUpdateButtonState({ disabled: true, busy: true, mode: 'download' });
             toggleUpdateProgress(true, autoUpdateState.percent, autoUpdateState.bytesPerSecond);
             setUpdateIcon('fa-cloud-arrow-down', true);
@@ -528,15 +523,15 @@ function renderMemoryUsage() {
     }
 }
 
-function renderLatency() {
+function renderCpuUsage() {
     if (!serverTpsSpan) return;
-    if (typeof lastCmdLatencyMs === 'number' && !Number.isNaN(lastCmdLatencyMs)) {
-        const ms = Math.max(0, parseFloat(lastCmdLatencyMs) || 0);
-        const msText = ms >= 100 ? ms.toFixed(0) : ms.toFixed(1);
-        serverTpsSpan.textContent = formatTranslation('latencyFormat', { value: msText });
-        if (ms >= 300) {
+    if (typeof lastCpuUsagePercent === 'number' && !Number.isNaN(lastCpuUsagePercent)) {
+        const usage = Math.max(0, parseFloat(lastCpuUsagePercent) || 0);
+        const usageText = usage >= 10 ? usage.toFixed(1) : usage.toFixed(2);
+        serverTpsSpan.textContent = formatTranslation('latencyFormat', { value: usageText });
+        if (usage >= 90) {
             serverTpsSpan.style.color = '#ef4444';
-        } else if (ms >= 150) {
+        } else if (usage >= 70) {
             serverTpsSpan.style.color = '#facc15';
         } else {
             serverTpsSpan.style.color = '#4ade80';
@@ -553,7 +548,7 @@ let isModalAnimating = false;
 let availableMcVersionsCache = {};
 let allocatedRamCache = '-';
 let lastMemoryGB = null;
-let lastCmdLatencyMs = null;
+let lastCpuUsagePercent = null;
 let autoStartIsActive = false; 
 let countdownInterval = null;
 let isDownloadingFromServer = false;
@@ -877,7 +872,7 @@ async function setLanguage(lang) {
         refreshRamSliderLabels();
         updateButtonStates(localIsServerRunning);
         renderMemoryUsage();
-        renderLatency();
+        renderCpuUsage();
         fetchAndDisplayIPs(localIsServerRunning).catch(() => {});
         activeLanguage = lang || activeLanguage;
 
@@ -1058,11 +1053,8 @@ function setStatus(fallbackText, pulse = false, translationKey = null) {
     statusMessageSpan.textContent = message;
     statusMessageSpan.dataset.key = key || '';
     
-    const pulseTarget = statusBarContent;
     const statusColor = getStatusColor(key);
-    
-    pulseTarget.classList.toggle('status-bar-pulse', pulse);
-    statusMessageSpan.style.color = pulse ? 'var(--color-primary)' : statusColor;
+    statusMessageSpan.style.color = statusColor;
 }
 
 function showDownloadLoading() {
@@ -1453,10 +1445,6 @@ settingsButton.addEventListener('click', async () => {
     languageOnSettingsOpen = currentLang;
     pendingSettingsLanguage = null;
     if (languageSettingsSelect) languageSettingsSelect.value = currentLang;
-    const savedTheme = ensureThemeCode(launcherSettingsCache.theme || 'skypixel');
-    applyThemeClass(savedTheme);
-    if (themeSelect) themeSelect.value = savedTheme;
-
     const serverConfig = await window.electronAPI.getServerConfig();
     const currentType = normalizeUiServerType(serverConfig.serverType);
     // Load server path info
@@ -1624,7 +1612,7 @@ function updateSettingsLockState(locked) {
     if (serverTypeSettingsSelect) serverTypeSettingsSelect.disabled = locked;
     if (mcVersionSettingsSelect) mcVersionSettingsSelect.disabled = locked;
     if (ramAllocationSettingsSelect) ramAllocationSettingsSelect.disabled = locked;
-    // Keep non-critical settings enabled (autostart, notifications, theme, language, etc.)
+    // Keep non-critical settings enabled (autostart, notifications, language, etc.)
 }
 
 ramAutoModalToggle?.addEventListener('change', () => {
@@ -1737,74 +1725,6 @@ autoStartDelaySlider.addEventListener('input', () => {
     autoStartDelayValue.textContent = `${autoStartDelaySlider.value}s`;
 });
 
-checkUpdatesButton?.addEventListener('click', async () => {
-    if (checkUpdatesButton.disabled) return;
-    try {
-        if (autoUpdateState.status === 'available') {
-            setUpdateButtonState({ disabled: true, busy: true, mode: 'download' });
-            autoUpdateState.status = 'downloading';
-            autoUpdateState.percent = 0;
-            autoUpdateState.bytesPerSecond = 0;
-            renderAutoUpdateState();
-            const response = await window.electronAPI.downloadUpdate();
-            const responseReason = response?.reason;
-            if (responseReason && responseReason !== 'started') {
-                addToConsole(formatTranslation('updateDownloadCouldNotStart', { reason: responseReason }), 'WARN');
-                if (responseReason === 'in-progress' || responseReason === 'download-in-progress') {
-                    autoUpdateState.status = 'downloading';
-                } else if (responseReason === 'already-downloaded') {
-                    autoUpdateState.status = 'ready-to-install';
-                } else if (responseReason === 'no-update') {
-                    autoUpdateState.status = 'up-to-date';
-                } else if (responseReason === 'unsupported') {
-                    autoUpdateState.status = 'unsupported';
-                } else if (responseReason === 'error') {
-                    autoUpdateState.status = 'error';
-                    autoUpdateState.errorMessage = response?.error || responseReason;
-                } else {
-                    autoUpdateState.status = 'available';
-                }
-                renderAutoUpdateState();
-            }
-            return;
-        }
-        if (autoUpdateState.status === 'ready-to-install') {
-            setUpdateButtonState({ disabled: true, busy: true, mode: 'installing' });
-            autoUpdateState.status = 'installing';
-            renderAutoUpdateState();
-            const response = await window.electronAPI.installUpdate();
-            const responseReason = response?.reason;
-            if (responseReason && responseReason !== 'started') {
-                addToConsole(formatTranslation('updateRestartCouldNotStart', { reason: responseReason }), 'WARN');
-                if (responseReason === 'download-in-progress') {
-                    autoUpdateState.status = 'downloading';
-                } else if (responseReason === 'not-downloaded') {
-                    autoUpdateState.status = 'available';
-                } else if (responseReason === 'unsupported') {
-                    autoUpdateState.status = 'unsupported';
-                } else if (responseReason === 'error') {
-                    autoUpdateState.status = 'error';
-                    autoUpdateState.errorMessage = response?.error || responseReason;
-                } else {
-                    autoUpdateState.status = 'ready-to-install';
-                }
-                renderAutoUpdateState();
-            }
-            return;
-        }
-        if (autoUpdateState.status === 'downloading' || autoUpdateState.status === 'installing') {
-            return;
-        }
-        setUpdateButtonState({ disabled: true, busy: true, mode: 'check' });
-        await window.electronAPI.checkForUpdates();
-    } catch (error) {
-        addToConsole(formatTranslation('manualUpdateActionFailed', { error: error.message }), 'ERROR');
-        autoUpdateState.status = 'error';
-        autoUpdateState.errorMessage = error.message;
-        renderAutoUpdateState();
-    }
-});
-
 commandInput.addEventListener('keydown', (event) => {
     if (event.key === 'ArrowUp') {
         event.preventDefault();
@@ -1851,16 +1771,6 @@ languageJavaSelect.addEventListener('change', async (event) => {
     if (languageSettingsSelect) languageSettingsSelect.value = newLang;
 });
 
-themeJavaSelect.addEventListener('change', (event) => {
-    const newTheme = ensureThemeCode(event.target.value);
-    // Apply immediately for Java page since it's a standalone page
-    launcherSettingsCache.theme = newTheme;
-    window.electronAPI.setSettings(launcherSettingsCache);
-    applyThemeClass(newTheme);
-    // Mirror to other selectors
-    if (themeSelect) themeSelect.value = newTheme;
-});
-
 languageSettingsSelect.addEventListener('change', (event) => {
     const newLang = event.target.value;
     // Apply as preview only, persist only on Save & Apply
@@ -1902,18 +1812,6 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
         pendingAutoStartRequest = null;
         setStatus(translate('serverRunning'), false, 'serverRunning');
         await fetchAndDisplayIPs(true);
-        
-        localIpWidget.classList.add('animate-green-attention');
-        publicIpWidget.classList.add('animate-green-attention');
-        serverVersionWidget.classList.add('animate-green-attention');
-
-        const removeAnimation = (widget) => {
-            widget.classList.remove('animate-green-attention');
-        };
-        
-        localIpWidget.addEventListener('animationend', () => removeAnimation(localIpWidget), { once: true });
-        publicIpWidget.addEventListener('animationend', () => removeAnimation(publicIpWidget), { once: true });
-        serverVersionWidget.addEventListener('animationend', () => removeAnimation(serverVersionWidget), { once: true });
 
         renderMemoryUsage();
     } else {
@@ -1929,6 +1827,7 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
             ? formatTranslation('memoryUsageAllocatedPlaceholder', { allocated: allocatedRamCache })
             : translate('memoryUsagePlaceholder');
         memoryUsageSpan.style.color = '';
+        lastCpuUsagePercent = null;
         serverTpsSpan.textContent = translate('latencyPlaceholder');
         serverTpsSpan.style.color = '';
         // NU resetăm allocatedRamCache aici - păstrăm valoarea pentru afișare
@@ -1944,7 +1843,7 @@ window.electronAPI.onServerStateChange(async (isRunning) => {
     }
 });
 
-window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, tps, latencyMs, mspt, cmdLatencyMs }) => {
+window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, cpuUsagePercent }) => {
     let shouldRenderMemory = false;
     if (typeof allocatedRamGB !== 'undefined' && allocatedRamGB !== null) {
         allocatedRamCache = allocatedRamGB;
@@ -1963,10 +1862,9 @@ window.electronAPI.onUpdatePerformanceStats(({ memoryGB, allocatedRamGB, tps, la
         renderMemoryUsage();
     }
 
-    // Display command latency from /list response time (higher precision)
-    if (typeof cmdLatencyMs !== 'undefined' && cmdLatencyMs !== null) {
-        lastCmdLatencyMs = Math.max(0, parseFloat(cmdLatencyMs) || 0);
-        renderLatency();
+    if (typeof cpuUsagePercent !== 'undefined' && cpuUsagePercent !== null) {
+        lastCpuUsagePercent = Math.max(0, parseFloat(cpuUsagePercent) || 0);
+        renderCpuUsage();
     }
 });
 
@@ -2083,16 +1981,14 @@ async function bootstrapStartupStage(state) {
     const versionPromise = window.electronAPI.getAppVersion();
     const isDevPromise = (window.electronAPI.isDev ? window.electronAPI.isDev() : Promise.resolve(false)).catch(() => false);
     const settingsPromise = window.electronAPI.getSettings();
-    const themesPromise = window.electronAPI.getAvailableThemes().catch(() => null);
     const pathInfoPromise = window.electronAPI.getServerPathInfo().catch(() => null);
     const systemMemoryPromise = detectSystemMemoryGb();
 
-    const [iconPath, version, isDevRaw, settings, themes, pathInfo, systemMemoryGb] = await Promise.all([
+    const [iconPath, version, isDevRaw, settings, pathInfo, systemMemoryGb] = await Promise.all([
         iconPromise,
         versionPromise,
         isDevPromise,
         settingsPromise,
-        themesPromise,
         pathInfoPromise,
         systemMemoryPromise
     ]);
@@ -2102,7 +1998,6 @@ async function bootstrapStartupStage(state) {
         version: version || '?.?.?',
         isDev: !!isDevRaw,
         settings: settings || {},
-        themes: Array.isArray(themes) ? themes : null,
         pathInfo: pathInfo || null,
         systemMemoryGb: systemMemoryGb || DEFAULT_MAX_RAM_GB
     };
@@ -2117,15 +2012,7 @@ async function applyPreferencesStartupStage(state) {
 
     setRamSliderBounds(bootstrap.systemMemoryGb || DEFAULT_MAX_RAM_GB);
 
-    availableThemes = (bootstrap.themes && bootstrap.themes.length) ? bootstrap.themes : getFallbackThemes();
-    rebuildThemeMap(availableThemes);
-    populateThemeSelectors();
-
     launcherSettingsCache = bootstrap.settings || {};
-    const savedTheme = ensureThemeCode(launcherSettingsCache.theme || 'skypixel');
-    applyThemeClass(savedTheme);
-    if (themeSelect) themeSelect.value = savedTheme;
-    if (themeJavaSelect) themeJavaSelect.value = savedTheme;
 
     if (bootstrap.pathInfo) {
         if (serverPathDisplay && bootstrap.pathInfo.path) {
@@ -2267,10 +2154,6 @@ window.electronAPI.onUpdateStatus((message, pulse = false, key = null) => {
     }
 });
 
-window.electronAPI.onUpdaterEvent((payload) => {
-    handleUpdaterEvent(payload || {});
-});
-
 function startCountdown(seconds, messageKey, callback) {
     if (countdownInterval) clearInterval(countdownInterval);
 
@@ -2290,7 +2173,6 @@ function startCountdown(seconds, messageKey, callback) {
             const message = `${prefix}${suffix}`;
             statusMessageSpan.textContent = message;
             statusMessageSpan.dataset.key = '';
-            statusBarContent.classList.add('status-bar-pulse');
             statusMessageSpan.style.color = 'var(--color-primary)';
             remaining--;
         } else {
@@ -2315,7 +2197,6 @@ function cancelAutoStartCountdown(reasonKey = null) {
         countdownInterval = null;
     }
     pendingAutoStartRequest = null;
-    statusBarContent.classList.remove('status-bar-pulse');
     if ((wasActive || hadPending) && reasonKey) {
         const fallback = translate(reasonKey, translate('autoStartCancelled'));
         setStatus(fallback, false, reasonKey);
@@ -2655,91 +2536,4 @@ pluginsSaveApplyButton?.addEventListener('click', () => {
         }
     }
     closePluginsView();
-});
-function hexToRgbString(hexColor) {
-    const hex = (hexColor || '').replace('#', '');
-    if (hex.length !== 6) return '59, 130, 246';
-    const num = parseInt(hex, 16);
-    const r = (num >> 16) & 255;
-    const g = (num >> 8) & 255;
-    const b = num & 255;
-    return `${r}, ${g}, ${b}`;
-}
-
-function getFallbackThemes() {
-    return [
-        { code: 'skypixel', name: 'Skypixel Blue', colors: { primary: '#3b82f6', primaryHover: '#2563eb', accent: '#60a5fa' } },
-        { code: 'nord', name: 'Nord', colors: { primary: '#88c0d0', primaryHover: '#81a1c1', accent: '#a3be8c' } },
-        { code: 'aurora', name: 'Aurora', colors: { primary: '#06b6d4', primaryHover: '#0891b2', accent: '#a78bfa' } },
-        { code: 'midnight', name: 'Midnight', colors: { primary: '#6366f1', primaryHover: '#4f46e5', accent: '#14b8a6' } },
-        { code: 'emerald', name: 'Emerald', colors: { primary: '#22c55e', primaryHover: '#16a34a', accent: '#34d399' } },
-        { code: 'sunset', name: 'Sunset', colors: { primary: '#f97316', primaryHover: '#ea580c', accent: '#fb7185' } },
-        { code: 'crimson', name: 'Crimson', colors: { primary: '#ef4444', primaryHover: '#dc2626', accent: '#fca5a5' } },
-        { code: 'ocean', name: 'Ocean', colors: { primary: '#0ea5e9', primaryHover: '#0284c7', accent: '#22d3ee' } },
-        { code: 'grape', name: 'Grape', colors: { primary: '#8b5cf6', primaryHover: '#7c3aed', accent: '#d8b4fe' } },
-        { code: 'neon', name: 'Neon', colors: { primary: '#22d3ee', primaryHover: '#06b6d4', accent: '#a3e635' } }
-    ];
-}
-
-function rebuildThemeMap(themes) {
-    themeMap = {};
-    themes.forEach((t) => {
-        if (t?.code) {
-            themeMap[t.code] = {
-                code: t.code,
-                name: t.name || t.code,
-                colors: {
-                    primary: t.colors?.primary || '#3b82f6',
-                    primaryHover: t.colors?.primaryHover || t.colors?.primary || '#2563eb',
-                    accent: t.colors?.accent || t.colors?.primary || '#60a5fa'
-                }
-            };
-        }
-    });
-}
-
-function ensureThemeCode(code) {
-    if (code && themeMap[code]) return code;
-    if (themeMap['skypixel']) return 'skypixel';
-    const first = availableThemes[0]?.code;
-    return first || 'skypixel';
-}
-
-function populateThemeSelect(selectEl) {
-    if (!selectEl) return;
-    selectEl.innerHTML = '';
-    availableThemes.forEach((theme) => {
-        const opt = document.createElement('option');
-        opt.value = theme.code;
-        opt.textContent = theme.name || theme.code;
-        selectEl.appendChild(opt);
-    });
-}
-
-function populateThemeSelectors() {
-    populateThemeSelect(themeSelect);
-    populateThemeSelect(themeJavaSelect);
-}
-
-function applyThemeClass(themeCode) {
-    const code = ensureThemeCode(themeCode);
-    const theme = themeMap[code] || getFallbackThemes()[0];
-    const primary = theme.colors?.primary || '#3b82f6';
-    const primaryHover = theme.colors?.primaryHover || primary;
-    const accent = theme.colors?.accent || primary;
-    const primaryRgb = hexToRgbString(primary);
-    const root = document.documentElement;
-    root.style.setProperty('--color-primary', primary);
-    root.style.setProperty('--color-primary-hover', primaryHover);
-    root.style.setProperty('--color-primary-rgb', primaryRgb);
-    root.style.setProperty('--color-accent', accent);
-    document.body.dataset.theme = code;
-}
-
-themeSelect.addEventListener('change', (e) => {
-    const value = ensureThemeCode(e.target.value);
-    applyThemeClass(value);
-    launcherSettingsCache.theme = value;
-    window.electronAPI.setSettings({ theme: value });
-    if (themeJavaSelect) themeJavaSelect.value = value;
 });

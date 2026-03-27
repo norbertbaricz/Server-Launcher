@@ -39,18 +39,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getServerProperties: () => ipcRenderer.invoke('get-server-properties'),
     getAppPath: () => ipcRenderer.invoke('get-app-path'),
     checkInitialSetup: () => ipcRenderer.invoke('check-initial-setup'),
-    checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
     getAvailableVersions: (serverType) => ipcRenderer.invoke('get-available-versions', serverType),
     getLocalIP: () => ipcRenderer.invoke('get-local-ip'),
     getPublicIP: () => ipcRenderer.invoke('get-public-ip'),
     getIconPath: () => ipcRenderer.invoke('get-icon-path'),
     getTranslations: (lang) => ipcRenderer.invoke('get-translations', lang),
-    getAvailableLanguages: () => ipcRenderer.invoke('get-available-languages'),
-    downloadUpdate: () => ipcRenderer.invoke('download-update')
-    ,installUpdate: () => ipcRenderer.invoke('install-update')
+    getAvailableLanguages: () => ipcRenderer.invoke('get-available-languages')
     ,getServerPathInfo: () => ipcRenderer.invoke('get-server-path-info')
     ,selectServerLocation: () => ipcRenderer.invoke('select-server-location')
     ,setServerPathLock: (locked) => ipcRenderer.send('set-server-path-lock', locked)
-    ,getAvailableThemes: () => ipcRenderer.invoke('get-available-themes')
     ,getSystemMemory: () => ipcRenderer.invoke('get-system-memory')
 });

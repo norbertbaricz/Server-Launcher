@@ -26,7 +26,7 @@ That is all—no `git clone`, no coding, no extra software.
 - Guided setup that creates your Minecraft server folder for you.
 - Start/Stop buttons, live console, RAM usage, IP + port display, and ping checker.
 - Plugin/Mod/Add-on upload page with one-click folder access.
-- Automatic language, theme, and notification options.
+- Automatic language and notification options.
 
 ---
 
@@ -86,7 +86,7 @@ You can reopen the setup later from Settings if you ever want to change version,
 - **Console + Command bar:** Read logs and send commands (e.g., `/op YourName`). Inputs are sanitized to keep things safe.
 - **Start/Stop buttons:** One click to power your server up or down. Critical settings lock automatically while the server runs.
 - **Plugins / Mods / Add-ons page:** Upload or delete files, open the folder, and edit `server.properties` with Save & Apply.
-- **Settings:** Change language, theme, notifications, auto-start options, and the server location whenever the server is stopped.
+- **Settings:** Change language, notifications, auto-start options, and the server location whenever the server is stopped.
 
 ---
 

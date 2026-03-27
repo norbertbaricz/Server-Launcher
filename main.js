@@ -200,39 +200,7 @@ const SOUND_SEARCH_DIRS = ['', 'sounds'];
 const ERROR_SOUND_KEYWORDS = ['error', 'failed', 'fail', 'not found', 'crash', 'stopped unexpectedly', 'timed out', 'unavailable', 'unable'];
 const SUCCESS_SOUND_KEYWORDS = ['success', 'successfully', 'ready', 'completed', 'installed', 'configured', 'downloaded', 'server started', 'server ready', 'done'];
 const NGROK_API_ENDPOINT = 'http://127.0.0.1:4040/api/tunnels';
-const NGROK_REGION_DEFAULT = 'us';
-const NGROK_REGION_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
-const NGROK_GEO_ENDPOINT = 'https://ipapi.co/json/';
-const NGROK_REGION_CODES = new Set(['ap', 'au', 'eu', 'in', 'jp', 'sa', 'us', 'us-cal-1']);
-const NGROK_WEST_COAST_TZ = new Set([
-    'america/los_angeles', 'america/vancouver', 'america/phoenix', 'america/denver', 'america/dawson',
-    'america/tijuana', 'america/anchorage', 'america/adak', 'pacific/honolulu', 'america/juneau',
-    'america/sitka', 'america/nome', 'america/yakutat'
-]);
-const NGROK_WEST_COAST_STATES = new Set(['AK', 'AZ', 'CA', 'CO', 'HI', 'ID', 'MT', 'NV', 'NM', 'OR', 'UT', 'WA', 'WY']);
-const NGROK_SOUTH_AMERICA_COUNTRIES = new Set(['AR', 'BO', 'BR', 'CL', 'CO', 'EC', 'GF', 'GY', 'PE', 'PY', 'SR', 'UY', 'VE']);
-const NGROK_EUROPE_COUNTRIES = new Set([
-    'AD', 'AL', 'AM', 'AT', 'AX', 'BA', 'BE', 'BG', 'BY', 'CH', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FO', 'FR', 'GB', 'GE',
-    'GG', 'GI', 'GR', 'HR', 'HU', 'IE', 'IM', 'IS', 'IT', 'JE', 'KZ', 'LI', 'LT', 'LU', 'LV', 'MC', 'MD', 'ME', 'MK', 'MT', 'NL',
-    'NO', 'PL', 'PT', 'RO', 'RS', 'RU', 'SE', 'SI', 'SK', 'SM', 'TJ', 'TR', 'UA', 'UZ', 'VA', 'XK'
-]);
-const NGROK_APAC_COUNTRIES = new Set([
-    'BD', 'BN', 'BT', 'CN', 'HK', 'ID', 'KH', 'KR', 'LA', 'LK', 'MM', 'MN', 'MO', 'MV', 'MY', 'NP', 'PH', 'PK', 'SG', 'TH', 'TL', 'TW', 'VN'
-]);
-const PUBLIC_IP_USER_AGENT = 'MyMinecraftLauncher/1.0';
-const DISCORD_CONSOLE_SUPPRESS_REGEX = /discord/i;
-const DEFAULT_THEMES = [
-    { code: 'skypixel', name: 'Skypixel Blue', colors: { primary: '#3b82f6', primaryHover: '#2563eb', accent: '#60a5fa' } },
-    { code: 'nord', name: 'Nord', colors: { primary: '#88c0d0', primaryHover: '#81a1c1', accent: '#a3be8c' } },
-    { code: 'aurora', name: 'Aurora', colors: { primary: '#06b6d4', primaryHover: '#0891b2', accent: '#a78bfa' } },
-    { code: 'midnight', name: 'Midnight', colors: { primary: '#6366f1', primaryHover: '#4f46e5', accent: '#14b8a6' } },
-    { code: 'emerald', name: 'Emerald', colors: { primary: '#22c55e', primaryHover: '#16a34a', accent: '#34d399' } },
-    { code: 'sunset', name: 'Sunset', colors: { primary: '#f97316', primaryHover: '#ea580c', accent: '#fb7185' } },
-    { code: 'crimson', name: 'Crimson', colors: { primary: '#ef4444', primaryHover: '#dc2626', accent: '#fca5a5' } },
-    { code: 'ocean', name: 'Ocean', colors: { primary: '#0ea5e9', primaryHover: '#0284c7', accent: '#22d3ee' } },
-    { code: 'grape', name: 'Grape', colors: { primary: '#8b5cf6', primaryHover: '#7c3aed', accent: '#d8b4fe' } },
-    { code: 'neon', name: 'Neon', colors: { primary: '#22d3ee', primaryHover: '#06b6d4', accent: '#a3e635' } }
-];
+const NGROK_STARTUP_GRACE_MS = 5000;
 
 const CONTENT_SECURITY_POLICY = [
     "default-src 'self' file: data:",
@@ -451,9 +419,11 @@ let ngrokTargetPort = null;
 let ngrokUnavailablePermanently = false;
 let ngrokStopRequested = false;
 let lastNgrokDiagnosticCode = null;
-let cachedNgrokRegion = null;
-let cachedNgrokRegionAt = 0;
-let lastAnnouncedNgrokRegion = null;
+let ngrokStartedAt = 0;
+let lastKnownNgrokTunnelInfo = null;
+let ngrokSyncTimer = null;
+let ngrokServerPropertiesWatcher = null;
+let ngrokServerPropertiesWatchDir = null;
 
 // Notification service
 let notificationService = null;
@@ -777,9 +747,11 @@ if (!gotTheLock) {
 } else {
     app.on('second-instance', () => {
         const win = getMainWindow();
-        if (win) {
+        if (win && !win.isDestroyed()) {
             if (win.isMinimized()) win.restore();
             win.focus();
+        } else {
+            createWindow();
         }
     });
 }
@@ -1600,8 +1572,6 @@ function sendServerStateChange(isRunning) {
         ensureNgrokTunnelForCurrentServerPort().catch((err) => {
             if (err && typeof log.debug === 'function') log.debug(`Ngrok ensure failed: ${err.message}`);
         });
-    } else {
-        stopNgrokTunnel();
     }
 
     applyFrameRateForState();
@@ -1756,6 +1726,84 @@ let autoUpdateDownloadInFlight = false;
 let lastAvailableUpdateInfo = null;
 let updateReadyToInstall = false;
 let updateReadyInfo = null;
+let updaterStateFilePath = null;
+
+function readPersistedUpdaterState() {
+    if (!updaterStateFilePath) return {};
+    try {
+        if (!fs.existsSync(updaterStateFilePath)) return {};
+        const raw = fs.readFileSync(updaterStateFilePath, 'utf8');
+        const parsed = JSON.parse(raw);
+        return (parsed && typeof parsed === 'object') ? parsed : {};
+    } catch (error) {
+        log.warn(`Updater: Failed to read persisted state: ${error.message}`);
+        return {};
+    }
+}
+
+function writePersistedUpdaterState(state) {
+    if (!updaterStateFilePath) return;
+    try {
+        fs.writeFileSync(updaterStateFilePath, JSON.stringify(state || {}, null, 2), 'utf8');
+    } catch (error) {
+        log.warn(`Updater: Failed to persist state: ${error.message}`);
+    }
+}
+
+function setUpdateReadyState(ready, info = null) {
+    updateReadyToInstall = !!ready;
+    updateReadyInfo = ready ? (info || updateReadyInfo || null) : null;
+    writePersistedUpdaterState({
+        readyToInstall: !!ready,
+        version: ready ? (info?.version || updateReadyInfo?.version || null) : null,
+        updatedAt: Date.now()
+    });
+}
+
+function startForcedAutoDownload(reason = 'auto') {
+    if (!shouldCheckForUpdates()) {
+        return { supported: false, reason: 'unsupported' };
+    }
+    if (updateReadyToInstall) {
+        return { supported: true, reason: 'already-downloaded' };
+    }
+    if (!lastAvailableUpdateInfo) {
+        return { supported: true, reason: 'no-update' };
+    }
+    if (autoUpdateDownloadInFlight) {
+        emitUpdaterEvent({ type: 'in-progress', reason: 'download-in-progress' });
+        return { supported: true, reason: 'in-progress' };
+    }
+
+    try {
+        autoUpdateDownloadInFlight = true;
+        updaterSilentMode = true;
+        emitUpdaterEvent({
+            type: 'download-started',
+            reason,
+            version: lastAvailableUpdateInfo?.version || null,
+            timestamp: Date.now()
+        });
+
+        const pending = autoUpdater.downloadUpdate();
+        if (pending && typeof pending.finally === 'function') {
+            pending.finally(() => { autoUpdateDownloadInFlight = false; });
+        }
+        if (pending && typeof pending.catch === 'function') {
+            pending.catch((error) => {
+                autoUpdateDownloadInFlight = false;
+                log.warn(`Updater: Forced download failed: ${error?.message || 'Unknown error'}`);
+                emitUpdaterEvent({ type: 'error', stage: 'download', message: error?.message || 'Download failed' });
+            });
+        }
+        return { supported: true, reason: 'started' };
+    } catch (error) {
+        autoUpdateDownloadInFlight = false;
+        log.warn(`Updater: Could not start forced download: ${error.message}`);
+        emitUpdaterEvent({ type: 'error', stage: 'download-start', message: error?.message || 'Unknown error' });
+        return { supported: true, reason: 'error', error: error.message };
+    }
+}
 
 function triggerAutoUpdateCheck(reason = 'manual', opts = {}) {
     const { silent = false } = opts;
@@ -2085,7 +2133,167 @@ function extractPortFromAddress(addr) {
     return parsed;
 }
 
+function cacheNgrokTunnelInfo(publicUrl, configAddr = null) {
+    if (typeof publicUrl !== 'string' || !publicUrl.startsWith('tcp://')) return;
+    lastKnownNgrokTunnelInfo = {
+        publicUrl,
+        configAddr: typeof configAddr === 'string' ? configAddr : null,
+        observedAt: Date.now()
+    };
+    lastNgrokDiagnosticCode = null;
+}
+
+function clearNgrokSyncTimer() {
+    if (!ngrokSyncTimer) return;
+    clearTimeout(ngrokSyncTimer);
+    ngrokSyncTimer = null;
+}
+
+function stopNgrokServerPropertiesWatcher() {
+    if (!ngrokServerPropertiesWatcher) return;
+    try {
+        ngrokServerPropertiesWatcher.close();
+    } catch (error) {
+        log.warn(`Failed to close ngrok server.properties watcher: ${error.message}`);
+    }
+    ngrokServerPropertiesWatcher = null;
+    ngrokServerPropertiesWatchDir = null;
+}
+
+function restartNgrokServerPropertiesWatcher() {
+    if (ngrokServerPropertiesWatchDir === serverFilesDir && ngrokServerPropertiesWatcher) return;
+    stopNgrokServerPropertiesWatcher();
+    if (!serverFilesDir || !fs.existsSync(serverFilesDir)) return;
+
+    try {
+        ngrokServerPropertiesWatcher = fs.watch(serverFilesDir, (_eventType, filename) => {
+            const watchedName = typeof filename === 'string' ? filename : '';
+            if (watchedName && watchedName !== serverPropertiesFileName) return;
+            scheduleNgrokPortSync('server-properties-changed', 250);
+        });
+        ngrokServerPropertiesWatchDir = serverFilesDir;
+    } catch (error) {
+        log.warn(`Failed to watch server.properties for ngrok sync: ${error.message}`);
+    }
+}
+
+function shouldUseNgrokForCurrentServerConfig() {
+    const serverConfig = readServerConfig();
+    const serverType = normalizeServerType(serverConfig?.serverType);
+    return isJavaServer(serverType);
+}
+
+async function syncNgrokTunnelToConfiguredPort(existingInfo = null) {
+    if (ngrokUnavailablePermanently) return false;
+    if (!shouldUseNgrokForCurrentServerConfig()) {
+        stopNgrokTunnel();
+        return false;
+    }
+
+    const desiredPort = getConfiguredJavaServerPort();
+    if (!desiredPort) return false;
+
+    const tunnelInfo = existingInfo ?? await getNgrokTcpTunnelInfo();
+    if (tunnelInfo?.configAddr) {
+        const activePort = extractPortFromAddress(tunnelInfo.configAddr);
+        if (activePort === desiredPort && ngrokProcess && !ngrokProcess.killed) {
+            return true;
+        }
+    }
+
+    return startNgrokTunnel(desiredPort);
+}
+
+function scheduleNgrokPortSync(reason = 'update', delayMs = 150) {
+    if (ngrokUnavailablePermanently) return;
+    clearNgrokSyncTimer();
+    ngrokSyncTimer = setTimeout(() => {
+        ngrokSyncTimer = null;
+        syncNgrokTunnelToConfiguredPort().catch((error) => {
+            if (typeof log.debug === 'function') {
+                log.debug(`Ngrok sync skipped after ${reason}: ${error.message}`);
+            }
+        });
+    }, delayMs);
+}
+
+function extractNgrokTcpTunnelInfoFromLine(text) {
+    if (typeof text !== 'string') return null;
+    const trimmed = text.trim();
+    if (!trimmed) return null;
+
+    if (trimmed.startsWith('{')) {
+        try {
+            const payload = JSON.parse(trimmed);
+            if (payload?.msg === 'started tunnel' && typeof payload.url === 'string' && payload.url.startsWith('tcp://')) {
+                return {
+                    publicUrl: payload.url,
+                    configAddr: typeof payload.addr === 'string' ? payload.addr : null
+                };
+            }
+        } catch {
+            return null;
+        }
+    }
+
+    const urlMatch = trimmed.match(/tcp:\/\/[^\s"']+/i);
+    if (!urlMatch) return null;
+
+    const addrMatch = trimmed.match(/(?:addr|forwarding to)=([^\s]+)|->\s*([^\s]+)/i);
+    const configAddr = addrMatch?.[1] || addrMatch?.[2] || null;
+    return {
+        publicUrl: urlMatch[0],
+        configAddr
+    };
+}
+
+function handleNgrokProcessOutputLine(line) {
+    const text = line.trim();
+    if (!text) return;
+
+    const tunnelInfo = extractNgrokTcpTunnelInfoFromLine(text);
+    if (tunnelInfo?.publicUrl) {
+        cacheNgrokTunnelInfo(tunnelInfo.publicUrl, tunnelInfo.configAddr);
+    }
+
+    const lower = text.toLowerCase();
+    if (lower.includes('error') || lower.includes('fail') || lower.includes('failed')) {
+        sendConsole(`[ngrok] ${text}`, 'ERROR');
+    } else if (lower.includes('warn')) {
+        sendConsole(`[ngrok] ${text}`, 'WARN');
+    } else if (lower.includes('url') || lower.includes('forwarding') || lower.includes('started tunnel')) {
+        sendConsole(`[ngrok] ${text}`, 'INFO');
+    } else {
+        log.info(`[ngrok] ${text}`);
+    }
+}
+
+function attachNgrokProcessOutput(stream) {
+    let buffer = '';
+
+    stream.on('data', (data) => {
+        buffer += data.toString();
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() || '';
+        lines.forEach(handleNgrokProcessOutputLine);
+    });
+
+    stream.on('end', () => {
+        if (buffer.trim()) {
+            handleNgrokProcessOutputLine(buffer);
+        }
+    });
+}
+
 async function getNgrokTcpTunnelInfo() {
+    if (lastKnownNgrokTunnelInfo?.publicUrl) {
+        lastNgrokDiagnosticCode = null;
+        return {
+            publicUrl: lastKnownNgrokTunnelInfo.publicUrl,
+            configAddr: lastKnownNgrokTunnelInfo.configAddr
+        };
+    }
+
     try {
         const payload = await fetchNgrokTunnels();
         const tunnels = Array.isArray(payload?.tunnels) ? payload.tunnels : [];
@@ -2117,6 +2325,10 @@ async function getNgrokTcpTunnelInfo() {
         const ignorableCodes = new Set(['ECONNREFUSED', 'ECONNRESET', 'EHOSTUNREACH', 'NGROK_BAD_STATUS', 'NGROK_TIMEOUT', 'NGROK_BAD_JSON']);
         const code = error.code || 'UNKNOWN';
         if (ignorableCodes.has(code)) {
+            const withinStartupWindow = !!ngrokProcess && ngrokStartedAt && (Date.now() - ngrokStartedAt) < NGROK_STARTUP_GRACE_MS;
+            if (code === 'ECONNREFUSED' && withinStartupWindow) {
+                return null;
+            }
             const shouldLog = (code !== 'ECONNREFUSED') || !!ngrokProcess;
             if (shouldLog && typeof log.debug === 'function') {
                 if (code !== lastNgrokDiagnosticCode) {
@@ -2134,95 +2346,11 @@ async function getNgrokTcpTunnelInfo() {
     }
 }
 
-function coerceNgrokRegion(value) {
-    if (typeof value !== 'string') return null;
-    const normalized = value.trim().toLowerCase();
-    return NGROK_REGION_CODES.has(normalized) ? normalized : null;
-}
-
-function mapGeoToNgrokRegion(geo) {
-    const country = (geo?.country_code || geo?.country || '').toUpperCase();
-    const regionCode = (geo?.region_code || geo?.region || '').toUpperCase();
-    const timezone = (geo?.timezone || '').toLowerCase();
-    const continent = (geo?.continent_code || '').toUpperCase();
-
-    if (country === 'JP') return 'jp';
-    if (country === 'IN') return 'in';
-    if (country === 'AU' || country === 'NZ') return 'au';
-
-    if (country === 'US') {
-        if (NGROK_WEST_COAST_STATES.has(regionCode) || NGROK_WEST_COAST_TZ.has(timezone)) {
-            return 'us-cal-1';
-        }
-        return 'us';
-    }
-
-    if (country === 'CA' || country === 'MX') return 'us';
-    if (NGROK_SOUTH_AMERICA_COUNTRIES.has(country)) return 'sa';
-    if (NGROK_EUROPE_COUNTRIES.has(country)) return 'eu';
-    if (NGROK_APAC_COUNTRIES.has(country)) return 'ap';
-
-    if (continent === 'SA') return 'sa';
-    if (continent === 'EU' || continent === 'AF') return 'eu';
-    if (continent === 'AS' || continent === 'OC') return 'ap';
-    return null;
-}
-
-function fetchNgrokGeoHint() {
-    return new Promise((resolve, reject) => {
-        const request = https.get(
-            NGROK_GEO_ENDPOINT,
-            { headers: { 'User-Agent': PUBLIC_IP_USER_AGENT } },
-            (res) => {
-                if (res.statusCode !== 200) {
-                    res.resume();
-                    return reject(new Error(`Ngrok geo endpoint status ${res.statusCode}`));
-                }
-                let raw = '';
-                res.on('data', (chunk) => { raw += chunk; });
-                res.on('end', () => {
-                    try { resolve(JSON.parse(raw)); }
-                    catch (err) { reject(new Error(`Ngrok geo response parse failed: ${err.message}`)); }
-                });
-            }
-        );
-        request.setTimeout(3000, () => {
-            request.destroy(new Error('Ngrok geo request timed out'));
-        });
-        request.on('error', (err) => reject(err));
-    });
-}
-
-async function resolveNgrokRegion(preferredRegion = null) {
-    const manual = coerceNgrokRegion(preferredRegion) || coerceNgrokRegion(process.env.NGROK_REGION);
-    if (manual) return manual;
-
-    const now = Date.now();
-    if (cachedNgrokRegion && (now - cachedNgrokRegionAt) < NGROK_REGION_CACHE_TTL_MS) {
-        return cachedNgrokRegion;
-    }
-
-    try {
-        const geo = await fetchNgrokGeoHint();
-        const derived = coerceNgrokRegion(mapGeoToNgrokRegion(geo));
-        cachedNgrokRegion = derived || NGROK_REGION_DEFAULT;
-        cachedNgrokRegionAt = now;
-        return cachedNgrokRegion;
-    } catch (error) {
-        if (typeof log?.debug === 'function') {
-            log.debug(`Ngrok region lookup failed: ${error.message}`);
-        }
-        cachedNgrokRegion = NGROK_REGION_DEFAULT;
-        cachedNgrokRegionAt = now;
-        return cachedNgrokRegion;
-    }
-}
-
-async function fetchPublicIPFromIpify() {
+function fetchPublicIPFromIpify() {
     return new Promise((resolve, reject) => {
         const request = https.get(
             'https://api.ipify.org?format=json',
-            { headers: { 'User-Agent': PUBLIC_IP_USER_AGENT } },
+            { headers: { 'User-Agent': `Server Launcher/${version}` } },
             (res) => {
                 if (res.statusCode !== 200) {
                     res.resume();
@@ -2234,7 +2362,7 @@ async function fetchPublicIPFromIpify() {
                     try {
                         const jsonData = JSON.parse(data);
                         resolve(jsonData.ip || '-');
-                    } catch (e) {
+                    } catch {
                         reject(new Error('Failed to parse public IP response.'));
                     }
                 });
@@ -2252,8 +2380,8 @@ async function fetchPublicIPFromIpify() {
 async function resolvePublicAddress() {
     try {
         let ngrokInfo = await getNgrokTcpTunnelInfo();
-        if ((!ngrokInfo || !ngrokInfo.publicUrl) && localIsServerRunningGlobal) {
-            const started = await ensureNgrokTunnelForCurrentServerPort(ngrokInfo).catch(() => false);
+        if (!ngrokInfo || !ngrokInfo.publicUrl) {
+            const started = await syncNgrokTunnelToConfiguredPort(ngrokInfo).catch(() => false);
             if (started) {
                 await delay(800);
                 ngrokInfo = await getNgrokTcpTunnelInfo();
@@ -2289,47 +2417,28 @@ function getConfiguredJavaServerPort() {
     return DEFAULT_JAVA_SERVER_PORT;
 }
 
-function handleNgrokProcessOutput(data) {
-    const text = data.toString().trim();
-    if (!text) return;
-    const lower = text.toLowerCase();
-    if (lower.includes('error') || lower.includes('fail') || lower.includes('failed')) {
-        sendConsole(`[ngrok] ${text}`, 'ERROR');
-    } else if (lower.includes('warn')) {
-        sendConsole(`[ngrok] ${text}`, 'WARN');
-    } else if (lower.includes('url') || lower.includes('forwarding')) {
-        sendConsole(`[ngrok] ${text}`, 'INFO');
-    } else {
-        log.info(`[ngrok] ${text}`);
-    }
-}
-
-function startNgrokTunnel(port, region = null) {
+function startNgrokTunnel(port) {
     if (ngrokUnavailablePermanently) return false;
     try {
         if (ngrokProcess && !ngrokProcess.killed) {
             if (ngrokTargetPort === port) return true;
             stopNgrokTunnel();
         }
-        const finalRegion = coerceNgrokRegion(region);
+
         const args = ['tcp'];
-        if (finalRegion) {
-            args.push(`--region=${finalRegion}`);
-            if (lastAnnouncedNgrokRegion !== finalRegion) {
-                sendConsole(`Ngrok region selected: ${finalRegion}`, 'INFO');
-                lastAnnouncedNgrokRegion = finalRegion;
-            }
-        }
         args.push(String(port));
         ngrokStopRequested = false;
+        ngrokStartedAt = Date.now();
+        lastKnownNgrokTunnelInfo = null;
         sendConsole(`Attempting to start ngrok TCP tunnel on port ${port}...`, 'INFO');
         log.info(`Attempting to start ngrok TCP tunnel on port ${port}`);
-        const proc = spawn('ngrok', args, { cwd: serverFilesDir, stdio: ['ignore', 'pipe', 'pipe'] });
+        const ngrokCwd = (serverFilesDir && fs.existsSync(serverFilesDir)) ? serverFilesDir : app.getPath('userData');
+        const proc = spawn('ngrok', args, { cwd: ngrokCwd, stdio: ['ignore', 'pipe', 'pipe'] });
         ngrokProcess = proc;
         ngrokTargetPort = port;
 
-        proc.stdout.on('data', handleNgrokProcessOutput);
-        proc.stderr.on('data', handleNgrokProcessOutput);
+        attachNgrokProcessOutput(proc.stdout);
+        attachNgrokProcessOutput(proc.stderr);
 
         proc.once('error', (err) => {
             if (err.code === 'ENOENT') {
@@ -2341,6 +2450,8 @@ function startNgrokTunnel(port, region = null) {
             if (ngrokProcess === proc) {
                 ngrokProcess = null;
                 ngrokTargetPort = null;
+                ngrokStartedAt = 0;
+                lastKnownNgrokTunnelInfo = null;
                 lastNgrokDiagnosticCode = null;
             }
         });
@@ -2350,6 +2461,8 @@ function startNgrokTunnel(port, region = null) {
             if (ngrokProcess === proc) {
                 ngrokProcess = null;
                 ngrokTargetPort = null;
+                ngrokStartedAt = 0;
+                lastKnownNgrokTunnelInfo = null;
                 lastNgrokDiagnosticCode = null;
             }
             ngrokStopRequested = false;
@@ -2366,6 +2479,8 @@ function startNgrokTunnel(port, region = null) {
         log.warn(`Failed to launch ngrok: ${error.message}`);
         ngrokProcess = null;
         ngrokTargetPort = null;
+        ngrokStartedAt = 0;
+        lastKnownNgrokTunnelInfo = null;
         return false;
     }
 }
@@ -2376,7 +2491,9 @@ function stopNgrokTunnel() {
         if (ngrokProcess.killed) {
             ngrokProcess = null;
             ngrokTargetPort = null;
+            ngrokStartedAt = 0;
             ngrokStopRequested = false;
+            lastKnownNgrokTunnelInfo = null;
             lastNgrokDiagnosticCode = null;
             return;
         }
@@ -2391,42 +2508,15 @@ function stopNgrokTunnel() {
         log.warn(`Failed to stop ngrok process: ${error.message}`);
         ngrokProcess = null;
         ngrokTargetPort = null;
+        ngrokStartedAt = 0;
         ngrokStopRequested = false;
+        lastKnownNgrokTunnelInfo = null;
         lastNgrokDiagnosticCode = null;
     }
 }
 
 async function ensureNgrokTunnelForCurrentServerPort(existingInfo = null) {
-    if (ngrokUnavailablePermanently) return false;
-    if (!localIsServerRunningGlobal) return false;
-
-    const serverConfig = readServerConfig();
-    const serverType = normalizeServerType(serverConfig.serverType);
-    if (!isJavaServer(serverType)) return false;
-
-    const desiredPort = getConfiguredJavaServerPort();
-    if (!desiredPort) return false;
-
-    const userRegionPreference = serverConfig?.ngrokRegion || serverConfig?.ngrok?.region;
-    const region = await resolveNgrokRegion(userRegionPreference);
-
-    const tunnelInfo = existingInfo ?? await getNgrokTcpTunnelInfo();
-    if (tunnelInfo?.configAddr) {
-        const activePort = extractPortFromAddress(tunnelInfo.configAddr);
-        if (activePort === desiredPort) {
-            return true;
-        }
-    }
-
-    const result = startNgrokTunnel(desiredPort, region);
-    if (result && typeof result.then === 'function') {
-        const outcome = await result;
-        if (!outcome.success && outcome.error) {
-            sendConsole(`Ngrok error: ${outcome.error}`, 'ERROR');
-        }
-        return outcome.success;
-    }
-    return result;
+    return syncNgrokTunnelToConfiguredPort(existingInfo);
 }
 
 function createWindow () {
@@ -2447,7 +2537,9 @@ function createWindow () {
         const pngBuild = path.join(buildBase, 'icon.png');
         return fs.existsSync(pngRes) ? pngRes : (fs.existsSync(pngBuild) ? pngBuild : undefined);
       }
-    } catch (_) { return undefined; }
+        } catch {
+            return undefined;
+        }
   };
 
   mainWindow = new BrowserWindow({
@@ -2482,7 +2574,9 @@ function createWindow () {
     mainWindow.loadURL(pathToFileURL(indexPath).href);
     
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    try { shell.openExternal(url); } catch (_) {}
+        try { shell.openExternal(url); } catch {
+            // Ignore shell launch failures for external links.
+        }
     return { action: 'deny' };
   });
     mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
@@ -2491,7 +2585,10 @@ function createWindow () {
         const resolvedMessage = params?.message ?? message ?? '';
         const resolvedLine = params?.lineNumber ?? params?.line ?? line ?? '?';
         const resolvedSource = params?.sourceId ?? params?.sourceURL ?? params?.source ?? sourceId ?? 'renderer';
-        log.info(`Renderer console [${resolvedLevel}] ${resolvedSource}:${resolvedLine} -> ${resolvedMessage}`);
+        const normalizedLevel = String(resolvedLevel).toLowerCase();
+        if (normalizedLevel === 'error' || normalizedLevel === '3') {
+            log.error(`Renderer console [${resolvedLevel}] ${resolvedSource}:${resolvedLine} -> ${resolvedMessage}`);
+        }
     });
     mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
         log.error(`Renderer failed to load ${validatedURL}: ${errorCode} ${errorDescription}`);
@@ -2503,7 +2600,9 @@ function createWindow () {
     const currentUrl = mainWindow.webContents.getURL();
     if (url !== currentUrl) {
       e.preventDefault();
-      try { shell.openExternal(url); } catch (_) {}
+            try { shell.openExternal(url); } catch {
+                // Ignore shell launch failures for external links.
+            }
     }
   });
   mainWindow.webContents.on('did-finish-load', async () => {
@@ -2534,6 +2633,9 @@ function createWindow () {
 
   mainWindow.on('maximize', () => safeSend(mainWindow, 'window-maximized', true));
   mainWindow.on('unmaximize', () => safeSend(mainWindow, 'window-maximized', false));
+    mainWindow.on('closed', () => {
+        mainWindow = null;
+    });
   mainWindow.on('focus', () => {
     resetIdleTimer();
         applyFrameRateForState();
@@ -2551,6 +2653,27 @@ function createWindow () {
 
         const userDataPath = app.getPath('userData');
         launcherSettingsFilePath = path.join(userDataPath, launcherSettingsFileName);
+        updaterStateFilePath = path.join(userDataPath, 'updater-state.json');
+
+        const persistedUpdater = readPersistedUpdaterState();
+        if (persistedUpdater?.readyToInstall) {
+            updateReadyToInstall = true;
+            updateReadyInfo = { version: persistedUpdater?.version || null };
+            if (shouldCheckForUpdates()) {
+                log.info(`Updater: Installing persisted update${persistedUpdater?.version ? ` (${persistedUpdater.version})` : ''} before launcher UI.`);
+                setUpdateReadyState(false);
+                setTimeout(() => {
+                    try {
+                        autoUpdater.quitAndInstall(false, true);
+                    } catch (error) {
+                        log.error(`Updater: Failed to install persisted update: ${error.message}`);
+                        setUpdateReadyState(true, { version: persistedUpdater?.version || null });
+                        createWindow();
+                    }
+                }, 700);
+                return;
+            }
+        }
     // Read launcher settings early to see if user picked a custom path
     let ls = readLauncherSettings();
     try {
@@ -2559,7 +2682,9 @@ function createWindow () {
             ls.serverPathLocked = true;
             writeLauncherSettings(ls);
         }
-    } catch (_) {}
+    } catch {
+        // Ignore launcher settings lock bootstrap failures and continue startup.
+    }
     const customBase = (ls && typeof ls.customServerPath === 'string' && ls.customServerPath.trim() !== '') ? ls.customServerPath : null;
     // serverFilesDir always points to the MinecraftServer folder inside chosen base
         // Default to Documents/MinecraftServer instead of userData
@@ -2568,6 +2693,8 @@ function createWindow () {
         // Store server config outside MinecraftServer to decouple from install folder
         serverConfigFilePath = path.join(userDataPath, serverConfigFileName);
         serverPropertiesFilePath = path.join(serverFilesDir, serverPropertiesFileName);
+        restartNgrokServerPropertiesWatcher();
+        scheduleNgrokPortSync('app-startup', 300);
         
         // Start Java discovery in parallel with window creation for faster boot
         javaDiscoveryPromise = discoverAllJavaVersions();
@@ -2652,17 +2779,12 @@ autoUpdater.on('checking-for-update', () => {
     }
 });
 autoUpdater.on('update-available', (info) => {
-    updaterSilentMode = false; // surface progress now that we have an update
+    updaterSilentMode = true;
     lastAvailableUpdateInfo = info;
-    updateReadyToInstall = false;
-    updateReadyInfo = null;
-    sendConsole(`Updater: Update available! Version: ${info.version} (download it from Settings when ready)`, 'SUCCESS');
-    pushStatus('Updater: Update available. Open Settings → Application Updates to download it.', true, 'updater-available');
-    showDesktopNotification(
-        getTranslation('notificationUpdateAvailable'),
-        getTranslation('updateManualDownloadBody', { version: info.version })
-    );
+    setUpdateReadyState(false);
+    sendConsole(`Updater: Update available (${info.version}). Starting forced background download.`, 'INFO');
     emitUpdaterEvent({ type: 'available', version: info?.version || null, timestamp: Date.now() });
+    startForcedAutoDownload('update-available');
 });
 autoUpdater.on('update-not-available', (info) => {
     if (!updaterSilentMode) {
@@ -2672,8 +2794,7 @@ autoUpdater.on('update-not-available', (info) => {
     }
     updaterSilentMode = false;
     lastAvailableUpdateInfo = null;
-    updateReadyToInstall = false;
-    updateReadyInfo = null;
+    setUpdateReadyState(false);
     autoUpdateDownloadInFlight = false;
     emitUpdaterEvent({ type: 'not-available', version: info?.version || null, timestamp: Date.now() });
 });
@@ -2693,9 +2814,8 @@ autoUpdater.on('error', (err) => {
     emitUpdaterEvent({ type: 'error', stage: 'runtime', message: err?.message || 'Unknown error' });
 });
 autoUpdater.on('download-progress', (p) => {
-    updaterSilentMode = false;
+    updaterSilentMode = true;
     autoUpdateDownloadInFlight = true;
-    sendStatus(`Download speed: ${Math.round(p.bytesPerSecond / 1024)} KB/s - Downloaded ${Math.round(p.percent)}%`, true);
     emitUpdaterEvent({
         type: 'progress',
         percent: Number.isFinite(p?.percent) ? p.percent : 0,
@@ -2705,13 +2825,11 @@ autoUpdater.on('download-progress', (p) => {
     });
 });
 autoUpdater.on('update-downloaded', (info) => {
-    updaterSilentMode = false;
+    updaterSilentMode = true;
     autoUpdateDownloadInFlight = false;
     lastAvailableUpdateInfo = null;
-    updateReadyToInstall = true;
-    updateReadyInfo = info;
-    sendConsole(`Updater: Update downloaded (${info.version}). Ready to restart.`, 'SUCCESS');
-    pushStatus('Updater: Update downloaded. Restart to install.', true, 'updater-ready');
+    setUpdateReadyState(true, info);
+    sendConsole(`Updater: Update downloaded (${info.version}). It will be installed on next launch.`, 'INFO');
     showDesktopNotification(
         getTranslation('notificationUpdateReady'),
         getTranslation('updateReadyBody', { version: info.version })
@@ -2729,10 +2847,16 @@ app.on('before-quit', () => {
         discordRpcInterval = null;
     }
     rpcReady = false;
+    clearNgrokSyncTimer();
+    stopNgrokServerPropertiesWatcher();
     stopNgrokTunnel();
 });
 
 app.on('window-all-closed', () => {
+    if (autoUpdateDownloadInFlight) {
+        log.info('Updater: Window closed while forced update download is active. Keeping process alive in background.');
+        return;
+    }
     if (serverProcess && typeof serverProcess.kill === 'function' && !serverProcess.killed) {
         try {
             serverProcess.killedInternally = true;
@@ -2793,8 +2917,7 @@ ipcMain.handle('get-settings', () => {
         openAtLogin: settings.openAtLogin || false,
         autoStartServer: settings.autoStartServer || false,
         autoStartDelay: settings.autoStartDelay || 5,
-        language: settings.language || 'en',
-        theme: settings.theme || 'default'
+        language: settings.language || 'en'
     };
 });
 
@@ -2802,6 +2925,7 @@ ipcMain.on('set-settings', (event, settings) => {
     const currentSettings = readLauncherSettings();
     const newSettings = { ...currentSettings, ...settings };
     delete newSettings.notificationsEnabled;
+    delete newSettings.theme;
     app.setLoginItemSettings({ openAtLogin: !!newSettings.openAtLogin });
     writeJsonFile(launcherSettingsFilePath, newSettings, launcherSettingsFileName);
 
@@ -2833,115 +2957,6 @@ ipcMain.on('set-settings', (event, settings) => {
         } catch (e) {
             log.warn('Failed to manage Linux autostart entry:', e);
         }
-    }
-});
-
-// Manual update trigger from renderer
-ipcMain.handle('check-for-updates', async () => {
-    try {
-        const result = triggerAutoUpdateCheck('manual', { silent: false });
-        return result || { supported: true, reason: 'started' };
-    } catch (error) {
-        log.warn(`Manual update check failed: ${error.message}`);
-        return { supported: false, reason: 'error', error: error.message };
-    }
-});
-
-ipcMain.handle('download-update', async () => {
-    if (!shouldCheckForUpdates()) {
-        const hint = getAutoUpdateUnsupportedHint();
-        emitUpdaterEvent({
-            type: 'unsupported',
-            reason: hint,
-            platform: process.platform,
-            arch: process.arch,
-            packaged: app.isPackaged
-        });
-        return { supported: false, reason: 'unsupported' };
-    }
-    if (updateReadyToInstall) {
-        return { supported: true, reason: 'already-downloaded' };
-    }
-    if (!lastAvailableUpdateInfo) {
-        const message = 'No update is currently available to download.';
-        emitUpdaterEvent({ type: 'error', stage: 'download', message });
-        return { supported: true, reason: 'no-update' };
-    }
-    if (autoUpdateDownloadInFlight) {
-        emitUpdaterEvent({ type: 'in-progress', reason: 'download-in-progress' });
-        return { supported: true, reason: 'in-progress' };
-    }
-    try {
-        autoUpdateDownloadInFlight = true;
-        sendConsole('Updater: Downloading update package...', 'INFO');
-        pushStatus('Updater: Downloading update...', true, 'updater-downloading');
-        emitUpdaterEvent({ type: 'download-started', version: lastAvailableUpdateInfo?.version || null });
-        const pending = autoUpdater.downloadUpdate();
-        if (pending && typeof pending.finally === 'function') {
-            pending.finally(() => { autoUpdateDownloadInFlight = false; });
-        } else {
-            autoUpdateDownloadInFlight = false;
-        }
-        if (pending && typeof pending.catch === 'function') {
-            pending.catch((error) => {
-                sendConsole(`Updater: Download failed - ${error?.message || 'Unknown error'}`, 'ERROR');
-                pushStatus('Updater: Download failed.', false, 'updater-download-failed');
-                emitUpdaterEvent({ type: 'error', stage: 'download', message: error?.message || 'Download failed' });
-            });
-        }
-        return { supported: true, reason: 'started' };
-    } catch (error) {
-        autoUpdateDownloadInFlight = false;
-        log.warn(`Manual update download failed: ${error.message}`);
-        emitUpdaterEvent({ type: 'error', stage: 'download-start', message: error?.message || 'Unknown error' });
-        return { supported: true, reason: 'error', error: error.message };
-    }
-});
-
-ipcMain.handle('install-update', async () => {
-    if (!shouldCheckForUpdates()) {
-        const hint = getAutoUpdateUnsupportedHint();
-        emitUpdaterEvent({
-            type: 'unsupported',
-            reason: hint,
-            platform: process.platform,
-            arch: process.arch,
-            packaged: app.isPackaged
-        });
-        return { supported: false, reason: 'unsupported' };
-    }
-    if (autoUpdateDownloadInFlight) {
-        emitUpdaterEvent({ type: 'in-progress', reason: 'download-in-progress' });
-        return { supported: true, reason: 'download-in-progress' };
-    }
-    if (!updateReadyToInstall || !updateReadyInfo) {
-        return { supported: true, reason: 'not-downloaded' };
-    }
-    try {
-        const version = updateReadyInfo?.version || null;
-        updateReadyToInstall = false;
-        updateReadyInfo = null;
-        pushStatus('Updater: Installing update...', true, 'updater-installing');
-        emitUpdaterEvent({ type: 'installing', version, timestamp: Date.now() });
-        showDesktopNotification(
-            getTranslation('notificationUpdateReady'),
-            getTranslation('updateInstallingBody', { version: version || '?' })
-        );
-        setTimeout(() => {
-            try {
-                autoUpdater.quitAndInstall(false, true);
-            } catch (error) {
-                log.error(`Failed to install update: ${error.message}`);
-                updateReadyToInstall = true;
-                updateReadyInfo = updateReadyInfo || { version };
-                emitUpdaterEvent({ type: 'error', stage: 'install', message: error?.message || 'Failed to install update' });
-            }
-        }, 800);
-        return { supported: true, reason: 'started' };
-    } catch (error) {
-        log.warn(`Manual update install failed: ${error.message}`);
-        emitUpdaterEvent({ type: 'error', stage: 'install-start', message: error?.message || 'Unknown error' });
-        return { supported: true, reason: 'error', error: error.message };
     }
 });
 
@@ -2988,10 +3003,13 @@ ipcMain.on('set-server-properties', (event, newProperties) => {
             if (line.startsWith('#') || !line.includes('=')) return line;
             const [key] = line.split('=');
             const trimmedKey = key.trim();
-            return newProperties.hasOwnProperty(trimmedKey) ? `${trimmedKey}=${newProperties[trimmedKey]}` : line;
+            return Object.prototype.hasOwnProperty.call(newProperties, trimmedKey)
+                ? `${trimmedKey}=${newProperties[trimmedKey]}`
+                : line;
         });
         fs.writeFileSync(serverPropertiesFilePath, updatedLines.join('\n'));
         sendConsole('server.properties saved successfully.', 'SUCCESS');
+        scheduleNgrokPortSync('server-properties-saved');
     } catch (error) {
         sendConsole(`Error writing to server.properties: ${error.message}`, 'ERROR');
     }
@@ -3229,6 +3247,8 @@ ipcMain.handle('select-server-location', async () => {
         serverConfigFilePath = path.join(app.getPath('userData'), serverConfigFileName);
         serverPropertiesFilePath = path.join(serverFilesDir, serverPropertiesFileName);
         if (!fs.existsSync(serverFilesDir)) fs.mkdirSync(serverFilesDir, { recursive: true });
+        restartNgrokServerPropertiesWatcher();
+        scheduleNgrokPortSync('server-path-changed');
         sendConsole(`Server base location set to: ${serverFilesDir}`, 'INFO');
         return { ok: true, path: serverFilesDir, locked: !!ls.serverPathLocked };
     } catch (e) {
@@ -3249,43 +3269,6 @@ ipcMain.handle('get-translations', async (event, lang) => {
   return null;
 });
 
-function readAvailableThemes() {
-    const themesDir = path.join(__dirname, 'src', 'themes');
-    try {
-        const entries = fs.readdirSync(themesDir, { withFileTypes: true });
-        const themes = [];
-        for (const entry of entries) {
-            if (!entry.isFile() || !entry.name.endsWith('.json')) continue;
-            const fullPath = path.join(themesDir, entry.name);
-            try {
-                const raw = fs.readFileSync(fullPath, 'utf8');
-                const parsed = JSON.parse(raw);
-                if (!parsed || typeof parsed !== 'object') continue;
-                const { code, name, colors } = parsed;
-                if (!code || typeof code !== 'string') continue;
-                themes.push({
-                    code,
-                    name: typeof name === 'string' && name.trim() ? name : code,
-                    colors: {
-                        primary: colors?.primary || '#3b82f6',
-                        primaryHover: colors?.primaryHover || colors?.primary || '#2563eb',
-                        accent: colors?.accent || colors?.primary || '#60a5fa'
-                    }
-                });
-            } catch (err) {
-                log.warn(`Failed to parse theme file ${fullPath}:`, err);
-            }
-        }
-        return themes.length ? themes : DEFAULT_THEMES;
-    } catch (error) {
-        log.error('Could not read themes directory:', error);
-        return DEFAULT_THEMES;
-    }
-}
-
-ipcMain.handle('get-available-themes', async () => {
-    return readAvailableThemes();
-});
 
 async function startBedrockServer(serverConfig) {
     const execName = getBedrockExecutableName();
@@ -3363,7 +3346,9 @@ async function startBedrockServer(serverConfig) {
             const stats = await pidusage(serverProcess.pid);
             const memoryGB = stats.memory / (1024 * 1024 * 1024);
             const memoryRounded = Number(memoryGB.toFixed(3));
-            safeSend(getMainWindow(), 'update-performance-stats', { memoryGB: memoryRounded });
+            const cpuCores = Math.max(1, os.cpus().length || 1);
+            const cpuUsagePercent = Number(Math.max(0, (stats.cpu || 0) / cpuCores).toFixed(1));
+            safeSend(getMainWindow(), 'update-performance-stats', { memoryGB: memoryRounded, cpuUsagePercent });
         } catch (e) {
             clearInterval(performanceStatsInterval);
             if (localIsServerRunningGlobal) {
@@ -3804,6 +3789,8 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
         }
 
         safeSend(getMainWindow(), 'setup-finished');
+        restartNgrokServerPropertiesWatcher();
+        scheduleNgrokPortSync('server-configured');
         if (isJavaServer(chosenType)) {
             setTimeout(async () => {
                 const hasJava2 = await checkJava();
@@ -3957,7 +3944,9 @@ ipcMain.on('start-server', async () => {
                 const stats = await pidusage(serverProcess.pid);
                 const memoryGB = stats.memory / (1024 * 1024 * 1024);
                 const memoryRounded = Number(memoryGB.toFixed(3));
-                safeSend(getMainWindow(), 'update-performance-stats', { memoryGB: memoryRounded });
+                const cpuCores = Math.max(1, os.cpus().length || 1);
+                const cpuUsagePercent = Number(Math.max(0, (stats.cpu || 0) / cpuCores).toFixed(1));
+                safeSend(getMainWindow(), 'update-performance-stats', { memoryGB: memoryRounded, cpuUsagePercent });
             } catch (e) {
                 clearInterval(performanceStatsInterval);
                 if (localIsServerRunningGlobal) {

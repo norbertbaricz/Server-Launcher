@@ -682,7 +682,7 @@ function updateSettingsLockState(locked) {
     if (mcVersionSettingsSelect) mcVersionSettingsSelect.disabled = locked;
     if (ramAllocationSettingsSelect) ramAllocationSettingsSelect.disabled = locked;
     if (javaArgumentsSettingsSelect) javaArgumentsSettingsSelect.disabled = locked;
-    // Keep non-critical settings enabled (autostart, notifications, theme, language, etc.)
+    // Keep non-critical settings enabled (autostart, notifications, language, etc.)
 }
 
 async function fetchAndDisplayIPs(showPort = true) {
@@ -742,9 +742,6 @@ async function initializeApp() {
         document.getElementById('app-title-version').textContent = titleText;
 
         launcherSettingsCache = await window.electronAPI.getSettings();
-        const savedTheme = launcherSettingsCache.theme || 'skypixel';
-        applyThemeClass(savedTheme);
-        themeSelect.value = savedTheme === 'default' ? 'skypixel' : savedTheme;
         // Initialize server path lock state early to avoid clickable window
         try {
             const pathInfo = await window.electronAPI.getServerPathInfo();
@@ -758,9 +755,6 @@ async function initializeApp() {
         languageModalSelect.value = savedLang;
         languageSettingsSelect.value = savedLang;
         languageJavaSelect.value = savedLang;
-        
-        // Set theme selector initial value for Java page
-        themeJavaSelect.value = savedTheme === 'default' ? 'skypixel' : savedTheme;
         
         await setLanguage(savedLang);
 
@@ -888,29 +882,4 @@ function queueAutoStartRequest(delay, type, message) {
     if (message) {
         addToConsole(message, 'INFO');
     }
-}
-
-function applyThemeClass(theme) {
-    const classes = ['theme-skypixel','theme-nord','theme-aurora','theme-midnight','theme-emerald','theme-sunset','theme-crimson','theme-ocean','theme-grape','theme-neon', 'theme-forest', 'theme-fire', 'theme-amethyst', 'theme-coffee', 'theme-starry'];
-    document.body.classList.remove(...classes);
-    if (theme === 'default') theme = 'skypixel';
-    const classMap = {
-        skypixel: null,
-        nord: 'theme-nord',
-        aurora: 'theme-aurora',
-        midnight: 'theme-midnight',
-        emerald: 'theme-emerald',
-        sunset: 'theme-sunset',
-        crimson: 'theme-crimson',
-        ocean: 'theme-ocean',
-        grape: 'theme-grape',
-        neon: 'theme-neon',
-        forest: 'theme-forest',
-        fire: 'theme-fire',
-        amethyst: 'theme-amethyst',
-        coffee: 'theme-coffee',
-        starry: 'theme-starry'
-    };
-    const cls = classMap[theme];
-    if (cls) document.body.classList.add(cls);
 }
