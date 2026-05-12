@@ -5,6 +5,12 @@
     --color-primary-hover: #a1a6af;
     --color-primary-rgb: 139, 144, 153;
     --color-accent: #b5bac2;
+    --symmetry-gap: 0.75rem;
+    --symmetry-radius: 0.5rem;
+    --symmetry-control-size: 2.75rem;
+    --symmetry-panel-min-height: 4.5rem;
+    --symmetry-widget-min-height: 3.6rem;
+    --symmetry-actions-two-width: calc((var(--symmetry-control-size) * 2) + var(--symmetry-gap));
 }
 
 body {
@@ -639,6 +645,138 @@ select:disabled {
 }
 
 .accent-text { color: var(--color-accent) !important; }
+
+/* Symmetry system: normalize control geometry and keep action groups balanced. */
+.symmetry-panel-header {
+    min-height: var(--symmetry-panel-min-height);
+    align-items: center;
+}
+
+.symmetry-panel-actions {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: var(--symmetry-control-size);
+    gap: var(--symmetry-gap);
+    justify-content: end;
+    align-items: center;
+    min-width: var(--symmetry-actions-two-width);
+}
+
+.symmetry-panel-footer {
+    align-items: center;
+}
+
+.server-props-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--symmetry-control-size);
+    gap: var(--symmetry-gap);
+    align-items: center;
+    width: min(100%, 22rem);
+}
+
+.server-props-controls > input {
+    height: var(--symmetry-control-size);
+    min-width: 0;
+    border-radius: var(--symmetry-radius);
+}
+
+.server-props-controls > button {
+    width: var(--symmetry-control-size);
+    min-width: var(--symmetry-control-size);
+    height: var(--symmetry-control-size);
+    border-radius: var(--symmetry-radius);
+}
+
+.symmetry-inline-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) repeat(2, var(--symmetry-control-size));
+    gap: var(--symmetry-gap);
+    align-items: center;
+}
+
+.symmetry-inline-controls > input,
+.symmetry-inline-controls > button {
+    height: var(--symmetry-control-size);
+}
+
+.symmetry-inline-controls > input {
+    border-radius: var(--symmetry-radius);
+}
+
+#status-and-open-folder-area.symmetry-balance-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--symmetry-gap);
+}
+
+#dashboard-shortcuts-row .icon-only-action-btn {
+    width: var(--symmetry-control-size);
+    min-width: var(--symmetry-control-size);
+    height: var(--symmetry-control-size);
+    border-radius: var(--symmetry-radius);
+}
+
+#bottom-action-bar.symmetry-action-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--symmetry-gap);
+}
+
+#bottom-action-bar.symmetry-action-bar .symmetry-control-input {
+    flex: 1 1 auto;
+    min-width: 0;
+    height: var(--symmetry-control-size);
+}
+
+#bottom-action-bar.symmetry-action-bar .symmetry-control-input {
+    border-radius: var(--symmetry-radius);
+}
+
+#bottom-action-bar.symmetry-action-bar > button {
+    width: var(--symmetry-control-size);
+    min-width: var(--symmetry-control-size);
+    height: var(--symmetry-control-size);
+    border-radius: var(--symmetry-radius);
+}
+
+#ip-info-bar .ip-widget {
+    min-height: var(--symmetry-widget-min-height);
+}
+
+@media (max-width: 639px) {
+    .symmetry-panel-actions {
+        justify-content: start;
+        min-width: 0;
+    }
+
+    .server-props-controls {
+        width: 100%;
+    }
+
+    .symmetry-panel-footer {
+        align-items: stretch;
+    }
+
+    .symmetry-inline-controls {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #status-and-open-folder-area.symmetry-balance-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    #bottom-action-bar.symmetry-action-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    #bottom-action-bar.symmetry-action-bar > button {
+        width: 100%;
+        min-width: 0;
+    }
+}
 
 .setup-tip-card {
     border-radius: 0.75rem;
