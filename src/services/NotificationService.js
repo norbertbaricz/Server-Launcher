@@ -44,7 +44,7 @@ class NotificationService {
       } else {
         app.whenReady().then(() => this.checkPermissions());
       }
-    } catch (error) {
+    } catch (_error) {
       this.isSupported = false;
     }
   }
@@ -63,7 +63,7 @@ class NotificationService {
       } else {
         this.hasPermission = true;
       }
-    } catch (error) {
+    } catch (_error) {
       this.hasPermission = true; // Assume granted
     }
   }
@@ -163,7 +163,7 @@ class NotificationService {
 
       return true;
 
-    } catch (error) {
+    } catch (_error) {
       this.useFallback(title, body, options || {});
       return false;
     }
@@ -177,7 +177,7 @@ class NotificationService {
     if (this.fallbackCallback) {
       try {
         this.fallbackCallback(title, body, options);
-      } catch (error) {
+      } catch (_error) {
         // Silent error - fallback failed
       }
     }
@@ -233,7 +233,7 @@ class NotificationService {
       }
 
       return undefined;
-    } catch (error) {
+    } catch (_error) {
       return undefined;
     }
   }

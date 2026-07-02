@@ -225,7 +225,7 @@ async function populateLanguageSelects() {
 
 
 function addToConsole(message, type = 'INFO') {
-    let renderedLine = '';
+    let renderedLine;
     if (type === 'SERVER_LOG_HTML') {
         let finalHtml = message;
         const prefixRegex = /\[(\d{2}:\d{2}:\d{2}) (INFO|WARN|ERROR)\]:/g;
@@ -377,7 +377,7 @@ async function populateMcVersionSelect(selectElement, currentVersion, serverType
         selectElement.innerHTML = `<option value="" disabled>${currentTranslations['loadingVersions'] || 'Loading versions...'}</option>`;
         try {
             availableMcVersionsCache[serverType] = await window.electronAPI.getAvailableVersions(serverType);
-        } catch (error) {
+        } catch (_error) {
             selectElement.innerHTML = `<option value="" disabled selected>${currentTranslations['errorLoadingVersions'] || 'Error loading versions'}</option>`;
             return;
         }
@@ -700,7 +700,7 @@ async function fetchAndDisplayIPs(showPort = true) {
     try {
         const localIP = await window.electronAPI.getLocalIP() || '-';
         localIpAddressSpan.textContent = (localIP !== '-' && localIP !== 'Error') ? `${localIP}${port}` : localIP;
-    } catch (error) { localIpAddressSpan.textContent = 'Error'; }
+    } catch (_error) { localIpAddressSpan.textContent = 'Error'; }
     try {
         const publicIpResponse = await window.electronAPI.getPublicIP();
         let publicIP = publicIpResponse;
@@ -712,7 +712,7 @@ async function fetchAndDisplayIPs(showPort = true) {
         publicIP = publicIP || '-';
         const shouldAppendPort = appendServerPort && publicIP !== '-' && publicIP !== 'Error';
         publicIpAddressSpan.textContent = shouldAppendPort ? `${publicIP}${port}` : publicIP;
-    } catch (error) { publicIpAddressSpan.textContent = 'Error'; }
+    } catch (_error) { publicIpAddressSpan.textContent = 'Error'; }
 }
 
 let loadingScreenActive = true;

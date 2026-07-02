@@ -286,8 +286,6 @@ function setUpdateButtonState({ disabled = false, busy = false, mode = 'check' }
             case 'installing':
                 baseIcon = 'fa-rocket';
                 break;
-            default:
-                baseIcon = 'fa-sync-alt';
         }
         const spin = busy ? ' fa-spin' : '';
         checkUpdatesButtonIcon.className = `fas ${baseIcon} text-sm${spin}`.trim();
@@ -916,7 +914,7 @@ async function populateLanguageSelects() {
 
 
 function addToConsole(message, type = 'INFO') {
-    let renderedLine = '';
+    let renderedLine;
     if (type === 'SERVER_LOG_HTML') {
         let finalHtml = message;
         const prefixRegex = /\[(\d{2}:\d{2}:\d{2}) (INFO|WARN|ERROR)\]:/g;
@@ -987,7 +985,7 @@ async function copyTextToClipboardSafe(text) {
     textarea.focus();
     textarea.select();
     let success = false;
-    try { success = document.execCommand('copy'); } catch (_) { success = false; }
+    try { success = document.execCommand('copy'); } catch (_) {}
     textarea.remove();
     return success;
 }

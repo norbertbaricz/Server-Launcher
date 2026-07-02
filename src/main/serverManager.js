@@ -1,6 +1,6 @@
+/* eslint no-undef: "off" */
 const fs = require('node:fs');
 const path = require('node:path');
-const find = require('find-process');
 const { promisify } = require('node:util');
 const { exec, spawn } = require('node:child_process');
 const execAsync = promisify(exec);
@@ -17,7 +17,7 @@ const paperJarName = 'paper.jar';
 const fabricJarName = 'fabric-server-launch.jar';
 let serverConfigFilePath;
 const serverConfigFileName = 'config.json';
-let launcherSettingsFilePath;
+let launcherSettingsFilePath = '';
 const launcherSettingsFileName = 'launcher-settings.json';
 let serverPropertiesFilePath;
 const serverPropertiesFileName = 'server.properties';
@@ -59,17 +59,24 @@ function cleanServerLocks(serverDir) {
         if (file.endsWith('.lock') || file.endsWith('.pid') || file.endsWith('.tmp')) {
             try {
                 fs.unlinkSync(path.join(serverDir, file));
-            sendStatus('Modded download successfully', false, 'downloadSuccessFabric');
-            sendConsole(`${fabricJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
-            showDesktopNotification('Download Complete', `Fabric ${mcVersion} is ready. Press Start to launch.`);
-            const updated = readServerConfig();
-            updated.serverType = chosenType;
-            updated.version = mcVersion;
-            writeServerConfig(updated);
+            } catch (_e) { /* ignore lock file deletion errors */ }
         }
+    });
+}
+
+async function downloadAndInstallJava(win, installerPackage, mcVersion, chosenType, downloadUrl) {
+    try {
+        sendStatus('Modded download successfully', false, 'downloadSuccessFabric');
+        sendConsole(`${fabricJarName} for ${mcVersion} downloaded.`, 'SUCCESS');
+        showDesktopNotification('Download Complete', `Fabric ${mcVersion} is ready. Press Start to launch.`);
+        const updated = readServerConfig();
+        updated.serverType = chosenType;
+        updated.version = mcVersion;
+        writeServerConfig(updated);
+
         const totalBytes = installerPackage.binary.installer.size;
         const fileName = installerPackage.binary.installer.name;
-        
+
         const tempDir = app.getPath('temp');
         const filePath = path.join(tempDir, fileName);
 
@@ -113,7 +120,7 @@ function cleanServerLocks(serverDir) {
 
             fileStream.on('error', err => fs.unlink(filePath, () => reject(err)));
         });
-        
+
         safeSend(win, 'java-install-status', 'Download complete. Launching installer...');
 
         shell.openPath(filePath).then(errorMessage => {
@@ -122,7 +129,7 @@ function cleanServerLocks(serverDir) {
             }
             safeSend(win, 'java-install-status', 'Installer launched. Please complete the installation, then restart the launcher. The application will now close.');
             log.info('Java installer launched. Closing the launcher.');
-            
+
             setTimeout(() => {
                 app.quit();
             }, 4000);
@@ -270,7 +277,7 @@ async function startBedrockServer(serverConfig) {
         const cleanOutput = rawOutput.trimEnd();
 
         // Detect /list output for latency probe
-        let isListLine = false;
+        let isListLine;
         let isAutomaticProbe = false;
         try {
             isListLine = /players online:?/i.test(cleanOutput) || /there are \d+.*players online/i.test(cleanOutput);
@@ -475,8 +482,7 @@ function setupIpcHandlers() {
         try {
             const fileContent = fs.readFileSync(serverPropertiesFilePath, 'utf8');
             const properties = {};
-            fileContent.split(/[
-]+/).forEach(line => {
+            fileContent.split(/\r?\n/).forEach(line => {
                 if (line.startsWith('#') || !line.includes('=')) return;
                 const [key, ...valueParts] = line.split('=');
                 properties[key.trim()] = valueParts.join('=').trim();
@@ -493,13 +499,12 @@ function setupIpcHandlers() {
             return;
         }
         try {
-            const lines = fs.readFileSync(serverPropertiesFilePath, 'utf8').split(/[
-]+/);
+            const lines = fs.readFileSync(serverPropertiesFilePath, 'utf8').split(/\r?\n/);
             const updatedLines = lines.map(line => {
                 if (line.startsWith('#') || !line.includes('=')) return line;
                 const [key] = line.split('=');
                 const trimmedKey = key.trim();
-                return newProperties.hasOwnProperty(trimmedKey) ? `${trimmedKey}=${newProperties[trimmedKey]}` : line;
+                return Object.hasOwn(newProperties, trimmedKey) ? `${trimmedKey}=${newProperties[trimmedKey]}` : line;
             });
             fs.writeFileSync(serverPropertiesFilePath, updatedLines.join('\n'));
             sendConsole('server.properties saved successfully.', 'SUCCESS');
@@ -598,7 +603,7 @@ function setupIpcHandlers() {
             if (type === SERVER_TYPES.BEDROCK) {
                 return { ok: false, error: 'Bedrock servers do not support add-on management via this launcher yet.' };
             }
-            if (typeof name !== 'string' || !name || name.includes('..') || name.includes('/') || name.includes('\') || !name.toLowerCase().endsWith('.jar')) {
+            if (typeof name !== 'string' || !name || name.includes('..') || name.includes('/') || name.includes('\\') || !name.toLowerCase().endsWith('.jar')) {
                 return { ok: false, error: 'Invalid plugin name.' };
             }
             const isModded = (type === SERVER_TYPES.FABRIC || type === SERVER_TYPES.FORGE);
@@ -672,8 +677,7 @@ function setupIpcHandlers() {
             if (!fs.existsSync(serverPropertiesFilePath)) {
                 return { ok: false, error: 'server.properties not found. Run server once.' };
             }
-            const lines = fs.readFileSync(serverPropertiesFilePath, 'utf8').split(/[
-]+/);
+            const lines = fs.readFileSync(serverPropertiesFilePath, 'utf8').split(/\r?\n/);
             let changed = false;
             const updated = lines.map(line => {
                 if (line.startsWith('#') || !line.includes('=')) return line;
@@ -1021,7 +1025,7 @@ function setupIpcHandlers() {
                     if (stdout) sendConsole(stdout, 'INFO');
                     if (stderr) sendConsole(stderr, 'WARN');
                 } catch (err) {
-                    throw new Error(`Forge installer failed: ${err.message}`);
+                    throw new Error(`Forge installer failed: ${err.message}`, { cause: err });
                 }
 
                 const runSh = path.join(serverFilesDir, 'run.sh');

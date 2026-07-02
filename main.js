@@ -1329,7 +1329,7 @@ async function selectJavaForMinecraftVersion(mcVersion, autoDownload = true) {
             log.warn(`Java ${requiredJavaVersion} not found. Attempting to download from Adoptium...`);
             sendConsole(`Java ${requiredJavaVersion} not found. Downloading from Adoptium...`, 'INFO');
             try {
-                javaPath = await downloadJavaFromAdoptium(requiredJavaVersion, (progress, downloaded, total) => {
+                javaPath = await downloadJavaFromAdoptium(requiredJavaVersion, (progress, _downloaded, _total) => {
                     const progressMsg = `Downloading Java ${requiredJavaVersion}: ${progress.toFixed(1)}%`;
                     log.info(progressMsg);
                     sendConsole(progressMsg, 'INFO');
@@ -1356,7 +1356,7 @@ async function selectJavaForMinecraftVersion(mcVersion, autoDownload = true) {
             throw err; // Re-throw our custom error
         }
         log.error(`Error selecting Java version: ${err.message}`);
-        throw new Error(`Failed to select Java: ${err.message}`);
+        throw new Error(`Failed to select Java: ${err.message}`, { cause: err });
     }
 }
 
@@ -1533,6 +1533,7 @@ function sendStatus(fallbackMessage, pulse = false, translationKey = null, sound
     safeSend(win, 'update-status', fallbackMessage, pulse, translationKey);
     handleStatusSound(fallbackMessage, translationKey, pulse, soundType);
 }
+const DISCORD_CONSOLE_SUPPRESS_REGEX = /\[JDAER\]|JDA\s|discord\.gg|DiscordSRV|discord-srvr/i;
 function sendConsole(message, type = 'INFO') {
     try {
         if (typeof message === 'string' && DISCORD_CONSOLE_SUPPRESS_REGEX.test(message)) {
@@ -1651,7 +1652,7 @@ function resetIdleTimer() {
             try {
                 global.gc();
                 sendConsole('Idle mode: Memory optimized.', 'INFO');
-            } catch (e) {
+            } catch (_e) {
                 // GC not available
             }
         }
@@ -1920,7 +1921,7 @@ function showDesktopNotification(title, body, options = {}) {
             return;
         }
         notificationService.show(title, body, options);
-    } catch (error) {
+    } catch (_error) {
         // Silent error
     }
 }
@@ -2608,7 +2609,7 @@ function createWindow () {
   mainWindow.webContents.on('did-finish-load', async () => {
       const cfg = readServerConfig();
       const type = normalizeServerType(cfg?.serverType);
-      let hasJava = true;
+      let hasJava;
       if (isJavaServer(type)) {
           hasJava = await checkJava();
           if (!hasJava && app.isPackaged) {
@@ -3366,7 +3367,7 @@ async function startBedrockServer(serverConfig) {
         const cleanOutput = rawOutput.trimEnd();
 
         // Detect /list output for latency probe
-        let isListLine = false;
+        let isListLine;
         let isAutomaticProbe = false;
         try {
             isListLine = /players online:?/i.test(cleanOutput) || /there are \d+.*players online/i.test(cleanOutput);
@@ -3868,7 +3869,7 @@ ipcMain.on('start-server', async () => {
         );
         return;
     }
-    let ramToUseForJava = "";
+    let ramToUseForJava;
     if (serverConfig.ram && serverConfig.ram.toLowerCase() !== 'auto') {
         ramToUseForJava = serverConfig.ram;
     } else {
@@ -3910,7 +3911,8 @@ ipcMain.on('start-server', async () => {
         return '-';
     }
 
-    const stripAnsiCodes = (str) => str.replace(/\u001b\[(?:\d{1,3}(?:;\d{1,3})*)?[m|K]/g, '');
+    // eslint-disable-next-line no-control-regex
+    const stripAnsiCodes = (str) => str.replace(/\u001b\[(?:\d{1,3}(?:;\d{1,3})*)?[mK]/g, '');
 
     try {
         const allocatedRamGB = parseRamToGB(ramToUseForJava);
@@ -3962,7 +3964,7 @@ ipcMain.on('start-server', async () => {
             const cleanOutput = stripAnsiCodes(rawOutput).trimEnd();
 
             // Detect /list output for latency probe (Java)
-            let isListLine = false;
+            let isListLine;
             let isAutomaticProbe = false;
             try {
                 isListLine = /players online:?/i.test(cleanOutput) || /there are \d+.*players online/i.test(cleanOutput);
@@ -4134,7 +4136,7 @@ ipcMain.on('stop-server', async () => {
         ) {
             serverProcess.stdin.write("stop\n");
         }
-    } catch (e) {
+    } catch (_e) {
         serverProcess.kill('SIGKILL');
     }
     setTimeout(() => { if (serverProcess && !serverProcess.killed) serverProcess.kill('SIGKILL'); }, 10000);
