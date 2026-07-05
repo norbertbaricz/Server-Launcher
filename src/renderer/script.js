@@ -1134,8 +1134,12 @@ async function populateMcVersionSelect(selectElement, currentVersion, serverType
         selectElement.innerHTML = `<option value="" disabled>${translate('loadingVersions')}</option>`;
         try {
             availableMcVersionsCache[serverType] = await window.electronAPI.getAvailableVersions(serverType);
+            if (!Array.isArray(availableMcVersionsCache[serverType])) {
+                throw new Error('Invalid version response');
+            }
         } catch (error) {
             selectElement.innerHTML = `<option value="" disabled selected>${translate('errorLoadingVersions')}</option>`;
+            console.error('Version fetch error for', serverType, error);
             return;
         }
     }

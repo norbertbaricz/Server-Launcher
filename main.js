@@ -313,12 +313,17 @@ function getBedrockPlatformFolder() {
   return null;
 }
 
-function fetchJson(url, description = 'request') {
+function fetchJson(url, description = 'request', extraHeaders = {}) {
+  const defaultHeaders = {
+    'User-Agent': 'Server-Launcher/1.0',
+    'Accept': 'application/json',
+    'Accept-Language': 'en-US,en;q=0.9'
+  };
   return new Promise((resolve, reject) => {
-    https.get(url, { headers: { 'User-Agent': 'Server-Launcher/1.0' } }, (res) => {
+    https.get(url, { headers: { ...defaultHeaders, ...extraHeaders } }, (res) => {
       if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         res.resume();
-        return fetchJson(res.headers.location, description).then(resolve).catch(reject);
+        return fetchJson(res.headers.location, description, extraHeaders).then(resolve).catch(reject);
       }
       if (res.statusCode !== 200) {
         res.resume();
@@ -332,6 +337,37 @@ function fetchJson(url, description = 'request') {
       });
     }).on('error', err => reject(new Error(`${description} network error: ${err.message || err.code || 'Unknown error'}`)));
   });
+}
+
+function toPapermcFallbackUrl(url) {
+  if (typeof url !== 'string') return url;
+  if (url.startsWith('https://api.papermc.io/')) {
+    return url.replace('https://api.papermc.io/', 'https://papermc.io/');
+  }
+  return url;
+}
+
+async function fetchPaperJson(url, description) {
+    const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'https://papermc.io/',
+        'Origin': 'https://papermc.io/'
+    };
+  try {
+    return await fetchJson(url, description, headers);
+  } catch (error) {
+    const fallbackUrl = toPapermcFallbackUrl(url);
+    if (fallbackUrl !== url) {
+      try {
+        return await fetchJson(fallbackUrl, `${description} (fallback)`, headers);
+      } catch (fallbackError) {
+        error.message += `; fallback error: ${fallbackError.message}`;
+      }
+    }
+    throw error;
+  }
 }
 
 function sortVersionsDesc(list) {
@@ -391,7 +427,8 @@ async function filterStableMinecraftVersions(list) {
             sendConsole(`Using cached stable version list after manifest error: ${error.message}`, 'WARN');
             return versions.filter(v => cachedStableVersionSet.has(v));
         }
-        throw error;
+        sendConsole(`Could not filter stable versions; returning unfiltered version list: ${error.message}`, 'WARN');
+        return versions;
     }
 }
 
@@ -3040,10 +3077,15 @@ ipcMain.handle('check-initial-setup', async () => {
 ipcMain.handle('get-available-versions', async (_event, serverType) => {
     const type = normalizeServerType(serverType);
     try {
-        if (type === SERVER_TYPES.PAPER) {
-            const projectApiUrl = 'https://api.papermc.io/v2/projects/paper';
-            const projectResponseData = await fetchJson(projectApiUrl, 'Paper versions');
-            let versions = Array.isArray(projectResponseData?.versions) ? projectResponseData.versions : [];
+            if (type === SERVER_TYPES.PAPER) {
+            const projectApiUrl = 'https://api.papermc.io/v3/projects/paper';
+            const projectResponseData = await fetchPaperJson(projectApiUrl, 'Paper versions');
+            let versions = [];
+            if (Array.isArray(projectResponseData?.versions)) {
+                versions = projectResponseData.versions;
+            } else if (Array.isArray(projectResponseData?.project?.versions)) {
+                versions = projectResponseData.project.versions;
+            }
             versions = await filterStableMinecraftVersions(versions);
             if (versions.length > 0) {
                 return sortVersionsDesc(versions);
@@ -3549,25 +3591,32 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
     try {
         if (chosenType === SERVER_TYPES.PAPER) {
             sendStatus(`Downloading Paper ${mcVersion}...`, true, 'downloading');
-            const buildsApiUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}`;
-            const buildsResponseData = await fetchJson(buildsApiUrl, 'Paper builds list');
+            const buildsApiUrl = `https://api.papermc.io/v3/projects/paper/versions/${mcVersion}`;
+            const buildsResponseData = await fetchPaperJson(buildsApiUrl, 'Paper builds list');
             const builds = buildsResponseData?.builds || [];
             if (!builds.length) {
                 throw new Error('No builds found for this Paper version.');
             }
             const latestBuild = builds[builds.length - 1];
-            const downloadUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds/${latestBuild}/downloads/paper-${mcVersion}-${latestBuild}.jar`;
+            const primaryDownloadUrl = `https://api.papermc.io/v3/projects/paper/versions/${mcVersion}/builds/${latestBuild}/downloads/paper-${mcVersion}-${latestBuild}.jar`;
+            const fallbackDownloadUrl = toPapermcFallbackUrl(primaryDownloadUrl);
             sendStatus(`Downloading (0%)`, true, 'downloading');
 
             const paperDest = path.join(serverFilesDir, paperJarName);
             await new Promise((resolve, reject) => {
-                const doDownload = (url) => {
+                const doDownload = (url, attempt = 1) => {
                     https.get(url, { headers: { 'User-Agent': 'Server-Launcher/1.0' } }, (response) => {
                         if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
                             response.resume();
-                            return doDownload(response.headers.location);
+                            return doDownload(response.headers.location, attempt);
                         }
-                        if (response.statusCode !== 200) return reject(new Error(`Download failed (Status ${response.statusCode})`));
+                        if (response.statusCode !== 200) {
+                            response.resume();
+                            if (attempt === 1 && fallbackDownloadUrl !== primaryDownloadUrl) {
+                                return doDownload(fallbackDownloadUrl, 2);
+                            }
+                            return reject(new Error(`Download failed (Status ${response.statusCode})`));
+                        }
                         const total = parseInt(response.headers['content-length'] || '0', 10);
                         let downloaded = 0;
                         let lastPercent = -1, lastMB = -1;

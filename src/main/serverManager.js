@@ -533,7 +533,7 @@ function setupIpcHandlers() {
         const type = normalizeServerType(serverType);
         try {
             if (type === SERVER_TYPES.PAPER) {
-                const projectApiUrl = 'https://api.papermc.io/v2/projects/paper';
+                const projectApiUrl = 'https://api.papermc.io/v3/projects/paper';
                 const projectResponseData = await fetchJson(projectApiUrl, 'Paper versions');
                 const versions = projectResponseData?.versions || projectResponseData?.all || [];
                 if (Array.isArray(versions) && versions.length > 0) {
@@ -849,16 +849,14 @@ function setupIpcHandlers() {
         try {
             if (chosenType === SERVER_TYPES.PAPER) {
                 sendStatus(`Downloading Paper ${mcVersion}...`, true, 'downloading');
-                const buildsApiUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}`;
+                const buildsApiUrl = `https://api.papermc.io/v3/projects/paper/versions/${mcVersion}`;
                 const buildsResponseData = await fetchJson(buildsApiUrl, 'Paper builds list');
                 const builds = buildsResponseData?.builds || [];
                 if (!builds.length) {
                     throw new Error('No builds found for this Paper version.');
                 }
                 const latestBuild = builds[builds.length - 1];
-                const downloadUrl = `https://api.papermc.io/v2/projects/paper/versions/${mcVersion}/builds/${latestBuild}/downloads/paper-${mcVersion}-${latestBuild}.jar`;
-                sendStatus(`Downloading (0%)`, true, 'downloading');
-
+                const downloadUrl = `https://api.papermc.io/v3/projects/paper/versions/${mcVersion}/builds/${latestBuild}/downloads/paper-${mcVersion}-${latestBuild}.jar`;
                 const paperDest = path.join(serverFilesDir, paperJarName);
                 await new Promise((resolve, reject) => {
                     const doDownload = (url) => {
