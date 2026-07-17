@@ -209,7 +209,7 @@ const CONTENT_SECURITY_POLICY = [
     "font-src 'self' https://fonts.gstatic.com https://cdnjs.cloudflare.com data:",
     "img-src 'self' data: file:",
     "media-src 'self' file:",
-    "connect-src 'self' file: https://api.ipify.org https://api.papermc.io https://meta.fabricmc.net https://api.adoptium.net",
+    "connect-src 'self' file: https://api.ipify.org https://api.papermc.io https://fill.papermc.io https://meta.fabricmc.net https://api.adoptium.net",
     "object-src 'none'",
     "base-uri 'self' file:",
     "frame-ancestors 'none'"
@@ -343,6 +343,9 @@ function toPapermcFallbackUrl(url) {
   if (typeof url !== 'string') return url;
   if (url.startsWith('https://api.papermc.io/')) {
     return url.replace('https://api.papermc.io/', 'https://papermc.io/');
+  }
+  if (url.startsWith('https://fill.papermc.io/')) {
+    return url.replace('https://fill.papermc.io/', 'https://papermc.io/');
   }
   return url;
 }
@@ -3078,13 +3081,17 @@ ipcMain.handle('get-available-versions', async (_event, serverType) => {
     const type = normalizeServerType(serverType);
     try {
             if (type === SERVER_TYPES.PAPER) {
-            const projectApiUrl = 'https://api.papermc.io/v3/projects/paper';
+            const projectApiUrl = 'https://fill.papermc.io/v3/projects/paper';
             const projectResponseData = await fetchPaperJson(projectApiUrl, 'Paper versions');
             let versions = [];
             if (Array.isArray(projectResponseData?.versions)) {
                 versions = projectResponseData.versions;
+            } else if (projectResponseData?.versions && typeof projectResponseData.versions === 'object') {
+                versions = Object.keys(projectResponseData.versions);
             } else if (Array.isArray(projectResponseData?.project?.versions)) {
                 versions = projectResponseData.project.versions;
+            } else if (projectResponseData?.project?.versions && typeof projectResponseData.project.versions === 'object') {
+                versions = Object.keys(projectResponseData.project.versions);
             }
             versions = await filterStableMinecraftVersions(versions);
             if (versions.length > 0) {
@@ -3591,14 +3598,14 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
     try {
         if (chosenType === SERVER_TYPES.PAPER) {
             sendStatus(`Downloading Paper ${mcVersion}...`, true, 'downloading');
-            const buildsApiUrl = `https://api.papermc.io/v3/projects/paper/versions/${mcVersion}`;
+            const buildsApiUrl = `https://fill.papermc.io/v3/projects/paper/versions/${mcVersion}`;
             const buildsResponseData = await fetchPaperJson(buildsApiUrl, 'Paper builds list');
             const builds = buildsResponseData?.builds || [];
             if (!builds.length) {
                 throw new Error('No builds found for this Paper version.');
             }
             const latestBuild = builds[builds.length - 1];
-            const primaryDownloadUrl = `https://api.papermc.io/v3/projects/paper/versions/${mcVersion}/builds/${latestBuild}/downloads/paper-${mcVersion}-${latestBuild}.jar`;
+            const primaryDownloadUrl = `https://fill.papermc.io/v3/projects/paper/versions/${mcVersion}/builds/${latestBuild}/downloads/paper-${mcVersion}-${latestBuild}.jar`;
             const fallbackDownloadUrl = toPapermcFallbackUrl(primaryDownloadUrl);
             sendStatus(`Downloading (0%)`, true, 'downloading');
 
