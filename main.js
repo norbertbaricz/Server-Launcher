@@ -339,17 +339,11 @@ function fetchJson(url, description = 'request', extraHeaders = {}) {
   });
 }
 
-function toPapermcFallbackUrl(url) {
-  if (typeof url !== 'string') return url;
-  if (url.startsWith('https://api.papermc.io/')) {
-    return url.replace('https://api.papermc.io/', 'https://papermc.io/');
-  }
-  return url;
-}
+const PAPERMC_FILL_API_URL = 'https://fill.papermc.io/v3';
 
 async function fetchPaperJson(url, description) {
     const headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+        'User-Agent': `Server-Launcher/${version} (https://github.com/norbertbaricz/Server-Launcher)`,
         'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'en-US,en;q=0.9',
         'Referer': 'https://papermc.io/',
@@ -358,14 +352,6 @@ async function fetchPaperJson(url, description) {
   try {
     return await fetchJson(url, description, headers);
   } catch (error) {
-    const fallbackUrl = toPapermcFallbackUrl(url);
-    if (fallbackUrl !== url) {
-      try {
-        return await fetchJson(fallbackUrl, `${description} (fallback)`, headers);
-      } catch (fallbackError) {
-        error.message += `; fallback error: ${fallbackError.message}`;
-      }
-    }
     throw error;
   }
 }
@@ -3078,13 +3064,14 @@ ipcMain.handle('get-available-versions', async (_event, serverType) => {
     const type = normalizeServerType(serverType);
     try {
             if (type === SERVER_TYPES.PAPER) {
-            const projectApiUrl = 'https://api.papermc.io/v3/projects/paper';
+            const projectApiUrl = `${PAPERMC_FILL_API_URL}/projects/paper`;
             const projectResponseData = await fetchPaperJson(projectApiUrl, 'Paper versions');
+            const versionGroups = projectResponseData?.versions;
             let versions = [];
-            if (Array.isArray(projectResponseData?.versions)) {
-                versions = projectResponseData.versions;
-            } else if (Array.isArray(projectResponseData?.project?.versions)) {
-                versions = projectResponseData.project.versions;
+            if (Array.isArray(versionGroups)) {
+                versions = versionGroups;
+            } else if (versionGroups && typeof versionGroups === 'object') {
+                versions = Object.values(versionGroups).flat();
             }
             versions = await filterStableMinecraftVersions(versions);
             if (versions.length > 0) {
@@ -3591,30 +3578,28 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
     try {
         if (chosenType === SERVER_TYPES.PAPER) {
             sendStatus(`Downloading Paper ${mcVersion}...`, true, 'downloading');
-            const buildsApiUrl = `https://api.papermc.io/v3/projects/paper/versions/${mcVersion}`;
+            const buildsApiUrl = `${PAPERMC_FILL_API_URL}/projects/paper/versions/${mcVersion}/builds`;
             const buildsResponseData = await fetchPaperJson(buildsApiUrl, 'Paper builds list');
-            const builds = buildsResponseData?.builds || [];
-            if (!builds.length) {
-                throw new Error('No builds found for this Paper version.');
+            const builds = Array.isArray(buildsResponseData) ? buildsResponseData : [];
+            const latestStableBuild = builds.find((build) =>
+                build?.channel === 'STABLE' && build?.downloads?.['server:default']?.url
+            );
+            const primaryDownloadUrl = latestStableBuild?.downloads?.['server:default']?.url;
+            if (!primaryDownloadUrl) {
+                throw new Error('No stable Paper build found for this version.');
             }
-            const latestBuild = builds[builds.length - 1];
-            const primaryDownloadUrl = `https://api.papermc.io/v3/projects/paper/versions/${mcVersion}/builds/${latestBuild}/downloads/paper-${mcVersion}-${latestBuild}.jar`;
-            const fallbackDownloadUrl = toPapermcFallbackUrl(primaryDownloadUrl);
             sendStatus(`Downloading (0%)`, true, 'downloading');
 
             const paperDest = path.join(serverFilesDir, paperJarName);
             await new Promise((resolve, reject) => {
-                const doDownload = (url, attempt = 1) => {
-                    https.get(url, { headers: { 'User-Agent': 'Server-Launcher/1.0' } }, (response) => {
+                const doDownload = (url) => {
+                    https.get(url, { headers: { 'User-Agent': `Server-Launcher/${version} (https://github.com/norbertbaricz/Server-Launcher)` } }, (response) => {
                         if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
                             response.resume();
                             return doDownload(response.headers.location, attempt);
                         }
                         if (response.statusCode !== 200) {
                             response.resume();
-                            if (attempt === 1 && fallbackDownloadUrl !== primaryDownloadUrl) {
-                                return doDownload(fallbackDownloadUrl, 2);
-                            }
                             return reject(new Error(`Download failed (Status ${response.statusCode})`));
                         }
                         const total = parseInt(response.headers['content-length'] || '0', 10);
@@ -3641,7 +3626,7 @@ ipcMain.on('configure-server', async (event, { serverType, mcVersion, ramAllocat
                         fileStream.on('finish', () => fileStream.close(resolve));
                     }).on('error', err => reject(new Error(`Request error: ${err.message}`)));
                 };
-                doDownload(downloadUrl);
+                doDownload(primaryDownloadUrl);
             });
 
             const suffix = getTranslation('downloadSuccessSuffix');
