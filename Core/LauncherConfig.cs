@@ -4,12 +4,12 @@ internal static class LauncherConfig
 {
     // EASY-TO-TUNE APPLICATION DEFAULTS.
     public const string AppName = "Server Launcher";
-    public const string AppVersion = "2.6.1";
+    public const string AppVersion = "2.1.0";
     public const string AppUserModelId = "ServerLauncher.Desktop";
     public const string ServerSoftwareName = "Paper";
     public const string PaperProject = "paper";
     public const string PaperApiBaseUrl = "https://fill.papermc.io/v3";
-    public const string PaperUserAgent = "ServerLauncher/2.6 (local desktop launcher)";
+    public const string PaperUserAgent = "ServerLauncher/" + AppVersion + " (https://github.com/norbertbaricz/Server-Launcher)";
     public const int DefaultRamMb = 6144;
     public const int DefaultInitialRamMb = 2048;
     public const int MinimumRamMb = 512;

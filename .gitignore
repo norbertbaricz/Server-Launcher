@@ -40,3 +40,15 @@ coverage/
 *.tmp
 *.temp
 .cache/
+
+# .NET and portable launcher data
+bin/
+obj/
+artifacts/
+servers/
+runtime/
+launcher.settings.json
+.vs/
+*.user
+*.suo
+

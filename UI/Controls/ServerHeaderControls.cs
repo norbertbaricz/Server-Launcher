@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing.Drawing2D;
 
 namespace Server_Launcher.UI.Controls;
@@ -75,6 +76,7 @@ internal sealed class ServerHeading : Control
     private bool _showNetwork;
     public HeaderBadge LanBadge { get; } = new();
     public HeaderBadge WanBadge { get; } = new();
+    [DefaultValue(false)]
     public bool ShowNetwork
     {
         get => _showNetwork;

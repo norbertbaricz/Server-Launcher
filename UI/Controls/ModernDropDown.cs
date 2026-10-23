@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Collections.ObjectModel;
 using System.Drawing.Drawing2D;
 
@@ -15,6 +16,7 @@ internal sealed class ModernDropDown : Control
     private bool _hovered;
     private bool _expanded;
     private bool _readOnly;
+    [DefaultValue(false)]
     public bool ReadOnly
     {
         get => _readOnly;
@@ -45,6 +47,7 @@ internal sealed class ModernDropDown : Control
 
     public ItemCollection Items { get; }
     public event EventHandler? SelectedIndexChanged;
+    [DefaultValue(-1)]
     public int SelectedIndex
     {
         get => _selectedIndex;
@@ -57,6 +60,7 @@ internal sealed class ModernDropDown : Control
             SelectedIndexChanged?.Invoke(this, EventArgs.Empty);
         }
     }
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public object? SelectedItem
     {
         get => SelectedIndex >= 0 && SelectedIndex < Items.Count ? Items[SelectedIndex] : null;

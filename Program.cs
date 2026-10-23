@@ -18,12 +18,18 @@ internal static class Program
     [STAThread]
     private static void Main()
     {
+        var arguments = Environment.GetCommandLineArgs();
+        if (arguments.Skip(1).Any(argument => argument.Equals(DistributionVerification.Argument, StringComparison.OrdinalIgnoreCase)))
+        {
+            Environment.ExitCode = DistributionVerification.Run();
+            return;
+        }
         if (OperatingSystem.IsWindows())
         {
             var result = SetCurrentProcessExplicitAppUserModelID(LauncherConfig.AppUserModelId);
             if (result < 0) Log("Taskbar identity could not be set: " + result);
         }
-        var startInTray = Environment.GetCommandLineArgs().Any(argument => argument.Equals(WindowsStartupService.BackgroundArgument, StringComparison.OrdinalIgnoreCase));
+        var startInTray = arguments.Any(argument => argument.Equals(WindowsStartupService.BackgroundArgument, StringComparison.OrdinalIgnoreCase));
         using var mutex = new Mutex(true, SingleInstanceMutexName, out var firstInstance);
         if (!firstInstance)
         {

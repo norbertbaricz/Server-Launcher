@@ -1,0 +1,27 @@
+SERVER LAUNCHER REBORN - WINDOWS x64
+
+1. Extract this entire archive into a writable folder.
+2. Open "Server Launcher.exe".
+3. Click Create server, name it and choose PaperMC, Fabric or Bedrock.
+4. Review its version, RAM, optimization profile, port and download terms.
+5. Create the server, wait for preparation, then click Start.
+
+.NET is included. Developer tools and a separate JDK installation are not required.
+Matching Java is prepared when needed; initial downloads require internet.
+Bedrock requires the Microsoft Visual C++ x64 runtime:
+https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist
+
+YOUR DATA
+The launcher creates servers/, runtime/ and launcher.settings.json beside its EXE.
+Keep this folder writable. Stop servers and exit before updating, and back up
+these folders and settings. The release contains no preinstalled Minecraft server.
+
+CONNECTING
+LAN is for your local network. Internet players need a reachable server port or
+a separately configured tunnel. Displaying the WAN address does not open a port.
+
+UPDATES AND HELP
+https://github.com/norbertbaricz/Server-Launcher/releases
+https://github.com/norbertbaricz/Server-Launcher/issues
+
+release-info.json identifies the exact version, source commit and verification.

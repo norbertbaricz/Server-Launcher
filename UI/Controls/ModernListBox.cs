@@ -20,9 +20,11 @@ internal class ModernListBox : Control
     private long _lastTypedTick;
     private SelectionMode _selectionMode = SelectionMode.One;
     public ItemCollection Items { get; }
+    [DefaultValue("")]
     public string DisplayMember { get; set; } = string.Empty;
     public event EventHandler? SelectedIndexChanged;
     public IReadOnlyList<object> SelectedItems => _selected.Select(index => Items[index]).ToArray();
+    [DefaultValue(-1)]
     public int SelectedIndex
     {
         get => _selected.Contains(_focusedIndex) ? _focusedIndex : _selected.Count == 0 ? -1 : _selected.Min;
@@ -33,7 +35,9 @@ internal class ModernListBox : Control
             if (SelectedIndex >= 0) EnsureVisible(SelectedIndex);
         }
     }
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public object? SelectedItem { get => SelectedIndex < 0 ? null : Items[SelectedIndex]; set => SelectedIndex = value is null ? -1 : Items.IndexOf(value); }
+    [DefaultValue(System.Windows.Forms.SelectionMode.One)]
     public SelectionMode SelectionMode
     {
         get => _selectionMode;
@@ -45,12 +49,14 @@ internal class ModernListBox : Control
             else if (value == SelectionMode.One && _selected.Count > 1) SelectOnly(SelectedIndex);
         }
     }
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
     public int ItemHeight
     {
         get => UiMetrics.Scale(this, _itemHeight);
         set { _itemHeight = Math.Max(1, value); ClampViewport(); Invalidate(); }
     }
     private int VisibleRows => Math.Max(1, ClientSize.Height / ItemHeight);
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int TopIndex
     {
         get => _topIndex;

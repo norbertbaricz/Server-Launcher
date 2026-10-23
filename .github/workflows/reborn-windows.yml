@@ -1,0 +1,165 @@
+name: Reborn Windows release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.cs'
+      - '*.csproj'
+      - '*.manifest'
+      - 'global.json'
+      - 'Assets/**'
+      - 'Properties/**'
+      - 'scripts/**'
+      - 'docs/**'
+      - 'LICENSE.txt'
+      - '.github/workflows/reborn-windows.yml'
+  pull_request:
+    paths:
+      - '**/*.cs'
+      - '*.csproj'
+      - '*.manifest'
+      - 'global.json'
+      - 'Assets/**'
+      - 'Properties/**'
+      - 'scripts/**'
+      - 'docs/**'
+      - 'LICENSE.txt'
+      - '.github/workflows/reborn-windows.yml'
+  workflow_dispatch:
+
+# Pull requests can only verify packages. Publication is restricted to main.
+permissions:
+  contents: read
+
+concurrency:
+  group: reborn-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Publish and verify Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+      archive: ${{ steps.package.outputs.archive }}
+      tag: ${{ steps.package.outputs.tag }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install .NET 10 LTS SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Publish and verify the downloadable application
+        id: package
+        run: ./scripts/Publish-Release.ps1
+      - name: Upload verified release files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: Reborn-Windows-${{ steps.package.outputs.version }}
+          path: |
+            artifacts/${{ steps.package.outputs.archive }}
+            artifacts/SHA256SUMS.txt
+            artifacts/RELEASE_NOTES.md
+            artifacts/distribution-verification.json
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish stable release from main
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.build.outputs.version }}
+      RELEASE_TAG: ${{ needs.build.outputs.tag }}
+      ARCHIVE: ${{ needs.build.outputs.archive }}
+      SOURCE_COMMIT: ${{ github.sha }}
+      # One-time migration cleanup, performed only after v2.1 is public.
+      OBSOLETE_DRAFT_TAG: reborn-v2.7.0
+      MERGED_PREPARATION_BRANCHES: 'release/reborn-2.7.0 fix/papermc-fill-api'
+    steps:
+      - name: Download the verified package
+        run: gh run download "$GITHUB_RUN_ID" --repo "$GH_REPO" --name "Reborn-Windows-$VERSION" --dir release
+      - name: Verify the downloaded release files
+        working-directory: release
+        run: |
+          set -euo pipefail
+          sha256sum --check SHA256SUMS.txt
+          jq -e --arg version "$VERSION" '.passed == true and .version == $version' distribution-verification.json
+      - name: Publish the complete stable release
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GH_REPO" --json isDraft > existing.json 2>/dev/null; then
+            if [ "$(jq -r .isDraft existing.json)" != true ]; then
+              echo "Release $RELEASE_TAG is already public; its files will not be overwritten. Bump the version for another release." >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+          else
+            # Stage uploads privately; make the release public only once all files exist.
+            gh release create "$RELEASE_TAG" --repo "$GH_REPO" --target "$SOURCE_COMMIT" \
+              --title "Server Launcher Reborn $RELEASE_TAG - Windows x64" --draft \
+              --notes-file release/RELEASE_NOTES.md
+          fi
+          # A pre-existing tag must identify the source that was actually built.
+          if gh api "repos/$GH_REPO/git/ref/tags/$RELEASE_TAG" > tag.json 2>/dev/null; then
+            TAG_COMMIT=$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)
+            if [ "$TAG_COMMIT" != "$SOURCE_COMMIT" ]; then
+              echo 'The release tag points to another commit; refusing to publish different binaries.' >&2
+              exit 1
+            fi
+          fi
+          gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --target "$SOURCE_COMMIT" \
+            --title "Server Launcher Reborn $RELEASE_TAG - Windows x64" --notes-file release/RELEASE_NOTES.md
+          gh release upload "$RELEASE_TAG" --repo "$GH_REPO" \
+            "release/$ARCHIVE" release/SHA256SUMS.txt release/distribution-verification.json --clobber
+          gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --draft=false --prerelease=false --latest
+          gh release view "$RELEASE_TAG" --repo "$GH_REPO" --json url --jq .url >> "$GITHUB_STEP_SUMMARY"
+      - name: Check the public download
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --repo "$GH_REPO" --json isDraft,isPrerelease,assets,url > published.json
+          jq -e --arg archive "$ARCHIVE" '
+            .isDraft == false and .isPrerelease == false and
+            any(.assets[]; .name == $archive and .size > 0) and
+            any(.assets[]; .name == "SHA256SUMS.txt" and .size > 0) and
+            any(.assets[]; .name == "distribution-verification.json" and .size > 0)
+          ' published.json
+      - name: Clean up the completed v2.1 preparation
+        if: needs.build.outputs.tag == 'v2.1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$OBSOLETE_DRAFT_TAG" --repo "$GH_REPO" --json isDraft > obsolete.json 2>/dev/null; then
+            if [ "$(jq -r .isDraft obsolete.json)" = true ]; then
+              gh release delete "$OBSOLETE_DRAFT_TAG" --repo "$GH_REPO" --yes
+            fi
+          fi
+          for BRANCH in $MERGED_PREPARATION_BRANCHES; do
+            if ! gh api "repos/$GH_REPO/git/ref/heads/$BRANCH" > branch.json 2>/dev/null; then
+              continue
+            fi
+            BRANCH_COMMIT=$(jq -r .object.sha branch.json)
+            MAIN_COMMIT=$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq .object.sha)
+            gh api "repos/$GH_REPO/compare/$MAIN_COMMIT...$BRANCH_COMMIT" > comparison.json
+            if jq -e '.ahead_by == 0 and (.status == "behind" or .status == "identical")' comparison.json >/dev/null; then
+              gh api --method DELETE "repos/$GH_REPO/git/refs/heads/$BRANCH"
+              echo "Removed merged preparation branch: $BRANCH" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "Kept $BRANCH because it contains commits outside main." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
