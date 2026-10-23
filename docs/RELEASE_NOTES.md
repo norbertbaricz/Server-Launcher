@@ -1,10 +1,10 @@
-# Server Launcher Reborn 2.7.0 - Windows x64
+# Server Launcher Reborn v2.1 - Windows x64
 
 The Reborn desktop edition brings the current C# launcher to this repository with a portable Windows distribution.
 
 ## Download
 
-Download **Server-Launcher-Reborn-2.7.0-win-x64.zip**, extract it into a writable folder and open **Server Launcher.exe**. .NET is included; an installer and developer tools are not required.
+Download **Server-Launcher-Reborn-2.1.0-win-x64.zip**, extract it into a writable folder and open **Server Launcher.exe**. .NET is included; an installer and developer tools are not required.
 
 ## Included
 
@@ -26,4 +26,4 @@ The workflow starts the published executable in verification mode, reads its emb
 - A public IP display does not configure port forwarding or a tunnel.
 - Electron profiles are not automatically migrated; existing worlds can be copied and imported.
 
-This release is prepared as a Reborn preview so the Electron edition's existing update channel remains available. Publishing the draft makes the attached Windows archive available to the community.
+This is the stable Windows release built from `main`. Its GitHub tag is `v2.1`; executable and package metadata use `2.1.0`. Older Electron releases remain available in the release archive.

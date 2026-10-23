@@ -8,7 +8,7 @@ internal static class BackendConfig
     public const string BedrockLinks = "https://net-secondary.web.minecraft-services.net/api/v1.0/download/links";
     public const string AdoptiumApi = "https://api.adoptium.net/v3";
     public static readonly int[] KnownJavaMajors = { 8, 11, 16, 17, 21, 25 };
-    public const string UserAgent = "ServerLauncher/2.5 (local desktop server manager)";
+    public const string UserAgent = LauncherConfig.PaperUserAgent;
     public const string FabricLaunchJar = "fabric-server-launch.jar";
     public const string BedrockExecutable = "bedrock_server.exe";
     public const int MetadataTimeoutSeconds = 20;

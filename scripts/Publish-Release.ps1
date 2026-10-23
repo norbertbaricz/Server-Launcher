@@ -11,6 +11,7 @@ $Configuration = 'Release'
 $PublishProfile = 'WindowsPortable'
 $ExecutableName = 'Server Launcher.exe'
 $ProductPrefix = 'Server-Launcher-Reborn'
+$ReleaseTagPrefix = 'v'
 $VerificationArgument = '--verify-distribution'
 $VerificationTimeoutSeconds = 60
 $ApplicationRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -29,6 +30,10 @@ $OutputDirectory = [System.IO.Path]::GetFullPath($OutputDirectory)
 $Version = [string]$Project.Project.PropertyGroup.Version
 if ($Version -notmatch '^\d+\.\d+\.\d+$') { throw 'The project must declare a three-part release version.' }
 if ($ExpectedVersion -and $ExpectedVersion -ne $Version) { throw 'The release tag and project version do not match.' }
+$VersionNumber = [version]$Version
+$ReleaseTag = if ($VersionNumber.Build -eq 0) {
+    "$ReleaseTagPrefix$($VersionNumber.Major).$($VersionNumber.Minor)"
+} else { "$ReleaseTagPrefix$Version" }
 $VersionSource = Get-Content -LiteralPath (Join-Path $ApplicationRoot 'Core/LauncherConfig.cs') -Raw
 if ($VersionSource -notmatch ('AppVersion\s*=\s*"' + [regex]::Escape($Version) + '"')) {
     throw 'LauncherConfig.AppVersion and the project version must match.'
@@ -85,7 +90,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $ApplicationRoot 'docs/QUICK_START.txt') -Destination (Join-Path $PackageDirectory 'START_HERE.txt')
     Copy-Item -LiteralPath (Join-Path $ApplicationRoot 'LICENSE.txt') -Destination $PackageDirectory
     [ordered]@{
-        product = 'Server Launcher Reborn'; version = $Version; runtime = $RuntimeIdentifier
+        product = 'Server Launcher Reborn'; version = $Version; tag = $ReleaseTag; runtime = $RuntimeIdentifier
         framework = [string]$Project.Project.PropertyGroup.TargetFramework
         selfContained = $true; singleFile = $true; sourceCommit = $Commit
         verification = $Report
@@ -105,7 +110,7 @@ try {
     } finally { $Zip.Dispose() }
 
     if ($env:GITHUB_OUTPUT) {
-        @("version=$Version", "archive=$ArchiveName", "tag=reborn-v$Version") |
+        @("version=$Version", "archive=$ArchiveName", "tag=$ReleaseTag") |
             Add-Content -LiteralPath $env:GITHUB_OUTPUT -Encoding utf8NoBOM
     }
     if ($env:GITHUB_STEP_SUMMARY) {

@@ -4,8 +4,8 @@ A Windows desktop launcher for creating and managing Minecraft servers.
 
 ## Download and run
 
-1. Open the repository's [Releases page](https://github.com/norbertbaricz/Server-Launcher/releases).
-2. Choose a **Reborn - Windows x64** release and download its Windows ZIP.
+1. Open the [latest release](https://github.com/norbertbaricz/Server-Launcher/releases/latest).
+2. Download **Server-Launcher-Reborn-2.1.0-win-x64.zip** from the **v2.1** release.
 3. Extract the full archive into a writable folder, for example `Documents\Server Launcher Reborn`.
 4. Open **Server Launcher.exe**.
 
@@ -65,7 +65,7 @@ Reborn does not automatically import Electron profiles. To move a world, create 
 
 ## For developers
 
-Use the .NET 10 SDK on Windows. The project uses C# 12 and .NET 10 LTS. The [publishing guide](docs/PUBLISHING.md) documents the verified Windows package and release draft workflow.
+The current project and release workflow are on `main`. Use the .NET 10 SDK on Windows. The project uses C# 12 and .NET 10 LTS. The [publishing guide](docs/PUBLISHING.md) documents the verified Windows package and automatic stable releases from `main`.
 
 The launcher follows the repository's [ISC license](LICENSE.txt). Downloaded server software, Java, plugins and mods retain their own licenses.
 
