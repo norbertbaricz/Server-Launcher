@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 
@@ -71,8 +72,11 @@ internal enum ModernIcon
 
 internal class RoundedPanel : Panel
 {
+    [DefaultValue(UiMetrics.CardRadius)]
     public int Radius { get; set; } = UiMetrics.CardRadius;
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
     public Color BorderColor { get; set; } = Theme.Border;
+    [DefaultValue(true)]
     public bool DrawBorder { get; set; } = true;
 
     public RoundedPanel()
@@ -112,18 +116,26 @@ internal sealed class ModernButton : Control, IButtonControl
     private bool _keyboardFocus;
     private bool _isActive;
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
     public Color NormalColor { get; set; } = Theme.SurfaceElevated;
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
     public Color HoverColor { get; set; } = Theme.SurfaceHover;
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
     public Color ActiveColor { get; set; } = Theme.AccentFill;
+    [DefaultValue(UiMetrics.ControlRadius)]
     public int Radius { get; set; } = UiMetrics.ControlRadius;
     private ModernIcon _iconKind;
+    [DefaultValue(ModernIcon.None)]
     public ModernIcon IconKind
     {
         get => _iconKind;
         set { if (_iconKind == value) return; _iconKind = value; Invalidate(); }
     }
+    [DefaultValue(false)]
     public bool LeftAligned { get; set; }
+    [DefaultValue(System.Windows.Forms.DialogResult.None)]
     public DialogResult DialogResult { get; set; }
+    [DefaultValue(false)]
     public bool IsActive
     {
         get => _isActive;
@@ -302,6 +314,7 @@ internal sealed class ModernTextBoxHost : RoundedPanel
 internal sealed class ModernProgressBar : Control
 {
     private int _value;
+    [DefaultValue(0)]
     public int Value
     {
         get => _value;

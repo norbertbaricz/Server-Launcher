@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Runtime.InteropServices;
 
 namespace Server_Launcher.UI.Controls;
@@ -87,6 +88,7 @@ internal sealed class HiddenScrollPanel : Panel
     // Even callers using a Panel/ScrollableControl reference cannot turn on bars.
     public override bool AutoScroll { get => false; set => base.AutoScroll = false; }
 
+    [DefaultValue(true)]
     public bool ScrollingEnabled
     {
         get => _scrollingEnabled;
@@ -94,6 +96,7 @@ internal sealed class HiddenScrollPanel : Panel
     }
 
     // Logical dimensions exclude the fixed outer Padding and scale with the DPI.
+    [DefaultValue(typeof(Size), "0, 0")]
     public Size MinimumContentSize
     {
         get => _minimumContentSize;

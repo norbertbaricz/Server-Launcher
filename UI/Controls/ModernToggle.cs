@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing.Drawing2D;
 
 namespace Server_Launcher.UI.Controls;
@@ -12,8 +13,10 @@ internal sealed class ModernToggle : Control
     private bool _hovered;
     private bool _spacePressed;
     private bool _mousePressed;
+    [DefaultValue(true)]
     public bool WrapText { get; set; } = true;
     public event EventHandler? CheckedChanged;
+    [DefaultValue(false)]
     public bool Checked
     {
         get => _checked;

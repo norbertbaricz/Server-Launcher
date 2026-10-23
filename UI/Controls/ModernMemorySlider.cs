@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing.Drawing2D;
 using Server_Launcher.Core;
 
@@ -18,19 +19,24 @@ internal sealed class ModernMemorySlider : Control
     private bool _dragging;
     private bool _hovered;
 
+    [DefaultValue(LauncherConfig.RamStepMb)]
     public int Step { get; set; } = LauncherConfig.RamStepMb;
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Func<int, string> ValueFormatter { get; set; } = MemoryLimits.Format;
     public event EventHandler? ValueChanged;
+    [DefaultValue(LauncherConfig.MinimumRamMb)]
     public int Minimum
     {
         get => _minimum;
         set { _minimum = Math.Max(0, value); _maximum = Math.Max(_minimum, _maximum); Value = _value; Invalidate(); }
     }
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
     public int Maximum
     {
         get => _maximum;
         set { _maximum = Math.Max(_minimum, value); Value = _value; Invalidate(); }
     }
+    [DefaultValue(LauncherConfig.MinimumRamMb)]
     public int Value
     {
         get => _value;

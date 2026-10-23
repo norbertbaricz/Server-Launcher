@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Drawing.Drawing2D;
 
 namespace Server_Launcher.UI.Controls;
@@ -24,8 +25,11 @@ internal sealed class ActionListBox : ModernListBox
     private object? _pressedItem;
     private string? _pressedAction;
     private Font _detailFont = UiMetrics.Font(8f);
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Func<object, string>? ItemTitle { get; set; }
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Func<object, string>? ItemDetail { get; set; }
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public Func<object, IReadOnlyList<ItemAction>>? ItemActions { get; set; }
     public event Action<object, string>? ActionInvoked;
 
