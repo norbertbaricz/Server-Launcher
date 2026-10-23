@@ -4,7 +4,7 @@ internal static class LauncherConfig
 {
     // EASY-TO-TUNE APPLICATION DEFAULTS.
     public const string AppName = "Server Launcher";
-    public const string AppVersion = "2.6.1";
+    public const string AppVersion = "2.7.0";
     public const string AppUserModelId = "ServerLauncher.Desktop";
     public const string ServerSoftwareName = "Paper";
     public const string PaperProject = "paper";

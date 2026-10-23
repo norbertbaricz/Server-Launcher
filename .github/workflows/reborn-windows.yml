@@ -1,0 +1,126 @@
+name: Reborn Windows release
+
+on:
+  push:
+    branches: [main, 'release/reborn-*']
+    tags: ['reborn-v*']
+    paths:
+      - '**/*.cs'
+      - '*.csproj'
+      - '*.manifest'
+      - 'global.json'
+      - 'Assets/**'
+      - 'Properties/**'
+      - 'scripts/**'
+      - 'docs/**'
+      - 'LICENSE.txt'
+      - '.github/workflows/reborn-windows.yml'
+  pull_request:
+    paths:
+      - '**/*.cs'
+      - '*.csproj'
+      - '*.manifest'
+      - 'global.json'
+      - 'Assets/**'
+      - 'Properties/**'
+      - 'scripts/**'
+      - 'docs/**'
+      - 'LICENSE.txt'
+      - '.github/workflows/reborn-windows.yml'
+  workflow_dispatch:
+    inputs:
+      create_draft:
+        description: 'Prepare a Reborn release draft after Windows verification passes'
+        required: true
+        default: false
+        type: boolean
+
+# Only the separate draft job has write access to releases.
+permissions:
+  contents: read
+
+concurrency:
+  group: reborn-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Publish and verify Windows x64
+    runs-on: windows-latest
+    timeout-minutes: 20
+    outputs:
+      version: ${{ steps.package.outputs.version }}
+      archive: ${{ steps.package.outputs.archive }}
+      tag: ${{ steps.package.outputs.tag }}
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Check out sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install .NET 10 LTS SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        with:
+          dotnet-version: '10.0.x'
+      - name: Publish and verify the downloadable application
+        id: package
+        run: |
+          $ExpectedVersion = if ($env:GITHUB_REF_TYPE -eq 'tag') { $env:GITHUB_REF_NAME -replace '^reborn-v', '' } else { '' }
+          ./scripts/Publish-Release.ps1 -ExpectedVersion $ExpectedVersion
+      - name: Upload verified release files
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: Reborn-Windows-${{ steps.package.outputs.version }}
+          path: |
+            artifacts/${{ steps.package.outputs.archive }}
+            artifacts/SHA256SUMS.txt
+            artifacts/RELEASE_NOTES.md
+            artifacts/distribution-verification.json
+          if-no-files-found: error
+          retention-days: 14
+
+  draft:
+    name: Prepare release draft
+    needs: build
+    if: >-
+      github.event_name != 'pull_request' &&
+      (startsWith(github.ref, 'refs/heads/release/reborn-') ||
+       startsWith(github.ref, 'refs/tags/reborn-v') ||
+       (github.event_name == 'workflow_dispatch' && inputs.create_draft))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      VERSION: ${{ needs.build.outputs.version }}
+      RELEASE_TAG: ${{ needs.build.outputs.tag }}
+      ARCHIVE: ${{ needs.build.outputs.archive }}
+      SOURCE_COMMIT: ${{ github.sha }}
+    steps:
+      - name: Download the verified package
+        run: gh run download "$GITHUB_RUN_ID" --repo "$GH_REPO" --name "Reborn-Windows-$VERSION" --dir release
+      - name: Create or update an unpublished Reborn draft
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GH_REPO" --json isDraft > existing.json 2>/dev/null; then
+            if [ "$(jq -r .isDraft existing.json)" != true ]; then
+              echo 'This version is already published. Increase the project version to prepare another release.'
+              exit 0
+            fi
+            gh release edit "$RELEASE_TAG" --repo "$GH_REPO" --target "$SOURCE_COMMIT" \
+              --title "Reborn $VERSION - Windows x64" --notes-file release/RELEASE_NOTES.md
+            gh release upload "$RELEASE_TAG" --repo "$GH_REPO" \
+              "release/$ARCHIVE" release/SHA256SUMS.txt release/distribution-verification.json --clobber
+          else
+            gh release create "$RELEASE_TAG" --repo "$GH_REPO" --target "$SOURCE_COMMIT" \
+              --title "Reborn $VERSION - Windows x64" --draft --prerelease --latest=false \
+              --notes-file release/RELEASE_NOTES.md \
+              "release/$ARCHIVE" release/SHA256SUMS.txt release/distribution-verification.json
+          fi
+          echo 'Reborn draft prepared. Review the Windows package before publishing the release.' >> "$GITHUB_STEP_SUMMARY"

@@ -1,117 +1,74 @@
-# 🎮 Server Launcher — Download & Play
+# Server Launcher Reborn
 
-[![License: ISC](https://img.shields.io/badge/License-ISC-blue.svg)](https://opensource.org/licenses/ISC)
-[![Version](https://img.shields.io/badge/Version-1.2.17-green.svg)](https://github.com/norbertbaricz/server-launcher/releases)
+A Windows desktop launcher for creating and managing Minecraft servers.
 
-Server Launcher is the easiest way to host your own Minecraft Java (Purpur/Fabric/Vanilla) or Bedrock server without touching the terminal. You do **not** need to clone this repository or install any developer tools—simply download the app, press Start, and invite your friends.
+## Download and run
 
----
+1. Open the repository's [Releases page](https://github.com/norbertbaricz/Server-Launcher/releases).
+2. Choose a **Reborn - Windows x64** release and download its Windows ZIP.
+3. Extract the full archive into a writable folder, for example `Documents\Server Launcher Reborn`.
+4. Open **Server Launcher.exe**.
 
-## 🚀 Quick Download (takes 1 minute)
+The download includes .NET. No installer, Visual Studio or developer tools are required. GitHub's **Source code** downloads are for developers; the runnable application is the Windows ZIP attached to a Reborn release.
 
-1. Open the [Releases](https://github.com/norbertbaricz/server-launcher/releases) page.
-2. Pick the latest version at the top.
-3. Download the file that matches your computer:
-   - `Server-Launcher-Setup-<version>.exe` for Windows
-   - `Server-Launcher-mac-<version>.zip` for macOS
-   - `Server-Launcher-<version>.AppImage` for Linux
-4. Double-click the download to install/run the app.
+### Requirements
 
-That is all—no `git clone`, no coding, no extra software.
+- Windows on an x64 Intel/AMD computer.
+- Enough free RAM and disk space for the Minecraft server you choose.
+- Internet for initial server and missing Java downloads.
+- For native Bedrock: the [Microsoft Visual C++ x64 runtime](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist).
 
----
+The first single-file launch may extract its bundled native .NET libraries into the Windows temporary directory. Server files, Java and settings stay beside the launcher, so choose a folder your Windows account can write to.
 
-## 🧱 What You Get
+## Create your first server
 
-- Guided setup that creates your Minecraft server folder for you.
-- Start/Stop buttons, live console, RAM usage, IP + port display, and ping checker.
-- Plugin/Mod/Add-on upload page with one-click folder access.
-- Automatic language and notification options.
+1. Select **Create server** and enter a name.
+2. Choose PaperMC, Fabric or Bedrock.
+3. Choose the available Minecraft version and review the memory and port settings.
+4. Keep **Balance**, or select Standard or Performance for your Java server.
+5. Review and accept the Minecraft EULA/download terms, then create the server.
+6. Wait for preparation to finish and press **Start**.
 
----
+The initial release has no preinstalled Minecraft server. A missing matching JDK is downloaded from Eclipse Temurin into the private `runtime` folder. Existing compatible Java installations can also be reused. Bedrock is a native server and does not use Java.
 
-## 💾 Install by Operating System
+## Daily use
 
-### 🪟 Windows (10/11)
+- **Servers:** select, rename or delete a server. Deletion removes its files and worlds.
+- **Console:** read live output and send server commands. Follow output and clear controls are available.
+- **Content:** manage the selected server's plugins, mods or add-ons, plus its worlds. Stop the server before changing content. Select another world before deleting the selected one or its dimensions.
+- **Settings:** global memory defaults, optimization, public address display, notifications, close-to-tray and Windows startup.
+- **Tray:** reopen the launcher or exit. Exiting stops managed running servers; close-to-tray keeps them running in the background.
 
-1. Download `Server-Launcher-Setup-<version>.exe` from Releases.
-2. Double-click it and follow the installer (next → next → finish).
-3. If SmartScreen asks for confirmation, click **More info → Run anyway**. This happens because the app is not in the Microsoft Store yet.
-4. You now have Server Launcher in your Start menu and can pin it to the taskbar.
+Use content that matches your Minecraft version and server backend. Java checks do not replace a plugin or mod's Minecraft compatibility requirements.
 
-### 🍎 macOS (11 Big Sur or newer)
+The optimization profiles use Java launch arguments for PaperMC/Fabric. Bedrock uses its native settings. Event sounds use the fixed 70% application volume.
 
-1. Download `Server-Launcher-mac-<version>.zip`.
-2. Open the zip and drag `Server Launcher.app` into `Applications`.
-3. First launch: right-click the app → **Open** → **Open** (this lets macOS trust the app).
-4. After that you can open it normally from Launchpad or Spotlight.
+## Connecting players
 
-### 🐧 Linux (Ubuntu, Debian, Fedora, Arch, etc.)
+Use the displayed **LAN** address for other devices on your local network. For internet players, the server must be reachable through your firewall/router or a separately configured tunnel. The displayed **WAN** IP alone does not open a port. This Reborn edition does not bundle a tunneling service.
 
-1. Download `Server-Launcher-<version>.AppImage`.
-2. Make it executable:
+Prepared server files and runtimes remain available offline. Minecraft account authentication may still require internet, depending on server configuration.
 
-   ```bash
-   chmod +x Server-Launcher-<version>.AppImage
-   ```
+## Your data and updates
 
-3. Double-click the file or run `./Server-Launcher-<version>.AppImage`.
-4. Optional: move it to `/opt/ServerLauncher/` and create a desktop shortcut for quick access.
+The portable launcher creates these items next to its executable:
 
-> Tip: On Ubuntu you might need to install AppImage/FUSE support (`sudo apt install libfuse2`).
+```text
+servers/
+runtime/
+launcher.settings.json
+```
 
----
+Before updating, stop your servers, exit the launcher and back up these items. Extract the new release and copy its application files into the same launcher directory, keeping your existing data folders and settings. If you move the launcher and use Windows startup, save that option again from its new location.
 
-## 🩺 Troubleshooting
+Reborn does not automatically import Electron profiles. To move a world, create the appropriate server in Reborn and import a copy through **Content > Worlds** while the server is stopped.
 
-- **Linux font-antialiasing warning:** Electron may print `Schema org.gnome.desktop.interface does not have key font-antialiasing` on some desktop environments. Installing your distro's `gsettings-desktop-schemas` package (or the GLib settings schemas equivalent) silences it; the message is harmless for the app.
+## For developers
 
----
+Use the .NET 10 SDK on Windows. The project uses C# 12 and .NET 10 LTS. The [publishing guide](docs/PUBLISHING.md) documents the verified Windows package and release draft workflow.
 
-## 🕹️ First Launch Setup (kid friendly!)
+The launcher follows the repository's [ISC license](LICENSE.txt). Downloaded server software, Java, plugins and mods retain their own licenses.
 
-1. Pick where the server files should live (default is `Documents/MinecraftServer`).
-2. Choose your server type (Purpur, Fabric, or Bedrock) and Minecraft version.
-3. Choose how much RAM to give the server (or leave it on Auto).
-4. Press **Download & Configure** and wait for the progress bar to finish.
-5. Hit **Start Server**. Once the status turns green, share the shown IP + port with your friends.
+## Previous releases
 
-You can reopen the setup later from Settings if you ever want to change version, folder, or RAM.
-
----
-
-## 🛠 Daily Controls Explained
-
-- **Dashboard:** Shows status (Starting/Running/Stopped), local + public IP, latency, and RAM usage.
-- **Console + Command bar:** Read logs and send commands (e.g., `/op YourName`). Inputs are sanitized to keep things safe.
-- **Start/Stop buttons:** One click to power your server up or down. Critical settings lock automatically while the server runs.
-- **Plugins / Mods / Add-ons page:** Upload or delete files, open the folder, and edit `server.properties` with Save & Apply.
-- **Settings:** Change language, notifications, auto-start options, and the server location whenever the server is stopped.
-
----
-
-## ❓ FAQ (short answers)
-
-- **Do I need to know coding or Git?** No. Just download the newest release and run it.
-- **Where are the server files?** By default in `Documents/MinecraftServer`. Change it anytime in Settings → Server Data Location.
-- **Why is the Choose button greyed out?** The server is starting/running or the folder is locked. Stop the server first.
-- **How do friends join?** Share the public IP + port shown on the Dashboard. Make sure the port is forwarded on your router.
-- **What if I cannot port-forward?** Create a free [ngrok](https://ngrok.com/) account, copy your auth token, and run `ngrok config add-authtoken <TOKEN>` in your terminal (only once). Server Launcher then detects the system-wide token, starts the tunnel for you when the server runs, and shows the shareable address on the Dashboard.
-- **Can it auto-start with my PC?** Yes. Enable "Start with system" and (optionally) "Auto-start server" with a countdown.
-- **How do I update Server Launcher?** Close the app, download the latest version from Releases, and install/run it over the old one. Your server files stay untouched.
-- **Can I copy my world to another PC?** Yes. Zip the server folder (e.g., `Documents/MinecraftServer`) and move it to the other machine, then point Server Launcher to that folder.
-- **Bedrock plugins?** Bedrock does not support plugins the same way Java does; manage add-ons manually from the folder opened via the Plugins/Add-ons page.
-
----
-
-## 🆘 Need Help?
-
-- Check the [Issues](https://github.com/norbertbaricz/server-launcher/issues) tab to see if someone already solved your problem.
-- Open a new issue with clear steps if you discover a bug.
-- For release announcements download from [Releases](https://github.com/norbertbaricz/server-launcher/releases) only.
-
----
-
-## 📄 License
-
-This project is licensed under [ISC](./LICENSE.txt).
+The older Electron releases for Windows, macOS and Linux remain in the release archive. Their [original guide](docs/ELECTRON.md) is preserved for existing installations. Current C# sources use the repository root.
