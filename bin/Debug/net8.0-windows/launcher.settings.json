@@ -1,0 +1,10 @@
+{
+  "InitialMemoryMb": 2048,
+  "MaximumMemoryMb": 4096,
+  "OptimizationProfile": "Performance",
+  "ExtraJvmArguments": "",
+  "ShowPublicIp": true,
+  "DesktopNotificationsEnabled": true,
+  "CloseToTray": true,
+  "StartWithWindows": false
+}

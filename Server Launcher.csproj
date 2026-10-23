@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- EASY-TO-TUNE BUILD VALUES; versions are internal and do not appear in window titles. -->
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>12.0</LangVersion>
+    <Version>2.6.1</Version>
+    <AssemblyVersion>2.6.1.0</AssemblyVersion>
+    <FileVersion>2.6.1.0</FileVersion>
+    <InformationalVersion>2.6.1</InformationalVersion>
+    <AssemblyName>Server Launcher</AssemblyName>
+    <RootNamespace>Server_Launcher</RootNamespace>
+    <ApplicationIcon>Assets\icon.ico</ApplicationIcon>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <Content Include="Assets\icon.ico;Assets\icon.png;Assets\Sounds\*.mp3;Assets\Sounds\*.wav">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </Content>
+    <EmbeddedResource Include="Assets\icon.ico" LogicalName="Server_Launcher.Assets.icon.ico" />
+    <EmbeddedResource Include="Assets\icon.png" LogicalName="Server_Launcher.Assets.icon.png" />
+    <EmbeddedResource Include="Assets\Sounds\*.wav">
+      <LogicalName>Server_Launcher.Assets.Sounds.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>
