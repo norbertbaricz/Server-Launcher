@@ -1,74 +1,49 @@
-# Server Launcher Reborn
+# 🚀 Minecraft Server Launcher
 
-A Windows desktop launcher for creating and managing Minecraft servers.
+Welcome to the **Minecraft Server Launcher**! 
 
-## Download and run
+Are you tired of dealing with confusing `.bat` files, Java version errors, and typing complicated commands just to play with your friends? This app is designed to make creating and managing a Minecraft server as easy as clicking a button. 
 
-1. Open the [latest release](https://github.com/norbertbaricz/Server-Launcher/releases/latest).
-2. Download **Server-Launcher-Reborn-2.1.0-win-x64.zip** from the **v2.1** release.
-3. Extract the full archive into a writable folder, for example `Documents\Server Launcher Reborn`.
-4. Open **Server Launcher.exe**.
+Whether you want to run a simple **Vanilla** server, a **Bedrock** server for cross-platform play, or a heavy **Modded** server with your favorite modpacks, this launcher handles all the hard work for you.
 
-The download includes .NET. No installer, Visual Studio or developer tools are required. GitHub's **Source code** downloads are for developers; the runnable application is the Windows ZIP attached to a Reborn release.
+---
 
-### Requirements
+## ✨ Why use this launcher?
 
-- Windows on an x64 Intel/AMD computer.
-- Enough free RAM and disk space for the Minecraft server you choose.
-- Internet for initial server and missing Java downloads.
-- For native Bedrock: the [Microsoft Visual C++ x64 runtime](https://learn.microsoft.com/cpp/windows/latest-supported-vc-redist).
+* 🎯 **No More `.bat` Files:** Control everything from a beautiful, modern, and easy-to-use desktop interface.
+* 🌍 **Three Main Server Types:** Easily create **Vanilla**, **Bedrock**, and **Modded** servers with just a few clicks. No complicated setups required!
+* ☕ **Automatic Java Setup:** Modded and Vanilla servers often need different Java versions (Java 8, 17, 21, etc.). You don't need to guess—the launcher automatically downloads and uses the exact Java version required for your server.
+* 🚀 **Visual RAM Slider:** Modded servers need a lot of RAM. Allocate memory to your server using a simple visual slider. No need to memorize confusing codes like `-Xmx8G`.
+* 🧩 **Manage Everything in One Place:** View live server logs, and manage your mods and worlds directly from the app dashboard.
+* 🔔 **Smart Notifications:** Get audio and visual alerts when your server starts, stops, or if an error occurs.
 
-The first single-file launch may extract its bundled native .NET libraries into the Windows temporary directory. Server files, Java and settings stay beside the launcher, so choose a folder your Windows account can write to.
+---
 
-## Create your first server
+## 📥 How to Install
 
-1. Select **Create server** and enter a name.
-2. Choose PaperMC, Fabric or Bedrock.
-3. Choose the available Minecraft version and review the memory and port settings.
-4. Keep **Balance**, or select Standard or Performance for your Java server.
-5. Review and accept the Minecraft EULA/download terms, then create the server.
-6. Wait for preparation to finish and press **Start**.
+You don't need any coding knowledge to use this app. Just follow these simple steps:
 
-The initial release has no preinstalled Minecraft server. A missing matching JDK is downloaded from Eclipse Temurin into the private `runtime` folder. Existing compatible Java installations can also be reused. Bedrock is a native server and does not use Java.
+1. Go to the [Releases](../../releases) page on the right side of this screen.
+2. Download the latest `.exe` (or `.zip` file) under the "Assets" section.
+3. Place the downloaded file in a completely new, empty folder where you want your server to be saved (for example: `Desktop\MyServer`).
+4. Double-click the `Server Launcher.exe` to open the app!
 
-## Daily use
+*(Note: Windows might show a "Windows protected your PC" blue screen because the app is new. Just click "More info" -> "Run anyway").*
 
-- **Servers:** select, rename or delete a server. Deletion removes its files and worlds.
-- **Console:** read live output and send server commands. Follow output and clear controls are available.
-- **Content:** manage the selected server's plugins, mods or add-ons, plus its worlds. Stop the server before changing content. Select another world before deleting the selected one or its dimensions.
-- **Settings:** global memory defaults, optimization, public address display, notifications, close-to-tray and Windows startup.
-- **Tray:** reopen the launcher or exit. Exiting stops managed running servers; close-to-tray keeps them running in the background.
+---
 
-Use content that matches your Minecraft version and server backend. Java checks do not replace a plugin or mod's Minecraft compatibility requirements.
+## 🎮 How to Create Your First Server
 
-The optimization profiles use Java launch arguments for PaperMC/Fabric. Bedrock uses its native settings. Event sounds use the fixed 70% application volume.
+1. Open the Launcher.
+2. Click on the **Create New Server** button.
+3. Choose your desired server type (**Vanilla**, **Bedrock**, or **Modded**) and select the Minecraft version.
+4. Adjust the **RAM slider** depending on how much memory your PC has (give it a bit more if you are playing Modded!).
+5. Click **Start**! 
 
-## Connecting players
+The launcher will automatically download the server files, install the required mods/libraries, set up the environment, and start the console. Once it says "Done", you and your friends are ready to play!
 
-Use the displayed **LAN** address for other devices on your local network. For internet players, the server must be reachable through your firewall/router or a separately configured tunnel. The displayed **WAN** IP alone does not open a port. This Reborn edition does not bundle a tunneling service.
+---
 
-Prepared server files and runtimes remain available offline. Minecraft account authentication may still require internet, depending on server configuration.
+## 💬 Support & Feedback
 
-## Your data and updates
-
-The portable launcher creates these items next to its executable:
-
-```text
-servers/
-runtime/
-launcher.settings.json
-```
-
-Before updating, stop your servers, exit the launcher and back up these items. Extract the new release and copy its application files into the same launcher directory, keeping your existing data folders and settings. If you move the launcher and use Windows startup, save that option again from its new location.
-
-Reborn does not automatically import Electron profiles. To move a world, create the appropriate server in Reborn and import a copy through **Content > Worlds** while the server is stopped.
-
-## For developers
-
-The current project and release workflow are on `main`. Use the .NET 10 SDK on Windows. The project uses C# 12 and .NET 10 LTS. The [publishing guide](docs/PUBLISHING.md) documents the verified Windows package and automatic stable releases from `main`.
-
-The launcher follows the repository's [ISC license](LICENSE.txt). Downloaded server software, Java, plugins and mods retain their own licenses.
-
-## Previous releases
-
-The older Electron releases for Windows, macOS and Linux remain in the release archive. Their [original guide](docs/ELECTRON.md) is preserved for existing installations. Current C# sources use the repository root.
+If you find a bug, have a suggestion, or need help setting up your server, feel free to open an issue in the **Issues** tab above. Enjoy your server!
